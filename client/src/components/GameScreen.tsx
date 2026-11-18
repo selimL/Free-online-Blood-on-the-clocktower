@@ -1,0 +1,347 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { GameView } from '../../../shared/types';
+import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES } from '../../../shared/characters';
+import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
+import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
+import { TownCircle, TownMap } from './TownSquare';
+import {
+  CharacterModal, CharactersInPlay, Confirm, InfoPopup, QuestionPrompt, TimerBadge, VoteBar,
+  TransitionOverlay, NightSleep, Modal, CharacterToken,
+} from './Overlays';
+import { StorytellerPanel, StorytellerControls } from './Storyteller';
+
+type ConfirmState = { title: string; text: React.ReactNode; confirm: string; onYes: () => void } | null;
+
+const PHASE_LABEL: Record<string, string> = { lobby: 'Gathering', dealt: 'Setting up', questions: 'Questions', night: 'Night', day: 'Day', ended: 'Game over' };
+const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', private: 'Private conversations', nominations: 'Nominations open', accusation: 'Accusation', defense: 'Defence', voting: 'Voting', closed: 'Nominations closed' };
+
+export function GameScreen({ view }: { view: GameView }) {
+  const isST = view.self.isStoryteller;
+  const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState>(null);
+  const [nightSel, setNightSel] = useState<string[]>([]);
+  const night = view.phase === 'night';
+  const asleep = night && !isST && !view.self.isStoryteller && !view.self.awake;
+
+  useEffect(() => { if (!isST) void probeRegions(); }, [isST]);
+  useEffect(() => { if (!night) setNightSel([]); }, [night]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key.toLowerCase() === 'p' && !isST) setModal(m => (m === 'character' ? null : 'character'));
+    };
+    addEventListener('keydown', k);
+    return () => removeEventListener('keydown', k);
+  }, [isST]);
+
+  const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
+
+  const onSeatClick = (id: string) => {
+    if (view.self.isStoryteller) {
+      if (night) void act('st:wake', { playerId: id });
+      else if (view.phase !== 'lobby') void act('st:mute', { playerId: id });
+      return;
+    }
+    const self = view.self;
+    if (night) {
+      if (!self.awake) return;
+      setNightSel(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
+      return;
+    }
+    const a = view.ability;
+    if (a && a.playerId === self.id && a.stage === 'acting' && a.needsTarget) { void act('abilityTarget', { targetId: id }); return; }
+    if (view.phase === 'day' && view.stage === 'nominations' && me) {
+      const target = view.players.find(p => p.id === id)!;
+      const canNominate = me.alive && !view.nominatorsToday.includes(me.id) && !view.nominatedToday.includes(id);
+      if (target.traveller) {
+        setConfirm({
+          title: `Nominate ${target.name}?`, confirm: 'Call for exile',
+          text: <p>{target.name} is a Traveller. You can call for their <b>exile</b> (anyone may, alive or dead; half of all players must vote).{canNominate && <> <button className="btn small" onClick={() => { setConfirm(null); void act('nominate', { nomineeId: id }); }}>Nominate for execution instead</button></>}</p>,
+          onYes: () => act('nominate', { nomineeId: id, exile: true }),
+        });
+      } else if (canNominate) {
+        setConfirm({ title: 'Nominate?', text: <p>Nominate <b>{target.name}</b> for execution{target.id === me.id ? ' (yourself)' : ''}? You can only nominate once per day.</p>, confirm: 'Nominate', onYes: () => act('nominate', { nomineeId: id }) });
+      }
+    }
+  };
+
+  const selected = useMemo(() => {
+    if (night) return nightSel;
+    const a = view.ability;
+    return a?.targetId ? [a.targetId] : [];
+  }, [night, nightSel, view.ability]);
+
+  const showClickHint = !isST && !night && view.phase === 'day' && view.stage === 'nominations' && me?.alive && !view.nominatorsToday.includes(me.id);
+
+  return (
+    <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
+      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} />
+      <main className="layout">
+        <aside className="left"><TownMap view={view} /></aside>
+        <section className="stage">
+          <StageHeader view={view} />
+          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} />}
+          {showClickHint && <p className="hint">Click a player's avatar to nominate them.</p>}
+          {!isST && night && view.self.awake && !view.self.isStoryteller && (
+            <div className="night-choice parchment">
+              <b>You are awake.</b> Speak with the Storyteller, and click avatars to choose players.
+              <div className="chips">{nightSel.map(id => <span key={id} className="chip">{name(id)}</span>)}</div>
+              <button className="btn primary" onClick={() => act('nightChoice', { ids: nightSel })}>Send choice to Storyteller</button>
+            </div>
+          )}
+          <AbilityBanner view={view} />
+          <VoteBar view={view} />
+          {view.phase === 'questions' && <QuestionsBanner view={view} />}
+          {view.phase === 'ended' && <div className={`winner-banner ${view.winner}`}>{view.winner === 'good' ? 'Good' : 'Evil'} wins! All characters are revealed.</div>}
+        </section>
+        <aside className="right">
+          {isST ? <StorytellerPanel view={view} /> : <SidePanel view={view} />}
+        </aside>
+      </main>
+      <footer className="bottom-bar">
+        <div className="bl">
+          {!isST && view.phase !== 'lobby' && <>
+            <button className="btn" onClick={() => setModal('claim')} disabled={!me?.alive || view.phase !== 'day'}>🎭 Claim Ability</button>
+            <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>
+            {view.houseRules.allowCharacterReveal && <button className="btn ghost" onClick={() => setModal('reveal')}>🂠 Show character</button>}
+          </>}
+          {!isST && view.phase === 'lobby' && <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>}
+        </div>
+        <div className="bc">{isST && <StorytellerControls view={view} />}</div>
+        <div className="br">
+          {!isST && <>
+            <button className="btn" onClick={() => setModal('character')} title="Shortcut: P">📜 Character <kbd>P</kbd></button>
+            <UseAbilityButton view={view} setConfirm={setConfirm} />
+          </>}
+        </div>
+      </footer>
+
+      {modal === 'character' && <CharacterModal view={view} onClose={() => setModal(null)} />}
+      {modal === 'list' && <CharactersInPlay view={view} onClose={() => setModal(null)} />}
+      {modal === 'claim' && <ClaimAbilityDialog view={view} onClose={() => setModal(null)} setConfirm={setConfirm} />}
+      {modal === 'label' && <ClaimLabelDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'invite' && <InviteDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'reveal' && <RevealDialog view={view} onClose={() => setModal(null)} />}
+      {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
+      <QuestionPrompt view={view} />
+      <InfoPopup view={view} />
+      <TransitionOverlay />
+      {view.paused && <div className="paused-banner">⏸ The game is paused{!view.storyteller.connected ? ' — waiting for the Storyteller to reconnect' : ''}.</div>}
+    </div>
+  );
+}
+
+function TopBar({ view, openList, openInvite }: { view: GameView; openList: () => void; openInvite: () => void }) {
+  const voice = useVoice();
+  const leave = async () => {
+    if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
+    await rpc('game:leave');
+    set({ session: null, view: null });
+    history.pushState(null, '', '/');
+    dispatchEvent(new PopStateEvent('popstate'));
+  };
+  void forgetSession; void getStore;
+  return (
+    <header className="top-bar">
+      <div className="tl">
+        <span className="game-name">{view.name}</span>
+        <button className="btn small ghost" onClick={openInvite} title="Invite players">Code <b>{view.code}</b></button>
+      </div>
+      <div className="tc">
+        <span className="phase">{PHASE_LABEL[view.phase]}{view.phase === 'day' ? ` ${view.day}` : view.phase === 'night' ? ` ${view.night}` : ''}{view.stage ? ` · ${STAGE_LABEL[view.stage]}` : ''}</span>
+        <TimerBadge view={view} />
+      </div>
+      <div className="tr">
+        {view.voice.enabled ? <>
+          <button className={`icon-btn ${voice.micOn ? 'on' : 'off'}`} onClick={toggleMic} aria-pressed={voice.micOn} title="Microphone">{voice.micOn ? '🎙' : '🔇'}</button>
+          <button className={`icon-btn ${voice.camOn ? 'on' : 'off'}`} onClick={toggleCam} aria-pressed={voice.camOn} title="Camera (optional)">{voice.camOn ? '📷' : '🚫'}</button>
+          <span className={`voice-status ${voice.connectedRoom ? (voice.canPublish ? 'live' : 'waiting') : 'none'}`} title={voice.error ?? ''}>
+            {voice.connectedRoom ? (voice.canPublish ? 'voice live' : 'connecting…') : 'no voice'}
+          </span>
+        </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
+        {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
+        <button className="btn small ghost" onClick={leave}>Leave</button>
+      </div>
+    </header>
+  );
+}
+
+function StageHeader({ view }: { view: GameView }) {
+  const isST = view.self.isStoryteller;
+  const loc = isST ? view.storyteller.location : view.players.find(p => p.id === view.self.id)?.location;
+  const room = view.rooms.find(r => r.id === loc);
+  const me = !isST ? view.players.find(p => p.id === view.self.id) : null;
+  if (view.phase === 'night') return <div className={`stage-header night`}>🌙 Night {view.night}{isST && loc ? ` · with ${view.players.find(p => `night:${p.id}` === loc)?.name}` : ''}</div>;
+  return (
+    <div className={`stage-header loc-${room?.kind ?? 'none'} room-${room?.id ?? ''}`}>
+      <span>{room ? `${room.icon} ${room.name}` : 'Nowhere'}</span>
+      {me?.joining && <span className="joining-note">Joining… you cannot hear or be heard for a moment.</span>}
+      {me?.muted && <span className="muted-note">🔇 Muted by Storyteller</span>}
+    </div>
+  );
+}
+
+function QuestionsBanner({ view }: { view: GameView }) {
+  const q = view.questions;
+  const cur = view.players.find(p => p.id === q.currentId);
+  return (
+    <div className="questions-banner parchment">
+      {cur ? <>Storyteller is answering questions ({q.done + 1}/{Math.max(q.total, q.done + 1)}) — with {cur.name}{!view.self.isStoryteller && cur.id === view.self.id ? ' (you)' : ''}.</>
+        : <>The Storyteller is preparing{q.total ? ` · questions answered ${q.done}/${q.total}` : ''}.</>}
+    </div>
+  );
+}
+
+function AbilityBanner({ view }: { view: GameView }) {
+  const a = view.ability;
+  if (!a) return null;
+  const mine = !view.self.isStoryteller && a.playerId === view.self.id;
+  const name = (id: string | null) => view.players.find(p => p.id === id)?.name ?? '?';
+  const ch = CHARACTER_BY_ID[a.characterId];
+  return (
+    <div className="ability-banner" role="alert">
+      <div className="ability-title">⚔ {name(a.playerId)} is using an ability! <span className="muted">({ch?.name})</span></div>
+      {a.stage === 'gathering' && <div>Everyone is gathering in the Town Square…</div>}
+      {a.stage === 'acting' && (mine
+        ? <div>{a.prompt} {a.needsTarget && <>Click an avatar. Target: <b>{a.targetId ? name(a.targetId) : '—'}</b>. </>}Explain dramatically how you do it, then
+          <button className="btn primary small" disabled={a.needsTarget && !a.targetId} onClick={() => act('abilityDone')}>Done</button></div>
+        : <div>{name(a.playerId)} is acting{a.targetId ? <> — target: <b>{name(a.targetId)}</b></> : ''}…</div>)}
+      {a.stage === 'pending' && <div>{a.targetId ? <>Target: <b>{name(a.targetId)}</b>. </> : ''}The Storyteller is resolving…</div>}
+      {a.stage === 'resolved' && <div className="ability-result">{a.result}</div>}
+    </div>
+  );
+}
+
+function UseAbilityButton({ view, setConfirm }: { view: GameView; setConfirm: (c: ConfirmState) => void }) {
+  if (view.self.isStoryteller) return null;
+  const id = view.self.characterId;
+  const def = id ? DAY_ABILITIES[id] : undefined;
+  if (!id || !def) return null; // only shown for characters with a day ability
+  const ch = CHARACTER_BY_ID[id];
+  const once = def.frequency === 'once';
+  return (
+    <button className="btn primary" disabled={!view.self.abilityAvailable || !!view.ability}
+      onClick={() => setConfirm({
+        title: `Use ${ch.name} ability?`,
+        text: <><p>{ch.ability}</p>{once && <p><b>Are you sure? This can only be used once.</b></p>}{def.public ? <p>Everyone will be pulled to the Town Square.</p> : <p>This is private: the Storyteller will call you to the Study.</p>}</>,
+        confirm: 'Use ability', onYes: () => act('ability', { mode: 'real' }),
+      })}>✨ Use Ability</button>
+  );
+}
+
+function ClaimAbilityDialog({ view, onClose, setConfirm }: { view: GameView; onClose: () => void; setConfirm: (c: ConfirmState) => void }) {
+  if (view.self.isStoryteller) return null;
+  const self = view.self;
+  const options = CLAIMABLE_ABILITIES.filter(id => id !== self.characterId);
+  return (
+    <Modal title="Claim an ability (bluff)" onClose={onClose}>
+      <p className="muted">Publicly “use” the daytime ability of a character you are claiming to be. To everyone else it looks exactly like a real use. The Storyteller resolves it.</p>
+      {options.map(id => {
+        const def = DAY_ABILITIES[id];
+        const used = self.claimsUsed[id] !== undefined && (def.frequency !== 'daily' || self.claimsUsed[id] === view.day);
+        const tooLate = def.frequency === 'firstDay' && view.day !== 1;
+        return (
+          <div key={id} className="claim-option">
+            <CharacterToken ch={CHARACTER_BY_ID[id]} />
+            <button className="btn" disabled={used || tooLate || !!view.ability} onClick={() => {
+              onClose();
+              setConfirm({ title: `Use ${CHARACTER_BY_ID[id].name} ability?`, text: def.frequency === 'once' ? <p><b>Are you sure? This can only be used once.</b></p> : <p>Use this ability now?</p>, confirm: 'Use ability', onYes: () => act('ability', { mode: 'claim', characterId: id }) });
+            }}>Use as {CHARACTER_BY_ID[id].name}</button>
+          </div>
+        );
+      })}
+    </Modal>
+  );
+}
+
+function ClaimLabelDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) : null;
+  const [val, setVal] = useState(me?.claim ?? '');
+  const options = CHARACTERS.filter(c => c.type !== 'fabled');
+  return (
+    <Modal title="Your claimed character" onClose={onClose}>
+      <p className="muted">Shown next to your name. Entirely your choice — it may be a bluff, and it looks the same either way.</p>
+      <select value={CHARACTER_BY_ID[val] ? val : ''} onChange={e => setVal(e.target.value)} aria-label="Claimed character">
+        <option value="">— none —</option>
+        {options.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <div className="row end">
+        <button className="btn ghost" onClick={() => { void act('claim', { claim: '' }); onClose(); }}>Clear</button>
+        <button className="btn primary" onClick={() => { void act('claim', { claim: val }); onClose(); }}>Save</button>
+      </div>
+    </Modal>
+  );
+}
+
+function RevealDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const others = view.players.filter(p => view.self.isStoryteller || p.id !== view.self.id);
+  return (
+    <Modal title="Show your character" onClose={onClose}>
+      <p className="muted">House rule: you may show your character card to one player.</p>
+      {others.map(p => <button key={p.id} className="btn small" onClick={() => { void act('reveal', { toId: p.id }); onClose(); }}>{p.name}</button>)}
+    </Modal>
+  );
+}
+
+function InviteDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const link = `${location.origin}/join/${view.code}`;
+  return (
+    <Modal title="Invite players" onClose={onClose}>
+      <p>Invite code: <b className="code">{view.code}</b></p>
+      <p><input readOnly value={link} onFocus={e => e.target.select()} aria-label="Invite link" /></p>
+      <button className="btn" onClick={() => navigator.clipboard?.writeText(link)}>Copy link</button>
+    </Modal>
+  );
+}
+
+function SidePanel({ view }: { view: GameView }) {
+  const [tab, setTab] = useState<'chat' | 'log' | 'notes'>('chat');
+  return (
+    <div className="side-panel">
+      <div className="tabs" role="tablist">
+        {(['chat', 'log', 'notes'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'chat' ? 'Room chat' : t === 'log' ? 'Town crier' : 'My notes'}</button>)}
+      </div>
+      {tab === 'chat' && <Chat view={view} />}
+      {tab === 'log' && <Announcements view={view} />}
+      {tab === 'notes' && <PersonalNotes view={view} />}
+    </div>
+  );
+}
+
+export function Announcements({ view }: { view: GameView }) {
+  return <ul className="announcements">{[...view.announcements].reverse().map(a => <li key={a.id} className={a.kind}>{a.text}</li>)}</ul>;
+}
+
+function PersonalNotes({ view }: { view: GameView }) {
+  const key = `botc:notes:${view.id}`;
+  const [txt, setTxt] = useState(() => { try { return localStorage.getItem(key) ?? ''; } catch { return ''; } });
+  return <textarea className="notes" value={txt} placeholder="Your private scribbles (stored only in this browser)…" onChange={e => { setTxt(e.target.value); try { localStorage.setItem(key, e.target.value); } catch { /* ignore */ } }} />;
+}
+
+export function Chat({ view }: { view: GameView }) {
+  const chat = useStore(s => s.chat);
+  const [text, setText] = useState('');
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
+  const send = async () => {
+    if (!text.trim()) return;
+    const r = await rpc('chat', { text });
+    if (r.ok) setText(''); else set({ alerts: [...getStore().alerts, { id: Date.now(), text: r.error ?? 'Not sent', kind: 'error' }] });
+  };
+  void view;
+  return (
+    <div className="chat">
+      <div className="chat-log">
+        {chat.length === 0 && <p className="muted small">Messages are only delivered to people in your current room — like voice. There is no history.</p>}
+        {chat.map(m => <div key={m.id} className={`msg ${m.fromId === 'st' ? 'st' : ''}`}><b>{m.name}:</b> {m.text}</div>)}
+        <div ref={endRef} />
+      </div>
+      <form className="row" onSubmit={e => { e.preventDefault(); void send(); }}>
+        <input value={text} maxLength={300} onChange={e => setText(e.target.value)} placeholder="Say something to the room…" aria-label="Chat message" />
+        <button className="btn small">Send</button>
+      </form>
+    </div>
+  );
+}
