@@ -65,4 +65,14 @@ io.on('connection', (socket: Socket) => {
   socket.on('disconnect', () => { clearInterval(interval); lobby.disconnected(socket); });
 });
 
+http.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`\nPort ${PORT} is already in use: the game is probably already running in another window.`);
+    console.error('Close that window (or press Ctrl + C in it) and run "npm start" again.');
+    console.error(`Windows shortcut to stop it: Stop-Process -Id (Get-NetTCPConnection -LocalPort ${PORT}).OwningProcess -Force\n`);
+    process.exit(1);
+  }
+  throw e;
+});
+
 http.listen(PORT, () => console.log(`BotC server on :${PORT} (voice ${voice.enabled ? `enabled: ${voice.regions.map(r => r.name).join(', ')}` : 'disabled — set LIVEKIT_* env'})`));
