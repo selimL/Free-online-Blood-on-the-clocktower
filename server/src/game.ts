@@ -1,12 +1,12 @@
 import { customAlphabet, nanoid } from 'nanoid';
 import {
   CHARACTER_BY_ID, CHARACTERS, DAY_ABILITIES, CLAIMABLE_ABILITIES, ROOM_NAMES, ROOM_ICONS,
-  defaultAlignment, type Alignment, type Character,
+  defaultAlignment, parseScript, type Alignment, type Character,
 } from '../../shared/characters';
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type HouseRules, type Timers,
+  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES,
 } from '../../shared/types';
 
 const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -45,6 +45,8 @@ export interface Player {
   revealed: boolean;               // character publicly revealed (end / reveal-on-death)
   revealedTo: { fromId: string; characterId: string }[];
   rtt: Record<string, number>;
+  whispersToday: number;            // side-room entries today (house rule)
+  butlerMaster: string | null;      // Butler's latest night choice
 }
 
 export interface Nomination {
@@ -107,7 +109,9 @@ export class Game {
   nomination: Nomination | null = null;
   nominatedToday = new Set<string>();
   nominatorsToday = new Set<string>();
-  exiledToday = new Set<string>();
+  voteHistory: VoteRecord[] = [];
+  abilityDeclarationsToday = 0;
+  speedQueue: string[] = [];
   aboutToDie: { playerId: string; votes: number } | null = null;
   highestVotes = 0;
   executedToday = false;
@@ -160,7 +164,7 @@ export class Game {
 
   // ------------------------------------------------------------ rooms
   get roomCount() { return Math.max(3, Math.ceil(this.players.length / 2)); }
-  get roomCapacity() { return Math.max(1, Math.floor(this.players.length / 2)); }
+  get roomCapacity() { return this.settings.houseRules.roomCapOverride ?? Math.max(1, Math.floor(this.players.length / 2)); }
   privateRoomIds() { return Array.from({ length: this.roomCount }, (_, i) => `r${i}`); }
 
   rooms(): RoomView[] {
@@ -191,12 +195,15 @@ export class Game {
     if (!this.privateRoomIds().includes(roomId)) return 'No such room.';
     if (this.phase === 'day') {
       if (this.stage === 'discussion') return 'Side rooms are closed during the opening discussion.';
+      if (this.stage === 'speedround') return 'Side rooms are closed during the speed round.';
       if (['accusation', 'defense', 'voting'].includes(this.stage ?? '')) return 'A nomination is in progress.';
       if ((this.stage === 'nominations' || this.stage === 'closed') && !this.settings.houseRules.privateRoomsDuringNominations) return 'Side rooms are closed during nominations.';
       const cap = this.settings.houseRules.privateRoomCapMinutes;
       if (cap && p.privateMsToday >= cap * 60000) return 'You have used all your private-room time today.';
     }
     if (!p.alive && !this.settings.houseRules.ghostsInPrivateRooms) return 'Ghosts may not enter side rooms (house rule).';
+    const wl = this.settings.houseRules.maxWhispersPerDay;
+    if (this.phase === 'day' && wl && p.whispersToday >= wl) return `You have used all ${wl} side-room visits for today.`;
     const count = this.players.filter(o => o.location === roomId).length; // includes joining players
     if (count >= this.roomCapacity) return `This room is full (max ${this.roomCapacity}).`;
     return null;
@@ -240,7 +247,7 @@ export class Game {
 
   // ------------------------------------------------------------ voice / chat permissions (server-enforced)
   speechMuted(id: string) {
-    return this.settings.houseRules.autoMuteDuringSpeeches && (this.stage === 'accusation' || this.stage === 'defense') && id !== this.speakerId;
+    return this.settings.houseRules.autoMuteDuringSpeeches && (this.stage === 'accusation' || this.stage === 'defense' || this.stage === 'speedround') && id !== this.speakerId;
   }
   voiceTarget(id: string): { room: string | null; publish: boolean; subscribe: boolean } {
     if (id === 'st') {
@@ -280,7 +287,7 @@ export class Game {
       characterId: null, shownCharacterId: null, alignment: 'good', shownAlignment: null, alive: true, ghostVoteUsed: false,
       claim: '', location: null, joining: false, joinReadyAt: 0, muted: false, reminders: [], notes: [], nightChoice: [],
       awake: false, wantsQuestion: null, abilityUses: {}, claimUses: {}, traveller, fakeEvilTeam: [],
-      privateMsToday: 0, revealed: false, revealedTo: [], rtt: {},
+      privateMsToday: 0, revealed: false, revealedTo: [], rtt: {}, whispersToday: 0, butlerMaster: null,
     };
     this.players.push(p);
     if (this.phase !== 'night') this.movePlayer(p, SQUARE);
@@ -328,6 +335,12 @@ export class Game {
     }
     if (patch.fabled) s.fabled = known(patch.fabled, ch => ch.type === 'fabled') ?? s.fabled;
     if (patch.bootleggerRules !== undefined) s.bootleggerRules = cleanText(patch.bootleggerRules, 2000);
+    if (patch.djinnRules !== undefined) s.djinnRules = cleanText(patch.djinnRules, 2000);
+    if (Array.isArray(patch.script) && !this.started) {
+      s.script = patch.script.filter((id): id is string => typeof id === 'string' && !!CHARACTER_BY_ID[id]);
+      s.scriptName = typeof patch.scriptName === 'string' ? cleanText(patch.scriptName, 60) || null : null;
+      if (s.script.length) s.edition = 'custom';
+    }
     if (patch.publicList) {
       const pl = patch.publicList;
       if (typeof pl.visible === 'boolean') s.publicList.visible = pl.visible;
@@ -346,10 +359,12 @@ export class Game {
       for (const k of Object.keys(s.houseRules) as (keyof HouseRules)[]) {
         if (!(k in patch.houseRules)) continue;
         const v = (patch.houseRules as unknown as Record<string, unknown>)[k];
-        if (k === 'privateRoomCapMinutes') s.houseRules.privateRoomCapMinutes = v === null ? null : Math.max(1, Math.min(60, Number(v) || 5));
+        const num = NUMERIC_HOUSE_RULES[k];
+        if (num) (s.houseRules as unknown as Record<string, number | null>)[k] = v === null ? null : Math.max(num.min, Math.min(num.max, Math.floor(Number(v)) || num.default));
         else (s.houseRules as unknown as Record<string, boolean>)[k] = !!v;
       }
     }
+    if (s.houseRules.beginnerMode) for (const f of ['toymaker', 'angel', 'buddhist']) if (!s.fabled.includes(f)) s.fabled.push(f);
     if (patch.region !== undefined) s.region = typeof patch.region === 'string' ? patch.region : null;
     this.changed();
   }
@@ -403,6 +418,7 @@ export class Game {
     for (const p of this.players) { p.wantsQuestion = null; }
     this.questionQueue = [];
     this.questionsDone = 0;
+    for (const l of this.players.filter(x => x.characterId === 'lunatic')) this.tellDemons(`The Lunatic is ${l.name}. They believe they are the Demon.`, [l.id], ['lunatic']);
     this.announce('Characters have been dealt. Check your character with the [Character] button (P).', 'phase');
     this.changed();
   }
@@ -572,6 +588,8 @@ export class Game {
     if (this.phase !== 'night' || !p.awake) fail('You are asleep.');
     p.nightChoice = ids.filter(id => this.maybePlayer(id)).slice(0, 5);
     this.emit(['st'], 'alert', { text: `${p.name} chose: ${p.nightChoice.map(id => this.nameOf(id)).join(', ') || 'nobody'}`, kind: 'info' });
+    if (p.characterId === 'butler') p.butlerMaster = p.nightChoice[0] ?? null;
+    if (p.characterId === 'lunatic') this.tellDemons(`Night ${this.night}: the Lunatic (${p.name}) chose ${p.nightChoice.map(id => this.nameOf(id)).join(', ') || 'nobody'}.`, p.nightChoice, []);
     this.changed();
   }
   sendInfoCard(pid: string, card: { text?: string; playerIds?: string[]; characterIds?: string[]; alignment?: Alignment }) {
@@ -598,9 +616,9 @@ export class Game {
     this.focusId = null;
     const deaths = this.pendingDawnDeaths.map(id => this.maybePlayer(id)).filter((p): p is Player => !!p);
     this.pendingDawnDeaths = [];
-    this.nominatedToday.clear(); this.nominatorsToday.clear(); this.exiledToday.clear();
+    this.nominatedToday.clear(); this.nominatorsToday.clear(); this.abilityDeclarationsToday = 0;
     this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null;
-    for (const p of this.players) p.privateMsToday = 0;
+    for (const p of this.players) { p.privateMsToday = 0; p.whispersToday = 0; }
     this.addLog(`Day ${this.day} begins.`);
     this.emit('all', 'transition', { to: 'day' });
     this.announce(`Dawn breaks. Day ${this.day} begins.`, 'phase');
@@ -630,12 +648,28 @@ export class Game {
         this.announce('Nominations are open.', 'phase');
         this.setTimer('Nominations', t.nominations, () => this.setStage('closed'));
         break;
+      case 'speedround': {
+        if (!this.settings.houseRules.speedRound) fail('The speed-round house rule is off.');
+        this.forceAllTo(SQUARE, 'Everyone is gathering for the speed round…');
+        this.speedQueue = this.players.filter(p => p.alive).map(p => p.id);
+        this.announce('Speed round: each living player states their claim in seat order.', 'phase');
+        this.nextSpeaker();
+        return;
+      }
       case 'closed':
         this.announce('Nominations are closed.', 'phase');
         this.clearTimer();
         break;
       default: fail('Use nominations to start speeches and votes.');
     }
+    this.changed();
+  }
+  nextSpeaker() {
+    if (this.stage !== 'speedround') return;
+    const next = this.speedQueue.shift();
+    if (!next) { this.speakerId = null; this.setStage('nominations'); return; }
+    this.speakerId = next;
+    this.setTimer(`${this.nameOf(next)} states their claim`, this.settings.timers.speedRound, () => this.nextSpeaker());
     this.changed();
   }
   nominate(nominatorId: string, nomineeId: string, exile = false) {
@@ -645,8 +679,6 @@ export class Game {
     const nominee = this.player(nomineeId);
     if (exile) {
       if (!nominee.traveller) fail('Only Travellers can be exiled.');
-      if (this.exiledToday.has(nominee.id)) fail(`${nominee.name} has already faced exile today.`);
-      this.exiledToday.add(nominee.id);
     } else {
       if (!nominator.alive) fail('Dead players cannot nominate.');
       if (this.nominatorsToday.has(nominator.id)) fail('You have already nominated today.');
@@ -663,10 +695,31 @@ export class Game {
     this.addLog(`${nominator.name} ${exile ? 'called for the exile of' : 'nominated'} ${nominee.name}.`);
     this.announce(`${nominator.name} ${exile ? 'calls for the exile of' : 'nominates'} ${nominee.name}!`, 'vote');
     this.emit('all', 'alert', { text: `${nominator.name} ${exile ? 'calls for the exile of' : 'nominates'} ${nominee.name}!`, kind: 'nomination' });
+    if (!exile && this.checkVirgin(nominator, nominee)) { this.changed(); return; }
     this.stage = 'accusation';
     this.speakerId = nominator.id;
     this.setTimer(`${nominator.name} accuses`, this.settings.timers.accusation, () => this.startDefense());
     this.changed();
+  }
+  /** Virgin: on her first nomination, a Townsfolk nominator is executed immediately. Returns true if that happened. */
+  checkVirgin(nominator: Player, nominee: Player): boolean {
+    if (nominee.characterId !== 'virgin' || nominee.reminders.includes('No ability')) return false;
+    nominee.reminders.push('No ability'); // the ability is spent on the first nomination either way
+    const impaired = this.impairments(nominee);
+    const nomType = CHARACTER_BY_ID[nominator.characterId ?? '']?.type;
+    if (impaired.length) { this.addLog(`Virgin nominated by ${nominator.name}, but the Virgin is impaired (${impaired.join(', ')}).`); return false; }
+    if (nominator.characterId === 'spy') {
+      this.emit(['st'], 'alert', { text: `The Virgin was nominated by the Spy, who might register as a Townsfolk. Use "Execute now" on ${nominator.name} if so.`, kind: 'ability' });
+      return false;
+    }
+    if (nomType !== 'townsfolk') { this.addLog(`Virgin nominated by ${nominator.name} (not a Townsfolk): nothing happens.`); return false; }
+    this.nomination = null;
+    this.addLog(`Virgin triggered: ${nominator.name} is executed.`);
+    this.execute(nominator.id);
+    this.stage = 'closed';
+    this.clearTimer();
+    this.announce('Nominations are closed.', 'phase');
+    return true;
   }
   startDefense() {
     if (!this.nomination || this.stage !== 'accusation') fail('No accusation in progress.');
@@ -723,6 +776,15 @@ export class Game {
   private finishVote(n: Nomination) {
     if (n.done) return;
     n.done = true;
+    // Butler: may only vote if their master votes too (checked at tally time).
+    for (const id of n.order) {
+      const b = this.maybePlayer(id);
+      if (!b || !n.locked[id] || n.exile || b.characterId !== 'butler' || !b.alive || this.impairments(b).length) continue;
+      if (!b.butlerMaster || !n.locked[b.butlerMaster]) {
+        n.locked[id] = false;
+        this.addLog(`${b.name}'s vote did not count (Butler; master ${b.butlerMaster ? this.nameOf(b.butlerMaster) : 'none'} did not vote).`);
+      }
+    }
     const votes = this.tally(n);
     const nominee = this.player(n.nomineeId);
     let result: string;
@@ -747,6 +809,7 @@ export class Game {
     }
     n.result = result;
     this.addLog(result);
+    this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: n.order.filter(id => n.locked[id]), votes, needed: n.needed, result });
     this.announce(result, 'vote');
     this.stage = 'nominations';
     this.setTimer('Nominations', this.settings.timers.nominations, () => this.setStage('closed'));
@@ -794,6 +857,7 @@ export class Game {
     this.pendingDawnDeaths = this.pendingDawnDeaths.filter(id => id !== p.id);
     if (!p.alive) {
       p.alive = true; p.ghostVoteUsed = false;
+      p.abilityUses = {}; p.claimUses = {}; // resurrected players regain their ability, even a used one
       if (this.phase !== 'ended') p.revealed = false;
       this.announce(`${p.name} has returned to life!`, 'info');
     }
@@ -808,27 +872,31 @@ export class Game {
     if (used === undefined) return false;
     return a.frequency === 'daily' ? used === this.day : true;
   }
+  private aliveOk(p: Player, charId: string) { return DAY_ABILITIES[charId].requiresDead ? !p.alive : p.alive; }
   abilityAvailable(p: Player) {
     const id = p.shownCharacterId;
-    if (!id || !DAY_ABILITIES[id] || !p.alive || this.phase !== 'day') return false;
+    if (!id || !DAY_ABILITIES[id] || !this.aliveOk(p, id) || this.phase !== 'day') return false;
     return !this.usedFor(p.abilityUses, id);
   }
   useAbility(p: Player, mode: 'real' | 'claim', claimCharId?: string) {
     if (this.phase !== 'day') fail('Abilities like this can only be used during the day.');
-    if (!p.alive) fail('Dead players have no ability.');
     if (this.ability) fail('Another ability is being used.');
     if (['accusation', 'defense', 'voting'].includes(this.stage ?? '')) fail('Wait until the nomination is over.');
     let charId: string;
     if (mode === 'real') {
       charId = p.shownCharacterId ?? fail('No character.');
       if (!DAY_ABILITIES[charId]) fail('Your character has no day ability.');
+      if (!this.aliveOk(p, charId)) fail(DAY_ABILITIES[charId].requiresDead ? 'This ability is used once you have died.' : 'Dead players have no ability.');
       if (this.usedFor(p.abilityUses, charId)) fail('You cannot use this ability now.');
+      this.checkDeclarationLimit(DAY_ABILITIES[charId].public);
       p.abilityUses[charId] = this.day;
     } else {
       charId = claimCharId ?? fail('Choose a character to claim.');
       if (!CLAIMABLE_ABILITIES.includes(charId)) fail('That ability cannot be claimed publicly.');
       if (charId === p.shownCharacterId) fail('Use your real ability instead.');
+      if (!this.aliveOk(p, charId)) fail(DAY_ABILITIES[charId].requiresDead ? 'This ability is used once you have died.' : 'Dead players have no ability.');
       if (this.usedFor(p.claimUses, charId)) fail('You cannot use this ability now.');
+      this.checkDeclarationLimit(true);
       p.claimUses[charId] = this.day;
     }
     const def = DAY_ABILITIES[charId];
@@ -856,6 +924,12 @@ export class Game {
     this.addLog(`${p.name} ${mode === 'real' ? 'uses' : 'BLUFFS'} the ${CHARACTER_BY_ID[charId].name} ability.`);
     this.changed();
   }
+  private checkDeclarationLimit(isPublic: boolean) {
+    const lim = this.settings.houseRules.abilityDeclarationLimit;
+    if (!isPublic) return;
+    if (lim && this.abilityDeclarationsToday >= lim) fail(`The Storyteller allows only ${lim} public ability declarations per day.`);
+    this.abilityDeclarationsToday++;
+  }
   abilityTarget(p: Player, targetId: string) {
     const a = this.ability;
     if (!a || a.playerId !== p.id || a.stage !== 'acting' || !a.needsTarget) fail('Not now.');
@@ -882,9 +956,15 @@ export class Game {
   }
   analyseAbility(a: AbilityEvent): PendingAbility {
     const p = this.player(a.playerId);
-    const impaired = a.real ? this.impairments(p) : [];
-    const base = { eventId: a.id, playerId: p.id, characterId: a.characterId, real: a.real, impaired, isPrivate: false };
+    const impaired = a.real ? this.impairments(p).filter(x => !(x === 'Dead' && DAY_ABILITIES[a.characterId].requiresDead)) : [];
+    const base = { eventId: a.id, playerId: p.id, characterId: a.characterId, real: a.real, impaired, isPrivate: false, resolution: DAY_ABILITIES[a.characterId].resolution };
     if (!a.real) return { ...base, suggestion: 'nothing', suggestionText: 'BLUFF — this player does not have this ability. Normally: nothing happens.' };
+    const tgt = this.maybePlayer(a.targetId);
+    if ((a.characterId === 'klutz' || a.characterId === 'moonchild') && tgt) {
+      if (impaired.length) return { ...base, suggestion: 'nothing', suggestionText: `Impaired (${impaired.join(', ')}) — no effect.` };
+      if (a.characterId === 'klutz') return { ...base, suggestion: 'decide', suggestionText: tgt.alignment === 'evil' ? `${tgt.name} is EVIL — good loses (end the game with "Evil wins").` : `${tgt.name} is good — nothing happens.` };
+      return { ...base, suggestion: 'decide', suggestionText: tgt.alignment === 'good' ? `${tgt.name} is good — they die tonight (kill them during the night).` : `${tgt.name} is evil — nothing happens.` };
+    }
     if (a.characterId !== 'slayer') return { ...base, suggestion: 'nothing', suggestionText: impaired.length ? 'Real use, but impaired — the ability has no effect.' : 'Real use. Note the statement/guesses; resolve at night.' };
     const t = this.maybePlayer(a.targetId);
     if (!t) return { ...base, suggestion: 'nothing', suggestionText: 'No target.' };
@@ -898,11 +978,11 @@ export class Game {
     const a = this.ability;
     if (!a || a.stage !== 'pending') fail('Nothing to resolve.');
     const t = this.maybePlayer(a!.targetId);
-    if (outcome === 'kill' && t && t.alive) {
+    if (outcome === 'kill' && t && t.alive && DAY_ABILITIES[a!.characterId].resolution === 'kill') {
       a!.result = `${t.name} dies!`;
       this.applyDeath(t, `${t.name} has died.`);
     } else {
-      a!.result = a!.needsTarget ? 'Nothing happens.' : 'The Storyteller has noted it.';
+      a!.result = DAY_ABILITIES[a!.characterId].resolution === 'kill' ? 'Nothing happens.' : 'The Storyteller has noted it.';
       this.announce(a!.result, 'ability');
     }
     a!.stage = 'resolved';
@@ -928,7 +1008,7 @@ export class Game {
     const p = this.player(r!.playerId);
     this.pendingAbility = {
       eventId: r!.eventId, playerId: p.id, characterId: r!.characterId, real: p.characterId === r!.characterId,
-      impaired: this.impairments(p), suggestion: 'decide', isPrivate: true,
+      impaired: this.impairments(p), suggestion: 'decide', isPrivate: true, resolution: 'note',
       suggestionText: this.impairments(p).length ? 'Impaired — you may give false or no information.' : 'Real, sober use.',
     };
     this.startStudy(p.id);
@@ -963,8 +1043,12 @@ export class Game {
   }
 
   // ------------------------------------------------------------ grimoire edits
+  private guardTraveller(p: Player) {
+    if (p.traveller && p.characterId && this.settings.houseRules.travellersCantBeChanged) fail('House rule: Travellers can\'t be changed.');
+  }
   setCharacter(pid: string, charId: string | null) {
     const p = this.player(pid);
+    this.guardTraveller(p);
     if (charId !== null && !CHARACTER_BY_ID[charId]) fail('Unknown character.');
     p.characterId = charId;
     if (charId) {
@@ -976,6 +1060,7 @@ export class Game {
   }
   setShownCharacter(pid: string, charId: string | null) {
     const p = this.player(pid);
+    this.guardTraveller(p);
     if (charId !== null && !CHARACTER_BY_ID[charId]) fail('Unknown character.');
     p.shownCharacterId = charId;
     this.changed();
@@ -985,6 +1070,7 @@ export class Game {
     p.alignment = a === 'evil' ? 'evil' : 'good';
     if (p.characterId !== 'lunatic') p.shownAlignment = null;
     this.addLog(`${p.name}'s alignment is now ${p.alignment}.`);
+    if (p.traveller && this.settings.houseRules.succorForEvil) this.tellDemons(`Traveller ${p.name} is ${p.alignment}.`, [p.id], []);
     this.changed();
   }
   setReminders(pid: string, reminders: string[]) {
@@ -1001,6 +1087,34 @@ export class Game {
     const list = ids.filter(id => CHARACTER_BY_ID[id]).slice(0, 3);
     if (kind === 'demon') this.demonBluffs = list; else this.lunaticBluffs = list;
     this.changed();
+  }
+  /** Travellers choose their own character; the Storyteller then sets the alignment. */
+  pickTraveller(p: Player, charId: string) {
+    if (!p.traveller) fail('Only Travellers choose their character.');
+    if (p.characterId) fail('You already have a Traveller character.');
+    const ch = CHARACTER_BY_ID[charId];
+    if (!ch || ch.type !== 'traveller') fail('Choose a Traveller.');
+    if (this.players.some(o => o.characterId === charId)) fail('Another Traveller already has that character.');
+    p.characterId = charId; p.shownCharacterId = charId; p.alignment = 'good';
+    this.announce(`${p.name} is the ${ch.name} (Traveller).`, 'info');
+    this.emit(['st'], 'alert', { text: `${p.name} chose the ${ch.name}. Set their alignment in the Grimoire.`, kind: 'info' });
+    if (this.settings.houseRules.succorForEvil) this.tellDemons(`Traveller ${p.name} is good.`, [p.id], []);
+    this.changed();
+  }
+  /** Silently add an info card to every Demon's notes (the Storyteller wakes them as usual). */
+  tellDemons(text: string, playerIds: string[], characterIds: string[]) {
+    for (const d of this.players.filter(x => CHARACTER_BY_ID[x.characterId ?? '']?.type === 'demon')) {
+      d.notes.push({ id: nanoid(8), when: this.when(), text, playerIds, characterIds });
+    }
+  }
+  /** A hint for the Storyteller; the game never ends on its own (Scarlet Woman, Zombuul, Mastermind…). */
+  winHint(): string | null {
+    if (!['night', 'day'].includes(this.phase)) return null;
+    const demonsAlive = this.players.some(p => p.alive && CHARACTER_BY_ID[p.characterId ?? '']?.type === 'demon');
+    const living = this.players.filter(p => p.alive && !p.traveller).length;
+    if (!demonsAlive) return 'No Demon is alive: good wins, unless a new Demon is created (Scarlet Woman, Imp self-kill) or the Mastermind/Zombuul applies.';
+    if (living <= 2) return `Only ${living} non-Traveller players are alive: evil wins.`;
+    return null;
   }
   endGame(winner: Alignment) {
     this.winner = winner === 'evil' ? 'evil' : 'good';

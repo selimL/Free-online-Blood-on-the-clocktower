@@ -40,11 +40,39 @@ This covers deliverables 1–3: the ambiguities and the assumptions I made for e
 - **Setup counts** (Townsfolk/Outsiders/Minions/Demon): 5: 3/0/1/1, 6: 3/1/1/1, 7: 5/0/1/1, 8: 5/1/1/1, 9: 5/2/1/1, 10: 7/0/2/1. These are shown as a guide only.
 - **Nominations:** only living players may nominate, each once per day. Each player may be nominated once per day. Self-nomination is allowed. Dead players may be nominated.
 - **Votes:** voting starts with the player clockwise from the nominee, goes clockwise, and the nominee votes last. To be on the block, a nominee needs at least half the living players (rounded up) **and** more votes than the current highest. A tie clears the block. Each dead player has one ghost vote, spent when they vote Yes.
-- **Exile (Travellers):** anyone, alive or dead, may call for an exile. The threshold is half of **all** players. Ghost votes aren't spent. An exile isn't an execution.
+- **Exile (Travellers):** anyone, alive or dead, may call for an exile. The threshold is half of **all** players. Ghost votes aren't spent. An exile isn't an execution, abilities don't affect it, and any number may happen per day.
+- **Travellers:** the player picks the Traveller; the Storyteller picks its alignment, which only the Traveller and (if evil) the Demon learn.
+- **Resurrection:** a resurrected player regains their ability, even a used one.
+- **Winning:** good wins when the Demon dies; evil wins when only two non-Traveller players are alive. Some characters add conditions (Saint, Mayor, Klutz, Evil Twin, Vortox, Mastermind).
 - **Character tokens:** players may say anything, but may not show their character token.
 - **Deaths:** the Storyteller announces who died, not how, and doesn't reveal characters until the game ends.
 
 ---
+
+### C. Changes made to match the rules reference PDF
+
+The user supplied `BotC_Rules_and_Characters.pdf` (a paraphrased rules and character reference). Most of it already matched this implementation: setup counts, first night, nominations, voting, the block, Teensyville and almost all ability descriptions. Only the points that differed were changed:
+
+| Area | Before | Now (per the PDF) |
+|---|---|---|
+| Exile | Each Traveller could face exile once per day | Any number of exiles per day |
+| Virgin | Storyteller used "Execute now" by hand | Checked automatically when nominated: a sober Virgin's first nomination by a Townsfolk executes the nominator at once and closes nominations. The Spy case is flagged to the Storyteller. The ability is spent either way |
+| Butler | Honour system | Checked at tally time: a sober, living Butler's Yes only counts if their master (their latest night choice) also voted Yes |
+| Lunatic | Demon not told | The Demon's notes get "The Lunatic is X" at reveal, and each Lunatic night choice |
+| Resurrection | Used abilities stayed used | Reviving a player restores their day ability |
+| Klutz, Moonchild | Storyteller only | Public "choose a player" flow once dead, through Use Ability or Claim Ability (bluffable); the Storyteller resolves, nothing dies on the spot |
+| Travellers | Storyteller assigned the character; evil Travellers saw the whole evil team | The player picks the Traveller; the Storyteller sets alignment; only the Traveller and the Demon know an evil Traveller |
+| Winning | Storyteller only | The Storyteller sees a win hint (Demon dead / two players left). The game still never ends on its own, so the Scarlet Woman, Zombuul and Mastermind work |
+| Baron, Godfather | "+2 Outsiders", "−1 or +1 Outsider" | Setup notes say the Townsfolk count adjusts to keep the total |
+| Setup warnings | — | Bad Moon Rising and Sects & Violets warn below 7 players; a Teensyville note shows at 6 |
+| Custom scripts | Phase 2 | Import Script Tool JSON (`_meta`, objects, `fortune_teller` spellings). Unknown or Experimental ids are listed and skipped |
+| Fabled | No Deus ex Fiasco; Duchess "visit you"; Djinn "special rule" | Deus ex Fiasco added; Duchess visits a chosen player; the Djinn announces jinxes (Storyteller-written text shown to all) |
+| House rules | — | New toggles from the PDF, listed in §4 |
+
+**Not implemented from the PDF:**
+- Jinxes. No official jinx pairs apply within the three base editions; the Djinn text box covers custom scripts.
+- PDF house rules that only concern Experimental characters (Hatter, Ogre, Poppy Grower, Marionette, Amnesiac, Cult Leader, Huntsman, Legion).
+- "Pat-a-cake" and "Charmed Truly", which the Storyteller can already do by hand.
 
 ## 2. Architecture and tech stack
 
@@ -150,6 +178,17 @@ The game wiki and community sites were blocked during development, so I couldn't
 | Evil info in small games (5–6 players) | **Off** | Official Teensyville rules skip Minion and Demon info. |
 | Announce cause of death | **Off** | Official Storytellers don't say how someone died. Some casual groups do. |
 | Reveal character on death | **Off** | Casual/beginner variant. Not official. |
+| Whisper limit: side-room visits per day | **Off** | PDF: table/online convention ("Whisper limits") |
+| Whisper limit: players per side room | **Off** (default cap is half the players) | PDF: table/online convention ("Whisper limits") |
+| Speed round | **Off** | PDF: table/online convention. Adds a Storyteller stage: each living player gets a timed spotlight in seat order before nominations |
+| Open vote record | **Off** | PDF: table/online convention. A "Vote record" tab for every nomination this game |
+| Grimoire reveal at end | **Off** | PDF: table/online convention. Also reveals alignments, believed characters and reminders |
+| Beginner mode | **Off** | PDF: adds the Toymaker, Angel and Buddhist Fabled |
+| No oaths / No screenshots | **Off** | PDF: table/online conventions. Shown to players under "Table rules" |
+| Travellers can't be changed | **Off** | PDF: community house rule (TPI-endorsed). Blocks Grimoire changes to a Traveller's character |
+| Ability declaration limit | **Off** | PDF: community house rule (TPI-endorsed). Caps public ability uses (real or claimed) per day |
+| Succor for Evil | **Off** | PDF: community house rule. The Demon is told every Traveller's alignment |
+| Holy Spirit ruling | **Off** | PDF: community house rule. Shown to players as a table rule; the Storyteller applies it |
 | Bootlegger (custom rules text) | Off (via the Fabled list) | Official Fabled: "This script has homebrew characters or rules." The Storyteller writes the rules, and every player sees them. |
 | Buddhist / Hell's Librarian / other Fabled | Off | Official Fabled, available in the Fabled picker. These are table-etiquette modifiers that the Storyteller runs. |
 

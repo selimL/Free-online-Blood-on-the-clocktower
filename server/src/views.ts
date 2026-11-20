@@ -23,10 +23,12 @@ export function evilTeamFor(g: Game, p: Player): EvilTeamView | null {
     };
   }
   if (p.alignment !== 'evil') return null;
+  // Travellers: an evil Traveller's alignment is told only to the Traveller and the Demon.
+  if (p.traveller) return { members: [{ id: p.id, role: 'evil' }], bluffs: [] };
   const myRole = type(p.characterId) === 'demon' ? 'demon' : type(p.characterId) === 'minion' ? 'minion' : 'evil';
   if (!evilInfoGiven(g)) return { members: [{ id: p.id, role: myRole }], bluffs: [] };
   const members = g.players
-    .filter(o => o.alignment === 'evil' && o.characterId !== 'lunatic')
+    .filter(o => o.alignment === 'evil' && o.characterId !== 'lunatic' && (!o.traveller || myRole === 'demon'))
     .map(o => ({ id: o.id, role: (type(o.characterId) === 'demon' ? 'demon' : type(o.characterId) === 'minion' ? 'minion' : 'evil') as 'demon' | 'minion' | 'evil' }));
   return { members, bluffs: myRole === 'demon' ? [...g.demonBluffs] : [] };
 }
@@ -42,6 +44,8 @@ function publicPlayers(g: Game, viewer: Player | null, evil: EvilTeamView | null
     muted: p.muted, connected: p.connected, traveller: p.traveller,
     travellerCharacter: p.traveller ? p.characterId : null,
     revealedCharacter: p.revealed ? p.characterId : null,
+    revealedGrimoire: g.phase === 'ended' && g.settings.houseRules.grimoireRevealAtEnd
+      ? { alignment: p.alignment, shownCharacterId: p.shownCharacterId, reminders: [...p.reminders] } : null,
     evilMark: !!viewer && evilIds.has(p.id),
   }));
 }
@@ -77,7 +81,21 @@ function characterList(g: Game) {
     hiddenExists: hidden.length > 0,
     fabled: [...g.settings.fabled],
     bootleggerRules: g.settings.fabled.includes('bootlegger') ? g.settings.bootleggerRules : '',
+    djinnRules: g.settings.fabled.includes('djinn') ? g.settings.djinnRules : '',
   };
+}
+
+function tableRules(g: Game): string[] {
+  const h = g.settings.houseRules;
+  const out = ['You may say anything, at any time, in public or in private.', 'No peeking: never show your character, and never look at the Grimoire.'];
+  if (h.noOaths) out.push('No oaths: do not swear real-world oaths to prove a claim.');
+  if (h.noScreenshots) out.push('No screenshots: never show screenshots or share your screen of your character card or night info.');
+  if (h.holySpirit) out.push('Holy Spirit: a good player who kills a good Saint with an ability causes an execution, so good loses.');
+  if (h.maxWhispersPerDay) out.push(`Each player may visit side rooms at most ${h.maxWhispersPerDay} times per day.`);
+  if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
+  if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
+  if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
+  return out;
 }
 
 function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Omit<GameView, 'self'> {
@@ -107,6 +125,9 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Om
     winner: g.winner,
     voice: { enabled: false, region: g.region },
     speakerId: g.speakerId,
+    tableRules: tableRules(g),
+    voteHistory: g.settings.houseRules.openVoteRecord
+      ? g.voteHistory.map(v => ({ ...v, yes: g.settings.houseRules.anonymousVotes ? [] : v.yes })) : null,
   };
 }
 
@@ -163,7 +184,7 @@ export function storytellerView(g: Game): GameView {
     demonBluffs: g.demonBluffs, lunaticBluffs: g.lunaticBluffs, pendingDawnDeaths: g.pendingDawnDeaths,
     pendingAbility: g.pendingAbility, privateRequests: g.privateRequests, notes: g.stNotes, log: g.log.slice(-200),
     regionsRtt: Object.fromEntries(g.players.map(p => [p.id, p.rtt])),
-    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId,
+    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(),
   };
   return { ...baseView(g, null, null), self } as GameView;
 }

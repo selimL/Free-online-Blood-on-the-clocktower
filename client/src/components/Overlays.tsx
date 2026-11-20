@@ -109,6 +109,7 @@ export function CharactersInPlay({ view, onClose }: { view: GameView; onClose: (
       {list.hiddenExists && <p className="hidden-note">+ {list.hiddenCount ?? 'some'} hidden character{list.hiddenCount === 1 ? '' : 's'}</p>}
       {list.fabled.length > 0 && <><h3>Fabled</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
       {list.bootleggerRules && <><h3>House rules (Bootlegger)</h3><p className="bootlegger">{list.bootleggerRules}</p></>}
+      {list.djinnRules && <><h3>Jinxes (Djinn)</h3><p className="bootlegger">{list.djinnRules}</p></>}
     </Modal>
   );
 }

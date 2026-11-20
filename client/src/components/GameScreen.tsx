@@ -13,12 +13,12 @@ import { StorytellerPanel, StorytellerControls } from './Storyteller';
 type ConfirmState = { title: string; text: React.ReactNode; confirm: string; onYes: () => void } | null;
 
 const PHASE_LABEL: Record<string, string> = { lobby: 'Gathering', dealt: 'Setting up', questions: 'Questions', night: 'Night', day: 'Day', ended: 'Game over' };
-const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', private: 'Private conversations', nominations: 'Nominations open', accusation: 'Accusation', defense: 'Defence', voting: 'Voting', closed: 'Nominations closed' };
+const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', private: 'Private conversations', nominations: 'Nominations open', accusation: 'Accusation', defense: 'Defence', voting: 'Voting', closed: 'Nominations closed', speedround: 'Speed round' };
 
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
@@ -77,7 +77,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} />
+      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section className="stage">
@@ -103,7 +103,7 @@ export function GameScreen({ view }: { view: GameView }) {
       <footer className="bottom-bar">
         <div className="bl">
           {!isST && view.phase !== 'lobby' && <>
-            <button className="btn" onClick={() => setModal('claim')} disabled={!me?.alive || view.phase !== 'day'}>🎭 Claim Ability</button>
+            <button className="btn" onClick={() => setModal('claim')} disabled={view.phase !== 'day'}>🎭 Claim Ability</button>
             <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>
             {view.houseRules.allowCharacterReveal && <button className="btn ghost" onClick={() => setModal('reveal')}>🂠 Show character</button>}
           </>}
@@ -124,6 +124,8 @@ export function GameScreen({ view }: { view: GameView }) {
       {modal === 'label' && <ClaimLabelDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'invite' && <InviteDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'reveal' && <RevealDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'rules' && <Modal title="Table rules" onClose={() => setModal(null)}><ul>{view.tableRules.map(r => <li key={r}>{r}</li>)}</ul></Modal>}
+      {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
       <QuestionPrompt view={view} />
       <InfoPopup view={view} />
@@ -133,7 +135,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openList, openInvite }: { view: GameView; openList: () => void; openInvite: () => void }) {
+function TopBar({ view, openList, openInvite, openRules }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -161,6 +163,7 @@ function TopBar({ view, openList, openInvite }: { view: GameView; openList: () =
             {voice.connectedRoom ? (voice.canPublish ? 'voice live' : 'connecting…') : 'no voice'}
           </span>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
+        <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
         <button className="btn small ghost" onClick={leave}>Leave</button>
       </div>
@@ -241,10 +244,11 @@ function ClaimAbilityDialog({ view, onClose, setConfirm }: { view: GameView; onC
       {options.map(id => {
         const def = DAY_ABILITIES[id];
         const used = self.claimsUsed[id] !== undefined && (def.frequency !== 'daily' || self.claimsUsed[id] === view.day);
-        const tooLate = def.frequency === 'firstDay' && view.day !== 1;
+        const meP = view.players.find(p => p.id === self.id);
+        const tooLate = (def.frequency === 'firstDay' && view.day !== 1) || (def.requiresDead ? meP?.alive : !meP?.alive);
         return (
           <div key={id} className="claim-option">
-            <CharacterToken ch={CHARACTER_BY_ID[id]} />
+            <div><CharacterToken ch={CHARACTER_BY_ID[id]} />{def.requiresDead && <p className="small muted">Only after you have died.</p>}</div>
             <button className="btn" disabled={used || tooLate || !!view.ability} onClick={() => {
               onClose();
               setConfirm({ title: `Use ${CHARACTER_BY_ID[id].name} ability?`, text: def.frequency === 'once' ? <p><b>Are you sure? This can only be used once.</b></p> : <p>Use this ability now?</p>, confirm: 'Use ability', onYes: () => act('ability', { mode: 'claim', characterId: id }) });
@@ -297,16 +301,45 @@ function InviteDialog({ view, onClose }: { view: GameView; onClose: () => void }
 }
 
 function SidePanel({ view }: { view: GameView }) {
-  const [tab, setTab] = useState<'chat' | 'log' | 'notes'>('chat');
+  const [tab, setTab] = useState<'chat' | 'log' | 'notes' | 'votes'>('chat');
+  const tabs = (['chat', 'log', 'notes', ...(view.voteHistory ? ['votes'] : [])] as ('chat' | 'log' | 'notes' | 'votes')[]);
+  const label = { chat: 'Room chat', log: 'Town crier', notes: 'My notes', votes: 'Vote record' };
   return (
     <div className="side-panel">
       <div className="tabs" role="tablist">
-        {(['chat', 'log', 'notes'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'chat' ? 'Room chat' : t === 'log' ? 'Town crier' : 'My notes'}</button>)}
+        {tabs.map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label[t]}</button>)}
       </div>
+      {tab === 'votes' && <VoteRecord view={view} />}
       {tab === 'chat' && <Chat view={view} />}
       {tab === 'log' && <Announcements view={view} />}
       {tab === 'notes' && <PersonalNotes view={view} />}
     </div>
+  );
+}
+
+export function VoteRecord({ view }: { view: GameView }) {
+  const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
+  if (!view.voteHistory?.length) return <p className="muted small">No votes yet.</p>;
+  return (
+    <ul className="announcements">{[...view.voteHistory].reverse().map((v, i) => (
+      <li key={i} className="vote">Day {v.day}: {name(v.nominatorId)} → {name(v.nomineeId)}{v.exile ? ' (exile)' : ''} — {v.votes}/{v.needed}{v.yes.length ? ` · yes: ${v.yes.map(name).join(', ')}` : ''}</li>
+    ))}</ul>
+  );
+}
+
+function TravellerPicker({ view }: { view: GameView }) {
+  const taken = new Set(view.players.map(p => p.travellerCharacter).filter(Boolean));
+  const options = CHARACTERS.filter(c => c.type === 'traveller' && !taken.has(c.id));
+  return (
+    <Modal title="Choose your Traveller">
+      <p className="muted">You have arrived mid-game. Choose a Traveller: your character is public, and the Storyteller decides your alignment.</p>
+      {options.map(c => (
+        <div key={c.id} className="claim-option">
+          <CharacterToken ch={c} />
+          <button className="btn" onClick={() => act('pickTraveller', { characterId: c.id })}>Choose</button>
+        </div>
+      ))}
+    </Modal>
   );
 }
 

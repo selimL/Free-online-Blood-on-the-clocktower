@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { GameView, StorytellerSelf, Settings, HouseRules, Timers } from '../../../shared/types';
-import { HOUSE_RULE_INFO, MIN_PLAYERS } from '../../../shared/types';
+import { HOUSE_RULE_INFO, MIN_PLAYERS, NUMERIC_HOUSE_RULES } from '../../../shared/types';
 import {
-  CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, type CharacterType,
+  CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, parseScript, type CharacterType,
 } from '../../../shared/characters';
 import { act } from '../net';
 import { Modal, TYPE_LABEL } from './Overlays';
@@ -48,6 +48,7 @@ export function StorytellerControls({ view }: { view: GameView }) {
         {!busy && <>
           <button className={`btn small ${s === 'discussion' ? 'primary' : ''}`} onClick={() => act('st:stage', { stage: 'discussion' })}>Gather</button>
           <button className={`btn small ${s === 'private' ? 'primary' : ''}`} onClick={() => act('st:stage', { stage: 'private' })}>Open side rooms</button>
+          {view.houseRules.speedRound && <button className={`btn small ${s === 'speedround' ? 'primary' : ''}`} onClick={() => act('st:stage', { stage: 'speedround' })}>Speed round</button>}
           <button className={`btn small ${s === 'nominations' ? 'primary' : ''}`} onClick={() => act('st:stage', { stage: 'nominations' })}>Open nominations</button>
           <button className={`btn small ${s === 'closed' ? 'primary' : ''}`} onClick={() => act('st:stage', { stage: 'closed' })}>Close nominations</button>
         </>}
@@ -67,6 +68,7 @@ export function StorytellerPanel({ view }: { view: GameView }) {
   useEffect(() => { if (view.phase === 'night') setTab('night'); else if (tab === 'night') setTab('grim'); }, [view.phase]);
   return (
     <div className="side-panel st">
+      {self.winHint && <div className="request win-hint">⚖ {self.winHint} <span className="muted small">End the game from the Grimoire if so.</span></div>}
       <PendingAbility view={view} />
       <PrivateRequests view={view} />
       <div className="tabs" role="tablist">
@@ -95,8 +97,8 @@ function PendingAbility({ view }: { view: GameView }) {
       {p.isPrivate
         ? <button className="btn" onClick={() => act('st:closeStudy')}>Finish & return them to the Square</button>
         : <div className="row">
-          {view.ability?.needsTarget && <button className={`btn ${p.suggestion === 'kill' ? 'primary' : ''}`} onClick={() => act('st:resolveAbility', { outcome: 'kill' })}>Target dies</button>}
-          <button className={`btn ${p.suggestion !== 'kill' ? 'primary' : ''}`} onClick={() => act('st:resolveAbility', { outcome: 'nothing' })}>{view.ability?.needsTarget ? 'Nothing happens' : 'Acknowledge'}</button>
+          {p.resolution === 'kill' && <button className={`btn ${p.suggestion === 'kill' ? 'primary' : ''}`} onClick={() => act('st:resolveAbility', { outcome: 'kill' })}>Target dies</button>}
+          <button className={`btn ${p.suggestion !== 'kill' ? 'primary' : ''}`} onClick={() => act('st:resolveAbility', { outcome: 'nothing' })}>{p.resolution === 'kill' ? 'Nothing happens' : 'Acknowledge'}</button>
         </div>}
     </div>
   );
@@ -312,7 +314,9 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
   const [allEditions, setAllEditions] = useState(settings.edition === 'custom');
   const save = (patch: Partial<Settings>) => act('st:settings', { settings: patch });
   const bag = settings.characters;
-  const pool = useMemo(() => CHARACTERS.filter(c => TYPES.includes(c.type) && (allEditions || settings.edition === 'custom' || c.edition === settings.edition)), [allEditions, settings.edition]);
+  const pool = useMemo(() => CHARACTERS.filter(c => TYPES.includes(c.type) && (
+    settings.script.length && !allEditions ? settings.script.includes(c.id)
+      : allEditions || settings.edition === 'custom' || c.edition === settings.edition)), [allEditions, settings.edition, settings.script]);
   const toggle = (id: string) => save({ characters: bag.includes(id) ? bag.filter(x => x !== id) : [...bag, id] });
   const counts = TYPES.map(t => bag.filter(id => CHARACTER_BY_ID[id]?.type === t).length);
   const modifiers = bag.map(id => CHARACTER_BY_ID[id]).filter(c => c?.setup);
@@ -331,6 +335,9 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
           {!locked && <button className="btn small" onClick={randomFill}>🎲 Random recommended bag</button>}
         </div>
         <p className="muted small">Players: <b>{residents}</b> (+ {view.players.length - residents} Travellers). Official recommendation: {rec.map((n, i) => `${n} ${TYPE_LABEL[TYPES[i]]}`).join(', ')} — a guide only. Selected: <b>{bag.length}</b>/{residents}.</p>
+        {residents < 7 && bag.some(id => CHARACTER_BY_ID[id]?.edition !== 'tb') && <p className="warn small">Bad Moon Rising and Sects &amp; Violets are recommended for 7 or more players (Trouble Brewing works from 5).</p>}
+        {residents <= 6 && <p className="muted small">Teensyville rules apply at {residents} players: no Minion or Demon info on the first night (unless the house rule says otherwise).</p>}
+        {!locked && <ScriptImport settings={settings} />}
         {modifiers.length > 0 && <p className="warn small">Setup modifiers: {modifiers.map(c => `${c!.name} (${c!.setup})`).join('; ')}</p>}
         {TYPES.map((t, ti) => {
           const chars = pool.filter(c => c.type === t);
@@ -376,6 +383,8 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         ))}</div>
         {settings.fabled.includes('bootlegger') && <label className="field">Bootlegger rules (shown to all players)
           <BootleggerText value={settings.bootleggerRules} onSave={v => save({ bootleggerRules: v })} /></label>}
+        {settings.fabled.includes('djinn') && <label className="field">Djinn: jinx rules in effect (shown to all players)
+          <BootleggerText value={settings.djinnRules} onSave={v => save({ djinnRules: v })} /></label>}
       </section>
       {self.availableRegions.length > 1 && <section>
         <h3>Voice region</h3>
@@ -389,6 +398,33 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
   );
 }
 
+function ScriptImport({ settings }: { settings: Settings }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = () => {
+    try {
+      const { ids, unknown, name } = parseScript(text);
+      if (!ids.length) { setMsg('No known characters found in that script.'); return; }
+      void act('st:settings', { settings: { script: ids, scriptName: name, characters: settings.characters.filter(id => ids.includes(id)) } });
+      setMsg(`Loaded ${ids.length} characters${unknown.length ? `; ${unknown.length} not supported (e.g. Experimental): ${unknown.slice(0, 6).join(', ')}` : ''}.`);
+      setOpen(false);
+    } catch (e) { setMsg(`Could not read the script: ${(e as Error).message}`); }
+  };
+  return (
+    <div className="script-import">
+      {settings.script.length > 0
+        ? <p className="small">Custom script{settings.scriptName ? ` “${settings.scriptName}”` : ''}: {settings.script.length} characters. <button className="btn small ghost" onClick={() => act('st:settings', { settings: { script: [], scriptName: null } })}>Clear script</button></p>
+        : <button className="btn small" onClick={() => setOpen(!open)}>Import custom script (JSON)</button>}
+      {open && <>
+        <textarea value={text} onChange={e => setText(e.target.value)} placeholder='Paste a Script Tool JSON, e.g. [{"id":"_meta","name":"My script"},"washerwoman","imp"]' aria-label="Script JSON" />
+        <button className="btn small primary" onClick={load}>Load script</button>
+      </>}
+      {msg && <p className="muted small">{msg}</p>}
+    </div>
+  );
+}
+
 function BootleggerText({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [v, setV] = useState(value);
   return <textarea value={v} onChange={e => setV(e.target.value)} onBlur={() => v !== value && onSave(v)} maxLength={2000} />;
@@ -396,7 +432,7 @@ function BootleggerText({ value, onSave }: { value: string; onSave: (v: string) 
 
 const TIMER_LABELS: Record<keyof Timers, string> = {
   discussion: 'Opening discussion', privateRooms: 'Private-room time', nominations: 'Nomination window',
-  accusation: 'Accuser speaks', defense: 'Accused speaks', question: 'Private question (each)', voteSeconds: 'Seconds per voter',
+  accusation: 'Accuser speaks', defense: 'Accused speaks', question: 'Private question (each)', voteSeconds: 'Seconds per voter', speedRound: 'Speed round (each player)',
 };
 function TimersEditor({ timers, onChange }: { timers: Timers; onChange: (t: Partial<Timers>) => void }) {
   return (
@@ -410,7 +446,7 @@ function TimersEditor({ timers, onChange }: { timers: Timers; onChange: (t: Part
             <input type="number" min={k === 'voteSeconds' ? 1 : 5} max={3600} disabled={manual} value={manual ? '' : v as number}
               onChange={e => onChange({ [k]: Number(e.target.value) } as Partial<Timers>)} aria-label={`${TIMER_LABELS[k]} seconds`} />
             <span className="muted small">sec</span>
-            {k !== 'voteSeconds' && <label className="chip"><input type="checkbox" checked={manual} onChange={e => onChange({ [k]: e.target.checked ? null : 60 } as Partial<Timers>)} /> no limit (I end it)</label>}
+            {k !== 'voteSeconds' && k !== 'speedRound' && <label className="chip"><input type="checkbox" checked={manual} onChange={e => onChange({ [k]: e.target.checked ? null : 60 } as Partial<Timers>)} /> no limit (I end it)</label>}
           </div>
         );
       })}
@@ -423,12 +459,13 @@ function HouseRulesEditor({ rules, onChange }: { rules: HouseRules; onChange: (r
     <div className="house-rules">
       {(Object.keys(HOUSE_RULE_INFO) as (keyof HouseRules)[]).map(k => {
         const info = HOUSE_RULE_INFO[k];
-        if (k === 'privateRoomCapMinutes') {
-          const v = rules[k];
+        const num = NUMERIC_HOUSE_RULES[k];
+        if (num) {
+          const v = rules[k] as number | null;
           return (
             <div key={k} className="rule">
-              <label className="toggle"><input type="checkbox" checked={v !== null} onChange={e => onChange({ [k]: e.target.checked ? 5 : null })} /> {info.label}</label>
-              {v !== null && <input type="number" min={1} max={60} value={v} onChange={e => onChange({ [k]: Number(e.target.value) })} aria-label="Minutes" />}
+              <label className="toggle"><input type="checkbox" checked={v !== null} onChange={e => onChange({ [k]: e.target.checked ? num.default : null })} /> {info.label}</label>
+              {v !== null && <><input type="number" min={num.min} max={num.max} value={v} onChange={e => onChange({ [k]: Number(e.target.value) })} aria-label={info.label} /> <span className="muted small">{num.unit}</span></>}
               <p className="muted small">{info.help} <i>Source: {info.source}</i></p>
             </div>
           );

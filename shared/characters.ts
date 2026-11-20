@@ -53,7 +53,7 @@ export const CHARACTERS: Character[] = [
   c('tb', 'minion', 'poisoner', 'Poisoner', 'Every night, pick a player to poison for that night and the next day.', { reminders: ['Poisoned'] }),
   c('tb', 'minion', 'spy', 'Spy', 'Every night you may look at the Grimoire. You may show up as good, and as a Townsfolk or Outsider, even after death.'),
   c('tb', 'minion', 'scarletwoman', 'Scarlet Woman', 'If the Demon dies while at least 5 players are alive, you become the Demon. (Travellers are not counted.)', { reminders: ['Demon'] }),
-  c('tb', 'minion', 'baron', 'Baron', 'Adds two extra Outsiders to the game. [+2 Outsiders]', { setup: '+2 Outsiders' }),
+  c('tb', 'minion', 'baron', 'Baron', 'Adds two extra Outsiders to the game, replacing two Townsfolk. [+2 Outsiders]', { setup: '+2 Outsiders, −2 Townsfolk' }),
   c('tb', 'demon', 'imp', 'Imp', 'Every night except the first, pick a player to kill. If you pick yourself, a Minion becomes the Imp.', { reminders: ['Dead'] }),
   c('tb', 'traveller', 'scapegoat', 'Scapegoat', 'If a player on your team is executed, you may be executed in their place.'),
   c('tb', 'traveller', 'gunslinger', 'Gunslinger', 'Each day, once the first vote is counted, you may pick a player who voted: they die.'),
@@ -79,7 +79,7 @@ export const CHARACTERS: Character[] = [
   c('bmr', 'outsider', 'moonchild', 'Moonchild', 'When you find out you have died, publicly pick a living player. If they are good, they die that night.'),
   c('bmr', 'outsider', 'goon', 'Goon', 'Each night, the first player whose ability targets you becomes drunk until dusk, and you switch to their alignment.', { reminders: ['Drunk'] }),
   c('bmr', 'outsider', 'lunatic', 'Lunatic', 'You believe you are the Demon, but you are not. The real Demon knows who you are and whom you pick at night.', { reminders: ['Attack 1', 'Attack 2', 'Attack 3'] }),
-  c('bmr', 'minion', 'godfather', 'Godfather', 'On the first night, learn which Outsiders are in play. If an Outsider died today, pick a player tonight to kill. [−1 or +1 Outsider]', { setup: '−1 or +1 Outsider' }),
+  c('bmr', 'minion', 'godfather', 'Godfather', 'On the first night, learn which Outsiders are in play. If an Outsider died today, pick a player tonight to kill. [−1 or +1 Outsider]', { setup: '−1 or +1 Outsider (Townsfolk adjust to keep the total)' }),
   c('bmr', 'minion', 'devilsadvocate', 'Devil\'s Advocate', 'Every night, pick a living player (not last night\'s choice): if executed tomorrow, they survive.', { reminders: ['Survives execution'] }),
   c('bmr', 'minion', 'assassin', 'Assassin', 'Once per game, on a night after the first, pick a player: they die, no matter what would normally protect them.', { reminders: ['No ability'] }),
   c('bmr', 'minion', 'mastermind', 'Mastermind', 'If the Demon is executed and that would end the game, play one more day. Whoever\'s team loses an execution that day loses the game.'),
@@ -134,12 +134,13 @@ export const CHARACTERS: Character[] = [
   c('fabled', 'fabled', 'fiddler', 'Fiddler', 'Once per game, the Demon secretly picks a player from the other team, and everyone votes on which of the two wins.'),
   c('fabled', 'fabled', 'toymaker', 'Toymaker', 'The Demon may skip attacking, and must do so at least once. Evil players still get their usual starting information.'),
   c('fabled', 'fabled', 'fibbin', 'Fibbin', 'Once per game, one good player might receive false information.'),
-  c('fabled', 'fabled', 'duchess', 'Duchess', 'Each day up to three players may visit you. That night each visitor learns how many visitors are evil, but one of them is lied to.'),
+  c('fabled', 'fabled', 'duchess', 'Duchess', 'Each day, up to three players may visit a chosen player. That night each visitor learns how many visitors are evil, but one of them gets false info.'),
   c('fabled', 'fabled', 'sentinel', 'Sentinel', 'There might be one more, or one fewer, Outsider in play than normal.'),
   c('fabled', 'fabled', 'spiritofivory', 'Spirit of Ivory', 'There can be at most one extra evil player.'),
-  c('fabled', 'fabled', 'djinn', 'Djinn', 'A special rule for this script applies, and every player knows it.'),
+  c('fabled', 'fabled', 'djinn', 'Djinn', 'Announces that jinx rules are in effect and tells every player which ones.'),
   c('fabled', 'fabled', 'stormcatcher', 'Storm Catcher', 'Name a good character. If it is in play, it can only die by execution, but evil players learn who has it.'),
   c('fabled', 'fabled', 'bootlegger', 'Bootlegger', 'This script uses homebrew characters or rules.'),
+  c('fabled', 'fabled', 'deusexfiasco', 'Deus ex Fiasco', 'At least once per game, the Storyteller makes a deliberate mistake, then corrects it and admits it publicly.'),
   c('fabled', 'fabled', 'ferryman', 'Ferryman', 'On the last day, every dead player gets their vote token back.'),
   c('fabled', 'fabled', 'gardener', 'Gardener', 'The Storyteller chooses some players\' characters.'),
 ];
@@ -186,17 +187,39 @@ export interface DayAbility {
   target: boolean;          // needs a single player target
   frequency: 'once' | 'daily' | 'firstDay';
   prompt: string;
+  /** 'kill' = the Storyteller may kill the target on the spot (Slayer); 'note' = the consequence comes later (night death, game end). */
+  resolution: 'kill' | 'note';
+  /** Usable only after the player has died (Klutz, Moonchild: "when you learn that you died"). */
+  requiresDead?: boolean;
 }
 export const DAY_ABILITIES: Record<string, DayAbility> = {
-  slayer: { public: true, target: true, frequency: 'once', prompt: 'Publicly choose a player.' },
-  gossip: { public: true, target: false, frequency: 'daily', prompt: 'Make your public statement aloud, then press Done.' },
-  juggler: { public: true, target: false, frequency: 'firstDay', prompt: 'Publicly guess up to 5 players\' characters aloud, then press Done.' },
-  artist: { public: false, target: false, frequency: 'once', prompt: 'You will be taken to the Storyteller to ask one yes/no question.' },
-  savant: { public: false, target: false, frequency: 'daily', prompt: 'You will be taken to the Storyteller to learn 2 things.' },
+  slayer: { public: true, target: true, frequency: 'once', resolution: 'kill', prompt: 'Publicly choose a player.' },
+  gossip: { public: true, target: false, frequency: 'daily', resolution: 'note', prompt: 'Make your public statement aloud, then press Done.' },
+  juggler: { public: true, target: false, frequency: 'firstDay', resolution: 'note', prompt: 'Publicly guess up to 5 players\' characters aloud, then press Done.' },
+  klutz: { public: true, target: true, frequency: 'once', resolution: 'note', requiresDead: true, prompt: 'You have died. Publicly choose one living player.' },
+  moonchild: { public: true, target: true, frequency: 'once', resolution: 'note', requiresDead: true, prompt: 'You have died. Publicly choose one living player.' },
+  artist: { public: false, target: false, frequency: 'once', resolution: 'note', prompt: 'You will be taken to the Storyteller to ask one yes/no question.' },
+  savant: { public: false, target: false, frequency: 'daily', resolution: 'note', prompt: 'You will be taken to the Storyteller to learn 2 things.' },
 };
 export const CLAIMABLE_ABILITIES = Object.entries(DAY_ABILITIES).filter(([, a]) => a.public).map(([id]) => id);
 
 export const ROOM_NAMES = ['The Tavern', 'The Chapel', 'The Graveyard', 'The Library', 'The Apothecary', 'The Blacksmith', 'The Clocktower Stair', 'The Old Mill'];
 export const ROOM_ICONS = ['🍺', '⛪', '🪦', '📚', '⚗️', '⚒️', '🕰️', '🌾'];
+
+/** Parse an official Script Tool JSON (array of ids or {id} objects, plus an optional _meta entry). */
+export function parseScript(json: string): { ids: string[]; unknown: string[]; name: string | null } {
+  const data = JSON.parse(json);
+  if (!Array.isArray(data)) throw new Error('A script must be a JSON array.');
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const byNorm = Object.fromEntries(CHARACTERS.map(ch => [norm(ch.id), ch.id]));
+  const ids: string[] = []; const unknown: string[] = []; let name: string | null = null;
+  for (const item of data) {
+    const raw = typeof item === 'string' ? item : item && typeof item === 'object' ? String(item.id ?? '') : '';
+    if (raw === '_meta') { name = typeof item === 'object' ? String(item.name ?? '') || null : null; continue; }
+    const id = byNorm[norm(raw)];
+    if (id) { if (!ids.includes(id)) ids.push(id); } else if (raw) unknown.push(raw);
+  }
+  return { ids, unknown, name };
+}
 
 export const GENERIC_REMINDERS = ['Poisoned', 'Drunk', 'Protected', 'Mad', 'Dead tonight', 'Used ability', 'Red herring', 'Good', 'Evil'];

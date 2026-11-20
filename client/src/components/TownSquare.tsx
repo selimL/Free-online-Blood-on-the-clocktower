@@ -82,7 +82,10 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView }: C
         </div>
         {p.claim && <div className="claim">“{CHARACTER_BY_ID[p.claim]?.name ?? p.claim}”</div>}
         {p.traveller && p.travellerCharacter && <div className="claim traveller">Traveller: {CHARACTER_BY_ID[p.travellerCharacter]?.name}</div>}
-        {p.revealedCharacter && <div className="claim revealed">{CHARACTER_BY_ID[p.revealedCharacter]?.name}</div>}
+        {p.revealedCharacter && <div className="claim revealed">{CHARACTER_BY_ID[p.revealedCharacter]?.name}{p.revealedGrimoire ? ` · ${p.revealedGrimoire.alignment}` : ''}</div>}
+        {p.revealedGrimoire && (p.revealedGrimoire.shownCharacterId !== p.revealedCharacter || p.revealedGrimoire.reminders.length > 0) && (
+          <div className="claim">{p.revealedGrimoire.shownCharacterId !== p.revealedCharacter ? `thought: ${CHARACTER_BY_ID[p.revealedGrimoire.shownCharacterId ?? '']?.name ?? '—'}` : ''}{p.revealedGrimoire.reminders.length ? ` ${p.revealedGrimoire.reminders.join(', ')}` : ''}</div>
+        )}
         {g && <div className={`grim-tag ${g.alignment}`}>{CHARACTER_BY_ID[g.characterId ?? '']?.name ?? '—'}{g.shownCharacterId !== g.characterId && g.shownCharacterId ? ` (thinks ${CHARACTER_BY_ID[g.shownCharacterId]?.name})` : ''}{g.reminders.length ? ` · ${g.reminders.join(', ')}` : ''}</div>}
       </div>
     );

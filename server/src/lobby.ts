@@ -155,6 +155,7 @@ export class Lobby {
       case 'move': {
         const err = g.canEnter(p, String(d.room));
         if (err) fail(err);
+        if (g.phase === 'day' && g.isPrivateRoom(String(d.room))) p.whispersToday++;
         g.movePlayer(p, String(d.room));
         return g.changed();
       }
@@ -167,6 +168,7 @@ export class Lobby {
       case 'abilityDone': return g.abilityDone(p);
       case 'nightChoice': return g.nightChoose(p, Array.isArray(d.ids) ? d.ids.map(String) : []);
       case 'reveal': return g.revealTo(p, String(d.toId));
+      case 'pickTraveller': return g.pickTraveller(p, String(d.characterId ?? ''));
       case 'rtt': {
         const rtt: Record<string, number> = {};
         for (const [k, v] of Object.entries(d.rtt ?? {})) if (typeof v === 'number') rtt[k.slice(0, 40)] = Math.max(0, Math.min(10000, v));

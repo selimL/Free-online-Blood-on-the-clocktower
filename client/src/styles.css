@@ -360,3 +360,5 @@ textarea.notes { width: 100%; min-height: 180px; }
   .lobby-hero { flex-direction: column; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.win-hint { border-color: #9fe39f; background: #13261a; }
+.script-import textarea { width: 100%; min-height: 90px; }

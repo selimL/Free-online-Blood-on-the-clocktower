@@ -5,6 +5,7 @@ A browser-based, real-time, voice-first table for *Blood on the Clocktower*. It 
 > Blood on the Clocktower is © The Pandemonium Institute. This is an unofficial fan project for **private play among friends**. See [`docs/DESIGN.md` §5](docs/DESIGN.md#5-rights-and-public-release) for what would need permission before any public release.
 
 - **Design, assumptions, build plan and house-rule research:** [`docs/DESIGN.md`](docs/DESIGN.md)
+- **Rule changes made to match the supplied rules reference PDF:** [`docs/DESIGN.md` §1.C](docs/DESIGN.md#c-changes-made-to-match-the-rules-reference-pdf)
 - **Character data (all 3 editions plus Travellers and Fabled):** [`shared/characters.ts`](shared/characters.ts). The ability descriptions are paraphrased summaries, not the official wording. Check them against <https://wiki.bloodontheclocktower.com>, which was unreachable from the build environment.
 
 ## Quick start (local, text chat only)
@@ -128,5 +129,5 @@ During the day, the Storyteller can click any avatar to mute or unmute that play
 
 - State is in memory: restarting the server ends running games. Redis persistence is planned for Phase 3.
 - Voice was implemented against the LiveKit SDK and unit-tested with a mocked server API. It was **not** tested end-to-end against a running LiveKit server, because the build sandbox couldn't download one.
-- Per-character automation is deliberately light, as at a real table. Triggered abilities (Virgin, Klutz, Moonchild…) and Traveller vote modifiers are handled by the Storyteller through the Grimoire.
+- Per-character automation is deliberately light, as at a real table. The Virgin and Butler are checked automatically and Klutz/Moonchild have public flows; most other triggered abilities and Traveller vote modifiers (Bureaucrat, Thief, Voudon) are handled by the Storyteller through the Grimoire.
 - No user accounts. Identity is per seat token.

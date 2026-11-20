@@ -5,7 +5,7 @@ export const MAX_PLAYERS = 10;
 export const JOIN_DELAY_MS = 3000;
 
 export type Phase = 'lobby' | 'dealt' | 'questions' | 'night' | 'day' | 'ended';
-export type DayStage = 'discussion' | 'private' | 'nominations' | 'accusation' | 'defense' | 'voting' | 'closed';
+export type DayStage = 'discussion' | 'private' | 'nominations' | 'accusation' | 'defense' | 'voting' | 'closed' | 'speedround';
 
 export interface Avatar {
   skin: number; hair: number; hairColor: number; eyes: number;
@@ -25,6 +25,7 @@ export interface Timers {
   defense: number | null;
   question: number | null;
   voteSeconds: number; // per voter (spec: 3)
+  speedRound: number;  // seconds per player in a speed round
 }
 
 export interface HouseRules {
@@ -39,7 +40,28 @@ export interface HouseRules {
   evilInfoSmallGames: boolean;
   announceCauseOfDeath: boolean;
   revealOnDeath: boolean;
+  // --- from the rules reference PDF ---
+  maxWhispersPerDay: number | null;
+  roomCapOverride: number | null;
+  speedRound: boolean;
+  openVoteRecord: boolean;
+  grimoireRevealAtEnd: boolean;
+  beginnerMode: boolean;
+  noOaths: boolean;
+  noScreenshots: boolean;
+  travellersCantBeChanged: boolean;
+  abilityDeclarationLimit: number | null;
+  succorForEvil: boolean;
+  holySpirit: boolean;
 }
+
+/** House rules that hold a number (null = off) rather than a boolean. */
+export const NUMERIC_HOUSE_RULES: Record<string, { default: number; min: number; max: number; unit: string }> = {
+  privateRoomCapMinutes: { default: 5, min: 1, max: 60, unit: 'min' },
+  maxWhispersPerDay: { default: 3, min: 1, max: 30, unit: 'visits' },
+  roomCapOverride: { default: 2, min: 1, max: 10, unit: 'players' },
+  abilityDeclarationLimit: { default: 3, min: 1, max: 20, unit: 'per day' },
+};
 
 export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: string; source: string }> = {
   ghostsInPrivateRooms: { label: 'Ghosts may join private rooms', help: 'Dead players can still whisper in side rooms.', source: 'Official (dead players may talk)' },
@@ -53,6 +75,18 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   evilInfoSmallGames: { label: 'Evil info in 5–6 player games', help: 'Show Minion/Demon info and bluffs even in Teensyville-size games (officially skipped).', source: 'Variant of official Teensyville rule' },
   announceCauseOfDeath: { label: 'Announce cause of death', help: 'Lets the Storyteller attach a cause to death announcements.', source: 'Casual variant' },
   revealOnDeath: { label: 'Reveal character on death', help: 'A dead player\'s true character is shown to everyone.', source: 'Beginner variant' },
+  maxWhispersPerDay: { label: 'Whisper limit: side-room visits per day', help: 'Each player may enter side rooms at most this many times per day.', source: 'Table/online convention (Whisper limits)' },
+  roomCapOverride: { label: 'Whisper limit: players per side room', help: 'Overrides the default cap of half the players per side room.', source: 'Table/online convention (Whisper limits)' },
+  speedRound: { label: 'Speed round', help: 'Enables a Speed round stage before nominations: each living player in seat order gets a few seconds in the spotlight to state their claim.', source: 'Table/online convention' },
+  openVoteRecord: { label: 'Open vote record', help: 'Everyone can see who voted on every nomination for the rest of the game.', source: 'Table/online convention' },
+  grimoireRevealAtEnd: { label: 'Grimoire reveal at end', help: 'At game end, show everyone the full Grimoire: alignments, believed characters and reminders, not just characters.', source: 'Table/online convention' },
+  beginnerMode: { label: 'Beginner mode', help: 'Adds the Toymaker, Angel and Buddhist Fabled for groups with new players.', source: 'Table/online convention' },
+  noOaths: { label: 'No oaths', help: 'Players may not swear real-world oaths ("I swear on my life") to prove a claim. Shown to players as a table rule.', source: 'Table convention' },
+  noScreenshots: { label: 'No screenshots', help: 'Players may not show screenshots or screen-share their character card or night info. Shown to players as a table rule.', source: 'Online convention' },
+  travellersCantBeChanged: { label: 'Travellers can\'t be changed', help: 'Character-changing abilities (Pit-Hag, Barber, Snake Charmer…) can\'t change or swap Travellers; the Grimoire blocks it.', source: 'Community house rule (TPI-endorsed)' },
+  abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
+  succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
+  holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
 export interface PublicListSettings {
@@ -66,6 +100,9 @@ export interface Settings {
   characters: string[];      // the bag: exactly one per non-traveller player
   fabled: string[];
   bootleggerRules: string;
+  djinnRules: string;        // jinxes announced by the Djinn
+  script: string[];          // custom script (character pool); empty = edition
+  scriptName: string | null;
   publicList: PublicListSettings;
   timers: Timers;
   houseRules: HouseRules;
@@ -77,12 +114,18 @@ export const defaultSettings = (): Settings => ({
   characters: [],
   fabled: [],
   bootleggerRules: '',
+  djinnRules: '',
+  script: [],
+  scriptName: null,
   publicList: { visible: true, hidden: [], showHiddenCount: true },
-  timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3 },
+  timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {
     ghostsInPrivateRooms: true, privateRoomsDuringNominations: false, allowCharacterReveal: false,
     allowTravellers: true, privateRoomCapMinutes: null, timersAutoAdvance: true, anonymousVotes: false,
     autoMuteDuringSpeeches: false, evilInfoSmallGames: false, announceCauseOfDeath: false, revealOnDeath: false,
+    maxWhispersPerDay: null, roomCapOverride: null, speedRound: false, openVoteRecord: false, grimoireRevealAtEnd: false,
+    beginnerMode: false, noOaths: false, noScreenshots: false, travellersCantBeChanged: false, abilityDeclarationLimit: null,
+    succorForEvil: false, holySpirit: false,
   },
   region: null,
 });
@@ -121,6 +164,7 @@ export interface PublicPlayer {
   travellerCharacter: string | null; // travellers are public
   revealedCharacter: string | null;  // end of game / reveal-on-death
   evilMark: boolean;         // only ever true in views of (believed) evil players
+  revealedGrimoire: { alignment: Alignment; shownCharacterId: string | null; reminders: string[] } | null; // end of game, house rule
 }
 
 export interface NominationView {
@@ -196,13 +240,15 @@ export interface GameView {
   aboutToDie: { playerId: string; votes: number } | null;
   ability: AbilityEventView | null;
   questions: { active: boolean; currentId: string | null; done: number; total: number; queue: string[] };
-  characterList: { visible: boolean; characters: string[]; hiddenCount: number | null; hiddenExists: boolean; fabled: string[]; bootleggerRules: string } | null;
+  characterList: { visible: boolean; characters: string[]; hiddenCount: number | null; hiddenExists: boolean; fabled: string[]; bootleggerRules: string; djinnRules: string } | null;
   houseRules: HouseRules;
   timers: Timers;
   announcements: Announcement[];
   winner: Alignment | null;
   voice: { enabled: boolean; region: string | null };
-  speakerId: string | null;   // current accuser/accused
+  speakerId: string | null;   // current accuser/accused / speed-round speaker
+  tableRules: string[];
+  voteHistory: VoteRecord[] | null;
   self: SelfView | StorytellerSelf;
 }
 
@@ -228,6 +274,7 @@ export interface PendingAbility {
   real: boolean;
   impaired: string[];         // reasons the ability may fail (drunk, poisoned, true Drunk…)
   suggestion: 'kill' | 'nothing' | 'decide';
+  resolution: 'kill' | 'note';
   suggestionText: string;
   isPrivate: boolean;
 }
@@ -248,6 +295,9 @@ export interface StorytellerSelf {
   availableRegions: string[];
   nightOrder: { id: string; name: string; text: string; players: string[] }[];
   focusId: string | null;
+  winHint: string | null;
 }
 
 export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended' }
+
+export interface VoteRecord { day: number; nominatorId: string; nomineeId: string; exile: boolean; yes: string[]; votes: number; needed: number; result: string }

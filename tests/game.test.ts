@@ -59,7 +59,8 @@ describe('hidden information', () => {
         if (!own.has(other.characterId)) expect(json).not.toContain(`"${other.characterId}"`);
       }
       expect(json).not.toMatch(/"characterId":"(?!null)[^"]*","shownCharacterId"/); // grimoire never present
-      expect(json).not.toContain('grimoire');
+      expect(json).not.toContain('"grimoire"');
+      expect(json).toContain('"revealedGrimoire":null');
       expect(json).not.toContain('"real"');
     }
   });
