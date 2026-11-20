@@ -9,6 +9,8 @@ import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
 
 const TownScene = lazy(() => import('../three/TownScene'));
+const RoomScene = lazy(() => import('../three/RoomScene'));
+import { occupantsOf } from '../three/occupants';
 import {
   CharacterModal, CharactersInPlay, Confirm, InfoPopup, QuestionPrompt, TimerBadge, VoteBar,
   TransitionOverlay, NightSleep, Modal, CharacterToken,
@@ -34,6 +36,7 @@ export function GameScreen({ view }: { view: GameView }) {
   const circleRef = useRef<HTMLDivElement>(null);
   const art = roomArt(view);
   const show3D = use3D && !failed3D && !art && !asleep;
+  const show3DRoom = use3D && !failed3D && !!art && !asleep;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // where I just came from (to step out of that building's door in the 3D town)
   const myLoc = view.self.isStoryteller ? view.storyteller.location : me?.location ?? null;
@@ -41,6 +44,7 @@ export function GameScreen({ view }: { view: GameView }) {
   const arrivedFromRef = useRef<string | null>(null);
   if (myLoc !== lastLocRef.current) { if (myLoc === 'square') arrivedFromRef.current = lastLocRef.current; lastLocRef.current = myLoc; }
   const walkMode = show3D && view.canWalk && !night && myLoc === 'square';
+  const roomOccupants = useMemo(() => (show3DRoom && myLoc ? occupantsOf(myLoc, view.players, view.storyteller) : []), [show3DRoom, myLoc, view.players, view.storyteller]);
   const awakeIds = useMemo(() => view.self.isStoryteller
     ? view.self.grimoire.filter(g => g.awake).map(g => g.id)
     : view.self.awake ? [view.self.id] : [], [view.self]);
@@ -110,7 +114,13 @@ export function GameScreen({ view }: { view: GameView }) {
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
-          {art && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
+          {art && !show3DRoom && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
+          {show3DRoom && art && (
+            <Suspense fallback={null}>
+              <RoomScene art={art} occupants={roomOccupants} myId={view.self.isStoryteller ? 'st' : view.self.id}
+                reducedMotion={reducedMotion} onFigureClick={onSeatClick} onFail={() => setFailed3D(true)} />
+            </Suspense>
+          )}
           {show3D && (
             <Suspense fallback={null}>
               <TownScene anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
@@ -121,7 +131,7 @@ export function GameScreen({ view }: { view: GameView }) {
             </Suspense>
           )}
           <StageHeader view={view} />
-          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} anchorRef={circleRef} squash={show3D ? SQUASH : undefined} walking={walkMode} />}
+          {asleep ? <NightSleep view={view} /> : show3DRoom ? <div ref={circleRef} className="room3d-spacer" /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} anchorRef={circleRef} squash={show3D ? SQUASH : undefined} walking={walkMode} />}
           {showClickHint && <p className="hint">Click a player's avatar to nominate them.</p>}
           {!isST && night && view.self.awake && !view.self.isStoryteller && (
             <div className="night-choice parchment">

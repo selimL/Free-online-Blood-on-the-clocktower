@@ -381,7 +381,7 @@ textarea.notes { width: 100%; min-height: 180px; }
 @keyframes candle { 0% { opacity: .65; } 35% { opacity: 1; } 60% { opacity: .75; } 100% { opacity: .95; } }
 .stage.has-room-art .plaza { background: none; box-shadow: none; border-color: rgba(233, 220, 192, .14); }
 .stage.has-room-art .center .tower { display: none; }
-.stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d):not(.walk-help) { position: relative; z-index: 1; }
+.stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d):not(.walk-help):not(.room3d) { position: relative; z-index: 1; }
 
 /* 3D Town Square (three.js) behind the seat circle */
 .town3d { position: absolute; top: 0; left: 0; right: 0; z-index: 0; overflow: hidden; pointer-events: none; }
@@ -483,3 +483,10 @@ textarea.notes { width: 100%; min-height: 180px; }
 
 .town3d.interactive .town3d-label { pointer-events: auto; cursor: pointer; }
 .town3d.interactive .town3d-label:hover { border-color: var(--candle); }
+
+/* ---------- 3D room interiors ---------- */
+.room3d { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.room3d canvas { display: block; }
+.stage:has(.room3d) { overflow: hidden; }
+.room3d-spacer { width: min(100%, 560px); aspect-ratio: 1 / 1; max-height: 64vh; pointer-events: none; }
+.room-preview { height: 100vh; display: flex; } .room-preview .stage { flex: 1; position: relative; }

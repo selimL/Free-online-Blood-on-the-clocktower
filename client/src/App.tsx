@@ -6,6 +6,7 @@ import { GameScreen } from './components/GameScreen';
 import { AvatarCreator } from './components/Avatar';
 import { defaultAvatar, type Avatar } from '../../shared/types';
 import { Alerts } from './components/Overlays';
+import { RoomPreview } from './components/RoomPreview';
 import './styles.css';
 
 const codeFromPath = () => {
@@ -68,7 +69,9 @@ function App() {
   }, [session]);
 
   let body;
-  if (kicked) body = <div className="center-card parchment"><h2>Removed</h2><p>{kicked}</p><a className="btn" href="/">Back to the lobby</a></div>;
+  const previewRoom = new URLSearchParams(location.search).get('preview-room');
+  if (previewRoom) body = <RoomPreview art={previewRoom} />;
+  else if (kicked) body = <div className="center-card parchment"><h2>Removed</h2><p>{kicked}</p><a className="btn" href="/">Back to the lobby</a></div>;
   else if (session && view) body = <GameScreen view={view} />;
   else if (session) body = <div className="center-card parchment"><p>Entering the town…</p></div>;
   else if (code && tried) body = <JoinForm code={code} />;
