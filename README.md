@@ -36,6 +36,22 @@ LIVEKIT_URL=ws://localhost:7880 LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret
 
 The top bar shows **voice live** once the server has granted you audio in your current room.
 
+### Easiest: LiveKit Cloud plus a `.env` file
+
+1. Create a free project at <https://cloud.livekit.io>.
+2. Copy its **URL** (`wss://….livekit.cloud`), **API key** and **API secret**.
+3. Create a file named `.env` in the project folder containing:
+
+```
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your-api-key
+LIVEKIT_API_SECRET=your-api-secret
+```
+
+4. Restart the server with `npm start` (or `npm run dev`). It prints `Loaded settings from .env` and `voice enabled`.
+
+`.env` is git-ignored, so your keys never end up on GitHub.
+
 ### Production and multiple regions
 
 Use self-hosted LiveKit nodes in each region, or LiveKit Cloud. For several regions, set:

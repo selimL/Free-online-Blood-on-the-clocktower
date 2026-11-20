@@ -9,6 +9,14 @@ import { VoiceManager, loadRegions } from './voice';
 import { GameError } from './game';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Optional settings file: put LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET (and PORT) in a `.env`
+// file in the project folder instead of typing them each time. It is git-ignored, so keys stay local.
+// Note: imports above are evaluated first, but the voice settings are only read when the server starts below.
+try {
+  const envFile = path.resolve(__dirname, '../../.env');
+  if (fs.existsSync(envFile)) { process.loadEnvFile(envFile); console.log('Loaded settings from .env'); }
+} catch (e) { console.warn('Could not read .env:', (e as Error).message); }
 const PORT = Number(process.env.PORT ?? 3001);
 
 const app = express();
