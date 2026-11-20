@@ -14,7 +14,7 @@
   --candle: #ffcf6b;
   --moon: #dfe6f5;
   --ghost: #b9b6c2;
-  --good: #2f6db3;
+  --good: #2e7d3a;
   --evil: #e0484e;
   --text: #ece6da;
   --muted: #b3a998;
@@ -217,7 +217,7 @@ table.games th, table.games td { text-align: left; padding: .4rem .3rem; border-
 .claim { font-size: .78rem; font-style: italic; color: var(--parchment); background: rgba(0, 0, 0, .45); border-radius: 4px; padding: 0 .3rem; margin-top: .1rem; }
 .claim.traveller { color: #f0c27a; }
 .claim.revealed { color: #fff; background: var(--blood); font-style: normal; }
-.grim-tag { font-size: .72rem; margin-top: .1rem; padding: 0 .3rem; border-radius: 4px; background: rgba(47, 109, 179, .3); }
+.grim-tag { font-size: .72rem; margin-top: .1rem; padding: 0 .3rem; border-radius: 4px; background: rgba(46, 125, 58, .45); }
 .grim-tag.evil { background: rgba(155, 27, 31, .45); }
 
 /* ---------- banners ---------- */
@@ -268,9 +268,9 @@ textarea.notes { width: 100%; min-height: 180px; }
 .pname { font-weight: 600; }
 .pchar { color: var(--parchment); }
 .pchar.demon, .pchar.minion { color: #ff9a9e; }
-.pchar.outsider { color: #9fc9ff; }
+.pchar.outsider { color: #a8e6a8; }
 .palign { font-size: .75rem; text-transform: uppercase; }
-.palign.evil { color: var(--evil); } .palign.good { color: #7fb2ef; }
+.palign.evil { color: var(--evil); } .palign.good { color: #8fdc8f; }
 .reminder { font-size: .72rem; border-radius: 999px; padding: 0 .4rem; background: #4a3a24; color: var(--parchment); border: 1px solid #8a7350; cursor: pointer; font-family: inherit; }
 .grim-body { padding: .4rem .6rem .6rem; font-size: .9rem; }
 .grim-body label { display: inline-flex; gap: .3rem; align-items: center; }
@@ -300,16 +300,16 @@ textarea.notes { width: 100%; min-height: 180px; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .token { display: flex; gap: .7rem; align-items: flex-start; margin: .4rem 0; }
 .token-disc { flex: none; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font: 700 1.1rem 'Cinzel', serif;
-  background: radial-gradient(circle at 35% 30%, #fff8e6, #d8c7a0 70%); border: 3px solid #2f6db3; color: var(--ink); }
+  background: radial-gradient(circle at 35% 30%, #fff8e6, #d8c7a0 70%); border: 3px solid #2e7d3a; color: var(--ink); }
 .token.minion .token-disc, .token.demon .token-disc { border-color: var(--blood); color: #6e0f13; }
-.token.outsider .token-disc { border-color: #5a8fd0; }
+.token.outsider .token-disc { border-color: #5aa860; }
 .token.traveller .token-disc { border-color: #8a5a2b; }
 .token.fabled .token-disc { border-color: #b8901c; }
 .token.small .token-disc { width: 36px; height: 36px; font-size: .8rem; border-width: 2px; }
 .token-text p { margin: .15rem 0 0; }
 .token .type { font-size: .78rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em; }
 .token-row { display: flex; flex-wrap: wrap; gap: .6rem; }
-.alignment.good { color: #1f4f8a; } .alignment.evil { color: #a3121a; }
+.alignment.good { color: #1e5e28; } .alignment.evil { color: #a3121a; }
 .evil-box { border: 2px solid var(--blood); border-radius: 8px; padding: .4rem .8rem; margin: .5rem 0; background: rgba(155, 27, 31, .08); }
 .info-card { border: 1px solid #8a7350; border-radius: 8px; padding: .5rem .7rem; margin: .4rem 0; background: rgba(255, 255, 255, .3); }
 .info-card .when { font-size: .78rem; color: var(--ink-soft); text-transform: uppercase; }
