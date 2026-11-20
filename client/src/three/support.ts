@@ -7,7 +7,7 @@ export const SEAT_R = 8.6;
 /** Where the Storyteller's figure stands: in front of the clocktower, toward the camera. */
 export const ST_Z = 2.9;
 /** Figures are scaled up a little so they read well from the town camera. */
-export const CHAR_SCALE = 1.45;
+export const CHAR_SCALE = 1.7;
 
 export function webglAvailable() {
   try {

@@ -437,8 +437,8 @@ textarea.notes { width: 100%; min-height: 180px; }
 @media (max-width: 860px) { .lobby { padding-top: 8vh; } }
 
 /* ---------- 3D figures: the HTML seat becomes a clickable area over the figure, name at its feet ---------- */
-.town-circle.three .seat { transform: translate(-50%, -72px); }
-.town-circle.three .seat-btn { display: block; width: 62px; height: 72px; }
+.town-circle.three .seat { transform: translate(-50%, -82px); }
+.town-circle.three .seat-btn { display: block; width: 56px; height: 82px; }
 .town-circle.three .seat-btn .avatar:not(.video-face) { visibility: hidden; }
 .town-circle.three .seat-btn .video-face { width: 40px; height: 40px; position: absolute; top: -34px; left: 9px; border: 2px solid var(--candle); }
 .town-circle.three .seat-btn::after { /* glowing ring at the figure's feet for state highlights */

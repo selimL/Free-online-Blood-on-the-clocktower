@@ -22,8 +22,8 @@ export default function AvatarPreview3D({ avatar, size = 220 }: { avatar: Avatar
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, 1 / 1.2, 0.1, 50);
-    camera.position.set(0, 1.9, 6.4);
-    camera.lookAt(0, 1.25, 0);
+    camera.position.set(0, 1.75, 5.9);
+    camera.lookAt(0, 1.3, 0);
 
     scene.add(new THREE.HemisphereLight('#c9d3ff', '#2a1d14', 1.1));
     const key = new THREE.DirectionalLight('#ffe2b8', 2.2);
