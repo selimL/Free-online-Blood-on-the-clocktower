@@ -383,7 +383,8 @@ textarea.notes { width: 100%; min-height: 180px; }
 .room-art-light { background: radial-gradient(ellipse at 50% 85%, rgba(255, 180, 90, .16), transparent 60%); animation: candle 3.2s infinite alternate; mix-blend-mode: screen; }
 @keyframes dolly { from { background-size: auto, cover; } to { background-size: auto, 112%; } }
 @keyframes candle { 0% { opacity: .65; } 35% { opacity: 1; } 60% { opacity: .75; } 100% { opacity: .95; } }
-.stage.has-room-art .plaza { opacity: .35; }
+.stage.has-room-art .plaza { background: none; box-shadow: none; border-color: rgba(233, 220, 192, .14); }
+.stage.has-room-art .center .tower { display: none; }
 .stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d) { position: relative; z-index: 1; }
 
 /* 3D Town Square (three.js) behind the seat circle */
@@ -398,3 +399,4 @@ textarea.notes { width: 100%; min-height: 180px; }
 .stage.has-3d .town-circle { width: min(100%, 560px); max-height: none; margin-top: 4.5rem; }
 .town-circle.three .center { top: 58%; }
 .town-circle.three .st-mini { margin-top: 1rem; }
+.town-circle:not(.three) .center .tower { display: none; } /* the plaza painting has its own clocktower */
