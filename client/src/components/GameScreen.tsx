@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameView } from '../../../shared/types';
-import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES } from '../../../shared/characters';
+import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
 import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
 import { TownCircle, TownMap } from './TownSquare';
@@ -80,7 +80,7 @@ export function GameScreen({ view }: { view: GameView }) {
       <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
-        <section className="stage">
+        <section className={`stage ${roomArt(view) ? 'has-room-art' : ''}`} style={roomArt(view) ? { ['--room-art' as string]: `url(/art/${roomArt(view)}.jpg)` } : undefined}>
           <StageHeader view={view} />
           {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} />}
           {showClickHint && <p className="hint">Click a player's avatar to nominate them.</p>}
@@ -169,6 +169,15 @@ function TopBar({ view, openList, openInvite, openRules }: { view: GameView; ope
       </div>
     </header>
   );
+}
+
+/** Art for the viewer's current side room or the Study (the Town Square has its own plaza art). */
+function roomArt(view: GameView): string | null {
+  if (view.phase === 'night') return null;
+  const loc = view.self.isStoryteller ? view.storyteller.location : view.players.find(p => p.id === view.self.id)?.location;
+  if (loc === 'study') return 'study';
+  const m = loc?.match(/^r(\d+)$/);
+  return m ? ROOM_ART[Number(m[1]) % ROOM_ART.length] : null;
 }
 
 function StageHeader({ view }: { view: GameView }) {

@@ -205,6 +205,8 @@ export const CLAIMABLE_ABILITIES = Object.entries(DAY_ABILITIES).filter(([, a]) 
 
 export const ROOM_NAMES = ['The Tavern', 'The Chapel', 'The Graveyard', 'The Library', 'The Apothecary', 'The Blacksmith', 'The Clocktower Stair', 'The Old Mill'];
 export const ROOM_ICONS = ['🍺', '⛪', '🪦', '📚', '⚗️', '⚒️', '🕰️', '🌾'];
+/** Background art files in client/public/art/ (same order as ROOM_NAMES). Missing files fall back to the plain theme. */
+export const ROOM_ART = ['tavern', 'chapel', 'graveyard', 'library', 'apothecary', 'blacksmith', 'clocktower-stair', 'old-mill'];
 
 /** Parse an official Script Tool JSON (array of ids or {id} objects, plus an optional _meta entry). */
 export function parseScript(json: string): { ids: string[]; unknown: string[]; name: string | null } {

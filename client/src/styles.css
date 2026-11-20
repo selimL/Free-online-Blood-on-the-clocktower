@@ -362,3 +362,12 @@ textarea.notes { width: 100%; min-height: 180px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .win-hint { border-color: #9fe39f; background: #13261a; }
 .script-import textarea { width: 100%; min-height: 90px; }
+
+/* ---------- generated background art (client/public/art); a missing file just drops that layer ---------- */
+.lobby-hero {
+  padding: 2.2rem 1.6rem; border-radius: var(--radius); min-height: 260px; border: 1px solid #3b3343;
+  background: linear-gradient(90deg, rgba(7, 6, 11, .92) 0%, rgba(7, 6, 11, .55) 55%, rgba(7, 6, 11, .2) 100%), url(/art/lobby.jpg) center / cover no-repeat, var(--night-1);
+}
+.plaza { background-image: radial-gradient(circle, transparent 35%, rgba(7, 6, 11, .55) 100%), url(/art/town-square.jpg); background-size: cover; background-position: center; }
+.stage.has-room-art { background: linear-gradient(180deg, rgba(7, 6, 11, .55), rgba(7, 6, 11, .85)), var(--room-art) center / cover no-repeat, var(--night-1); }
+.stage.has-room-art .plaza { opacity: .35; }
