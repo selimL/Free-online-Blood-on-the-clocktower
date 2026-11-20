@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import type { GameView } from '../../../shared/types';
+import type { GameView, Avatar } from '../../../shared/types';
+import { defaultAvatar } from '../../../shared/types';
+import { AvatarCreator } from './Avatar';
 import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
 import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
@@ -21,7 +23,7 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
@@ -33,6 +35,9 @@ export function GameScreen({ view }: { view: GameView }) {
   const art = roomArt(view);
   const show3D = use3D && !failed3D && !art && !asleep;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const awakeIds = useMemo(() => view.self.isStoryteller
+    ? view.self.grimoire.filter(g => g.awake).map(g => g.id)
+    : view.self.awake ? [view.self.id] : [], [view.self]);
   const toggle3D = () => { const on = !use3D; setUse3D(on); setFailed3D(false); save3D(on); };
   // Side-room art: tilt/shift with the pointer for a sense of depth.
   const onStageMove = (e: React.MouseEvent<HTMLElement>) => {
@@ -95,7 +100,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
@@ -103,7 +108,8 @@ export function GameScreen({ view }: { view: GameView }) {
           {show3D && (
             <Suspense fallback={null}>
               <TownScene anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
-                night={night} rooms={view.rooms} reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} />
+                night={night} rooms={view.rooms} players={view.players} storyteller={view.storyteller} awakeIds={awakeIds}
+                reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} />
             </Suspense>
           )}
           <StageHeader view={view} />
@@ -149,6 +155,7 @@ export function GameScreen({ view }: { view: GameView }) {
       {modal === 'label' && <ClaimLabelDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'invite' && <InviteDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'reveal' && <RevealDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'customise' && <CustomiseDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'rules' && <Modal title="Table rules" onClose={() => setModal(null)}><ul>{view.tableRules.map(r => <li key={r}>{r}</li>)}</ul></Modal>}
       {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
@@ -160,7 +167,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openList, openInvite, openRules, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; use3D: boolean; toggle3D: () => void }) {
+function TopBar({ view, openList, openInvite, openRules, openCustomise, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -189,6 +196,7 @@ function TopBar({ view, openList, openInvite, openRules, use3D, toggle3D }: { vi
           </span>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
+        <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
         <button className="btn small ghost" onClick={leave}>Leave</button>
@@ -320,6 +328,27 @@ function RevealDialog({ view, onClose }: { view: GameView; onClose: () => void }
     <Modal title="Show your character" onClose={onClose}>
       <p className="muted">House rule: you may show your character card to one player.</p>
       {others.map(p => <button key={p.id} className="btn small" onClick={() => { void act('reveal', { toId: p.id }); onClose(); }}>{p.name}</button>)}
+    </Modal>
+  );
+}
+
+function CustomiseDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const me = view.self.isStoryteller ? { name: view.storyteller.name, avatar: view.storyteller.avatar } : view.players.find(p => p.id === view.self.id);
+  const [name, setName] = useState(me?.name ?? '');
+  const [avatar, setAvatar] = useState<Avatar>({ ...defaultAvatar(), ...(me?.avatar ?? {}) });
+  const save = async () => {
+    const r = await act('profile', { name, avatar });
+    if (r.ok) {
+      try { localStorage.setItem('botc:avatar', JSON.stringify(avatar)); if (!view.self.isStoryteller) localStorage.setItem('botc:name', name); } catch { /* ignore */ }
+      onClose();
+    }
+  };
+  return (
+    <Modal title="Customise your figure" onClose={onClose} wide>
+      <label className="field">Name<input value={name} maxLength={24} onChange={e => setName(e.target.value)} /></label>
+      <AvatarCreator value={avatar} onChange={setAvatar} />
+      <p className="muted small">Everyone sees your figure in the 3D town and your portrait in the 2D view. It is purely cosmetic.</p>
+      <div className="row end"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!name.trim()} onClick={save}>Save</button></div>
     </Modal>
   );
 }

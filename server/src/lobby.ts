@@ -1,5 +1,5 @@
 import type { Server, Socket } from 'socket.io';
-import { Game, GameError, type Player } from './game';
+import { Game, GameError, cleanText, sanitizeAvatar, type Player } from './game';
 import { playerView, storytellerView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
 
@@ -140,7 +140,11 @@ export class Lobby {
       return this.stAction(g, type, d);
     }
     if (id === 'st') {
-      if (type === 'profile') { g.storyteller.name = String(d.name ?? g.storyteller.name).slice(0, 24); g.changed(); return; }
+      if (type === 'profile') {
+        g.storyteller.name = cleanText(d.name ?? g.storyteller.name, 24) || g.storyteller.name;
+        if (d.avatar) g.storyteller.avatar = sanitizeAvatar(d.avatar);
+        g.changed(); return;
+      }
       if (type === 'move') { g.moveST(String(d.room)); g.changed(); return; }
       fail('Storytellers use the Grimoire.');
     }

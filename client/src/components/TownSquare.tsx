@@ -3,6 +3,7 @@ import { CHARACTER_BY_ID } from '../../../shared/characters';
 import { Avatar } from './Avatar';
 import { useVoice } from '../voice';
 import { useStore, act } from '../net';
+import { SEAT_R, ST_Z } from '../three/support';
 
 export function Clocktower({ className }: { className?: string }) {
   return (
@@ -102,13 +103,20 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
       {!three && <div className="plaza" aria-hidden="true" />}
       <div className="center">
         {!three && <Clocktower className="tower" />}
-        {(!night || isST) && view.storyteller.location === (myLoc ?? 'square') && (
+        {!three && (!night || isST) && view.storyteller.location === (myLoc ?? 'square') && (
           <div className="st-mini" title="Storyteller">
             <Avatar avatar={view.storyteller.avatar} size={44} speaking={voice.speaking.includes('st')} video={voice.video.st} />
             <span>{view.storyteller.name}</span>
           </div>
         )}
       </div>
+      {three && !night && view.storyteller.location === 'square' && (
+        // the Storyteller's 3D figure stands in front of the clocktower; this is just the name label at its feet
+        <div className={`st-mini three ${voice.speaking.includes('st') ? 'speaking' : ''}`} title="Storyteller"
+          style={{ left: '50%', top: `${50 + (ST_Z / SEAT_R) * radius * (squash ?? 1)}%` }}>
+          <span>{view.storyteller.name} · Storyteller</span>
+        </div>
+      )}
       {view.players.map(seat)}
     </div>
   );

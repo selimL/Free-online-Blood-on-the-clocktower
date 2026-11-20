@@ -10,11 +10,12 @@ export type DayStage = 'discussion' | 'private' | 'nominations' | 'accusation' |
 export interface Avatar {
   skin: number; hair: number; hairColor: number; eyes: number;
   outfit: number; outfitColor: number; accessory: number;
+  build: number; height: number; // 3D figure proportions (0 = average)
 }
 export const AVATAR_LIMITS: Record<keyof Avatar, number> = {
-  skin: 6, hair: 7, hairColor: 8, eyes: 4, outfit: 5, outfitColor: 8, accessory: 7,
+  skin: 6, hair: 7, hairColor: 8, eyes: 4, outfit: 5, outfitColor: 8, accessory: 7, build: 3, height: 3,
 };
-export const defaultAvatar = (): Avatar => ({ skin: 1, hair: 1, hairColor: 2, eyes: 0, outfit: 0, outfitColor: 0, accessory: 0 });
+export const defaultAvatar = (): Avatar => ({ skin: 1, hair: 1, hairColor: 2, eyes: 0, outfit: 0, outfitColor: 0, accessory: 0, build: 0, height: 0 });
 
 /** Timer lengths in seconds; null = no limit, Storyteller ends it manually. */
 export interface Timers {

@@ -435,3 +435,34 @@ textarea.notes { width: 100%; min-height: 180px; }
   .glass { background: rgba(14, 11, 20, .82); } /* older browsers: darker instead of blurred */
 }
 @media (max-width: 860px) { .lobby { padding-top: 8vh; } }
+
+/* ---------- 3D figures: the HTML seat becomes a clickable area over the figure, name at its feet ---------- */
+.town-circle.three .seat { transform: translate(-50%, -72px); }
+.town-circle.three .seat-btn { display: block; width: 62px; height: 72px; }
+.town-circle.three .seat-btn .avatar:not(.video-face) { visibility: hidden; }
+.town-circle.three .seat-btn .video-face { width: 40px; height: 40px; position: absolute; top: -34px; left: 9px; border: 2px solid var(--candle); }
+.town-circle.three .seat-btn::after { /* glowing ring at the figure's feet for state highlights */
+  content: ''; position: absolute; left: 50%; bottom: -7px; width: 62px; height: 18px; transform: translateX(-50%);
+  border-radius: 50%; border: 2px solid transparent; pointer-events: none; transition: border-color .2s, box-shadow .2s;
+}
+.town-circle.three .seat.clickable .seat-btn:hover::after { border-color: rgba(233, 220, 192, .6); }
+.town-circle.three .seat.selected .seat-btn::after,
+.town-circle.three .seat.nominee .seat-btn::after,
+.town-circle.three .seat.ability-target .seat-btn::after { border-color: var(--blood-hi); box-shadow: 0 0 14px var(--blood-hi); }
+.town-circle.three .seat.nominator .seat-btn::after,
+.town-circle.three .seat.ability-user .seat-btn::after,
+.town-circle.three .seat.current-voter .seat-btn::after { border-color: var(--candle); box-shadow: 0 0 14px var(--candle); }
+.town-circle.three .seat:has(.avatar.speaking) .seat-btn::after { border-color: var(--candle); box-shadow: 0 0 18px var(--candle); }
+.town-circle.three .seat.death-flash .seat-btn::after { animation: ringflash 2s ease-out; }
+@keyframes ringflash { 0%, 40% { border-color: var(--blood-hi); box-shadow: 0 0 40px 10px var(--blood-hi); } 100% { border-color: transparent; box-shadow: none; } }
+.town-circle.three .seat.away .seat-btn::after { border: 2px dashed rgba(233, 220, 192, .3); }
+.town-circle.three .seat.current-voter::after { top: -26px; }
+.town-circle.three .hand { top: -18px; right: -6px; }
+.st-mini.three { position: absolute; transform: translate(-50%, 2px); pointer-events: none; z-index: 2; }
+.st-mini.three span { font: 600 .8rem 'Cinzel', serif; color: var(--candle); background: rgba(13, 10, 18, .75); padding: .05rem .45rem; border-radius: 999px; }
+.st-mini.three.speaking span { box-shadow: 0 0 10px var(--candle); }
+/* character creator: 3D figure + small portrait */
+.avatar-preview { position: relative; display: flex; flex-direction: column; align-items: center; }
+.avatar3d { border-radius: 12px; background: radial-gradient(ellipse at 50% 35%, #3a3346 0%, #17131d 75%); box-shadow: inset 0 0 30px rgba(0, 0, 0, .7); }
+.avatar3d canvas { display: block; border-radius: 12px; }
+.avatar-preview .portrait { display: flex; align-items: center; gap: .4rem; margin-top: .4rem; font-size: .8rem; color: var(--ink-soft); }

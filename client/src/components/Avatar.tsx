@@ -1,19 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { webglAvailable } from '../three/support';
+
+const AvatarPreview3D = lazy(() => import('../three/AvatarPreview3D'));
 import type { Avatar as AvatarT } from '../../../shared/types';
 import { AVATAR_LIMITS } from '../../../shared/types';
 
-export const SKINS = ['#f3d6c1', '#e7b996', '#c98e64', '#a26a43', '#6f4428', '#d8c9b8'];
-export const HAIR_COLORS = ['#1b1410', '#4a2d1a', '#8a5a2b', '#c9a15b', '#d9d2c5', '#7a1f1f', '#2f3b4f', '#5c3d6e'];
-export const OUTFIT_COLORS = ['#5a1a1a', '#1f2f4a', '#2e3b25', '#3d2b4f', '#4a3a24', '#202020', '#6b5a3a', '#7c2d12'];
-export const LABELS: Record<keyof AvatarT, { name: string; options: string[] }> = {
-  skin: { name: 'Complexion', options: ['Pale', 'Fair', 'Tan', 'Bronze', 'Deep', 'Ashen'] },
-  hair: { name: 'Hair', options: ['Bald', 'Short', 'Long', 'Braided', 'Wild', 'Bun', 'Hooded'] },
-  hairColor: { name: 'Hair colour', options: ['Raven', 'Chestnut', 'Auburn', 'Flaxen', 'Silver', 'Blood', 'Slate', 'Plum'] },
-  eyes: { name: 'Eyes', options: ['Wary', 'Narrow', 'Wide', 'Weary'] },
-  outfit: { name: 'Clothing', options: ['Cloak', 'Doublet', 'Robe', 'Gown', 'Apron'] },
-  outfitColor: { name: 'Cloth colour', options: ['Wine', 'Midnight', 'Moss', 'Plum', 'Umber', 'Ink', 'Linen', 'Rust'] },
-  accessory: { name: 'Accessory', options: ['None', 'Tricorn', 'Plague mask', 'Monocle', 'Crown of thorns', 'Lantern', 'Raven'] },
-};
+import { SKINS, HAIR_COLORS, OUTFIT_COLORS, LABELS } from '../avatarStyle';
+export { SKINS, HAIR_COLORS, OUTFIT_COLORS, LABELS };
 
 interface Props {
   avatar: AvatarT; size?: number; sleeping?: boolean; ghost?: boolean; speaking?: boolean;
@@ -97,7 +90,14 @@ export function AvatarCreator({ value, onChange }: { value: AvatarT; onChange: (
   const randomize = () => onChange(Object.fromEntries(keys.map(k => [k, Math.floor(Math.random() * AVATAR_LIMITS[k])])) as unknown as AvatarT);
   return (
     <div className="avatar-creator">
-      <div className="avatar-preview"><Avatar avatar={value} size={140} title="Your avatar" /></div>
+      <div className="avatar-preview">
+        {webglAvailable()
+          ? <>
+            <Suspense fallback={<Avatar avatar={value} size={140} title="Your avatar" />}><AvatarPreview3D avatar={value} /></Suspense>
+            <div className="portrait"><Avatar avatar={value} size={56} title="Your portrait" /><span>Portrait</span></div>
+          </>
+          : <Avatar avatar={value} size={140} title="Your avatar" />}
+      </div>
       <div className="avatar-options">
         {keys.map(k => (
           <div key={k} className="avatar-row">

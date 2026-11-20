@@ -8,8 +8,9 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import type { RoomView } from '../../../shared/types';
 import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
 
-import { PITCH } from './support';
-const SEAT_R = 8.6;          // world radius on which the HTML seats sit
+import { PITCH, SEAT_R, ST_Z, CHAR_SCALE } from './support';
+import { buildCharacter, disposeCharacter, setAsleep } from './character';
+import type { PublicPlayer, Avatar } from '../../../shared/types';
 const PLAZA_R = 10.2;
 const BUILDING_R = 14.2;
 const FOV = 32;
@@ -20,6 +21,10 @@ interface Props {
   seatRadiusFrac: number;                         // seat radius as a fraction of the circle's width
   night: boolean;
   rooms: RoomView[];
+  players: PublicPlayer[];
+  storyteller: { avatar: Avatar; location: string | null };
+  /** Ids shown standing at night (woken players); everyone else lies asleep. */
+  awakeIds: string[];
   reducedMotion: boolean;
   onFail: () => void;
 }
@@ -368,7 +373,9 @@ function buildTree(k: Kit, x: number, z: number, parent: THREE.Object3D) {
 }
 
 // ------------------------------------------------------------ the component
-export default function TownScene({ anchor, container, seatRadiusFrac, night, rooms, reducedMotion, onFail }: Props) {
+export default function TownScene({ anchor, container, seatRadiusFrac, night, rooms, players, storyteller, awakeIds, reducedMotion, onFail }: Props) {
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const figuresRef = useRef(new Map<string, { fig: THREE.Group; key: string }>());
   const mountRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ night, rooms, reducedMotion });
   stateRef.current = { night, rooms, reducedMotion };
@@ -396,6 +403,7 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     mount.appendChild(labelRenderer.domElement);
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
     const sky = new THREE.Color('#0b0c1a');
     scene.background = sky;
     scene.fog = new THREE.FogExp2('#12131f', 0.009);
@@ -529,11 +537,12 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
       sky.copy(daySky).lerp(nightSky, nightMix);
       k.warmGlow instanceof THREE.MeshStandardMaterial && (k.warmGlow.emissiveIntensity = THREE.MathUtils.lerp(1.2, 2.2, nightMix));
       if (!s.reducedMotion) {
-        yaw = Math.sin(t * 0.045) * 0.22;
+        yaw = 0; // kept still so figures stay exactly under their seats
         for (const fn of anims) fn(t);
       } else {
         anims[0]?.(t); // the clocktower keeps real time even with reduced motion
       }
+      for (const { fig } of figuresRef.current.values()) if (fig.visible && !s.reducedMotion) fig.userData.animate?.(t);
       placeCamera();
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);
@@ -543,6 +552,9 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      for (const { fig } of figuresRef.current.values()) disposeCharacter(fig);
+      figuresRef.current.clear();
+      sceneRef.current = null;
       scene.traverse(o => {
         const m = o as THREE.Mesh;
         m.geometry?.dispose?.();
@@ -555,6 +567,49 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // townsfolk figures standing at their seats (feet exactly under the HTML seat positions)
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const figs = figuresRef.current;
+    const want = new Map<string, { avatar: Avatar; ghost: boolean; x: number; z: number; visible: boolean; asleep: boolean }>();
+    const n = players.length;
+    players.forEach((p, i) => {
+      const a = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
+      const inSquare = night || p.location === 'square';
+      want.set(p.id, {
+        avatar: p.avatar, ghost: !p.alive, x: Math.cos(a) * SEAT_R, z: Math.sin(a) * SEAT_R,
+        visible: inSquare, asleep: night && !awakeIds.includes(p.id),
+      });
+    });
+    want.set('st', { avatar: storyteller.avatar, ghost: false, x: 0, z: ST_Z, visible: !night && storyteller.location === 'square', asleep: false });
+    for (const [id, entry] of figs) {
+      if (!want.has(id)) { scene.remove(entry.fig); disposeCharacter(entry.fig); figs.delete(id); }
+    }
+    for (const [id, w] of want) {
+      const key = JSON.stringify(w.avatar) + (w.ghost ? ':ghost' : '');
+      let entry = figs.get(id);
+      if (!entry || entry.key !== key) {
+        if (entry) { scene.remove(entry.fig); disposeCharacter(entry.fig); }
+        const fig = buildCharacter(w.avatar, { ghost: w.ghost });
+        fig.scale.setScalar(CHAR_SCALE);
+        // a faint self-glow so figures stay readable on the dark plaza
+        if (!w.ghost) fig.traverse(o => {
+          const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+          if (mat?.isMeshStandardMaterial && mat.emissiveIntensity <= 1) { mat.emissive = mat.color.clone(); mat.emissiveIntensity = 0.22; }
+        });
+        scene.add(fig);
+        entry = { fig, key };
+        figs.set(id, entry);
+      }
+      entry.fig.position.set(w.x, 0, w.z);
+      // face mostly toward the camera, a little toward the centre
+      entry.fig.lookAt(w.x * 0.35, 0, w.z * 0.35 + 14);
+      entry.fig.visible = w.visible;
+      setAsleep(entry.fig, w.asleep);
+    }
+  }, [players, storyteller, night, awakeIds]);
 
   // building labels: name + occupancy from the live room list
   useEffect(() => {
