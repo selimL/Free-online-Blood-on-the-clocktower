@@ -32,6 +32,8 @@ interface CircleProps {
   /** 3D mode: the plaza and tower are drawn by the 3D scene behind; seats sit on a squashed ellipse. */
   squash?: number;
   anchorRef?: React.Ref<HTMLDivElement>;
+  /** 3D free-walk mode: seats are hidden and clicks go to the 3D town. */
+  walking?: boolean;
   onSeatClick?: (id: string) => void;
   selected?: string[];
   sleepingView?: boolean;
@@ -39,7 +41,7 @@ interface CircleProps {
 
 export const seatRadiusPct = (n: number) => (n <= 6 ? 36 : 40);
 
-export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squash, anchorRef }: CircleProps) {
+export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squash, anchorRef, walking }: CircleProps) {
   const voice = useVoice();
   const deathFlash = useStore(s => s.deathFlash);
   const n = view.players.length;
@@ -99,7 +101,7 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
   };
 
   return (
-    <div ref={anchorRef} className={`town-circle ${night ? 'night' : ''} ${three ? 'three' : ''}`}>
+    <div ref={anchorRef} className={`town-circle ${night ? 'night' : ''} ${three ? 'three' : ''} ${walking ? 'walking' : ''}`}>
       {!three && <div className="plaza" aria-hidden="true" />}
       <div className="center">
         {!three && <Clocktower className="tower" />}

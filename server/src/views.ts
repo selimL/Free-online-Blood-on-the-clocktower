@@ -47,6 +47,7 @@ function publicPlayers(g: Game, viewer: Player | null, evil: EvilTeamView | null
     revealedGrimoire: g.phase === 'ended' && g.settings.houseRules.grimoireRevealAtEnd
       ? { alignment: p.alignment, shownCharacterId: p.shownCharacterId, reminders: [...p.reminders] } : null,
     evilMark: !!viewer && evilIds.has(p.id),
+    pos: night ? null : p.pos,
   }));
 }
 
@@ -104,7 +105,8 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Om
   return {
     id: g.id, code: g.code, name: g.name, visibility: g.visibility, phase: g.phase, stage: g.stage,
     day: g.day, night: g.night, paused: g.paused,
-    storyteller: { name: g.storyteller.name, avatar: g.storyteller.avatar, location: night && !isST ? null : g.storyteller.location, connected: g.storyteller.connected },
+    storyteller: { name: g.storyteller.name, avatar: g.storyteller.avatar, location: night && !isST ? null : g.storyteller.location, connected: g.storyteller.connected, pos: night ? null : g.storyteller.pos },
+    canWalk: g.canWalk(),
     players: publicPlayers(g, viewer, evil),
     rooms: g.rooms().map(r => night && !isST ? { ...r, occupants: [] } : r),
     timer: g.timer ? { label: g.timer.label, endsAt: g.timer.endsAt, remainingMs: g.timer.remainingMs, paused: g.paused } : null,

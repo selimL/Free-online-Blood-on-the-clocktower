@@ -35,6 +35,12 @@ export function GameScreen({ view }: { view: GameView }) {
   const art = roomArt(view);
   const show3D = use3D && !failed3D && !art && !asleep;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // where I just came from (to step out of that building's door in the 3D town)
+  const myLoc = view.self.isStoryteller ? view.storyteller.location : me?.location ?? null;
+  const lastLocRef = useRef<string | null>(myLoc);
+  const arrivedFromRef = useRef<string | null>(null);
+  if (myLoc !== lastLocRef.current) { if (myLoc === 'square') arrivedFromRef.current = lastLocRef.current; lastLocRef.current = myLoc; }
+  const walkMode = show3D && view.canWalk && !night && myLoc === 'square';
   const awakeIds = useMemo(() => view.self.isStoryteller
     ? view.self.grimoire.filter(g => g.awake).map(g => g.id)
     : view.self.awake ? [view.self.id] : [], [view.self]);
@@ -109,11 +115,13 @@ export function GameScreen({ view }: { view: GameView }) {
             <Suspense fallback={null}>
               <TownScene anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
                 night={night} rooms={view.rooms} players={view.players} storyteller={view.storyteller} awakeIds={awakeIds}
-                reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} />
+                reducedMotion={reducedMotion} onFail={() => setFailed3D(true)}
+                myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={walkMode} onFigureClick={onSeatClick}
+                onEnterRoom={room => { void act('move', { room }); }} arrivedFrom={arrivedFromRef.current} />
             </Suspense>
           )}
           <StageHeader view={view} />
-          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} anchorRef={circleRef} squash={show3D ? SQUASH : undefined} />}
+          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} anchorRef={circleRef} squash={show3D ? SQUASH : undefined} walking={walkMode} />}
           {showClickHint && <p className="hint">Click a player's avatar to nominate them.</p>}
           {!isST && night && view.self.awake && !view.self.isStoryteller && (
             <div className="night-choice parchment">

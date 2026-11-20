@@ -145,7 +145,8 @@ export class Lobby {
         if (d.avatar) g.storyteller.avatar = sanitizeAvatar(d.avatar);
         g.changed(); return;
       }
-      if (type === 'move') { g.moveST(String(d.room)); g.changed(); return; }
+      if (type === 'move') { g.moveST(String(d.room)); g.storyteller.pos = null; g.changed(); return; }
+      if (type === 'walk') return g.walk('st', d.x, d.z, d.ry);
       fail('Storytellers use the Grimoire.');
     }
     const p = g.player(id);
@@ -164,6 +165,7 @@ export class Lobby {
         return g.changed();
       }
       case 'claim': return g.setClaim(p, String(d.claim ?? ''));
+      case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'question': return g.answerQuestion(p, !!d.yes);
       case 'nominate': return g.nominate(p.id, String(d.nomineeId), !!d.exile);
       case 'vote': return g.setHand(p, !!d.raised);

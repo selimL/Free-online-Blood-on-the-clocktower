@@ -165,6 +165,7 @@ export interface PublicPlayer {
   travellerCharacter: string | null; // travellers are public
   revealedCharacter: string | null;  // end of game / reveal-on-death
   evilMark: boolean;         // only ever true in views of (believed) evil players
+  pos: WalkPos | null;       // free-walk position in the 3D town (null = at seat)
   revealedGrimoire: { alignment: Alignment; shownCharacterId: string | null; reminders: string[] } | null; // end of game, house rule
 }
 
@@ -219,7 +220,8 @@ export interface SelfView {
   revealedTo: { fromId: string; characterId: string }[];
 }
 
-export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean }
+export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
+export interface WalkPos { x: number; z: number; ry: number }
 
 export interface GameView {
   id: string;
@@ -248,6 +250,7 @@ export interface GameView {
   winner: Alignment | null;
   voice: { enabled: boolean; region: string | null };
   speakerId: string | null;   // current accuser/accused / speed-round speaker
+  canWalk: boolean;           // free walking allowed in the 3D Town Square right now
   tableRules: string[];
   voteHistory: VoteRecord[] | null;
   self: SelfView | StorytellerSelf;

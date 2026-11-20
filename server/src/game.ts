@@ -47,6 +47,7 @@ export interface Player {
   rtt: Record<string, number>;
   whispersToday: number;            // side-room entries today (house rule)
   butlerMaster: string | null;      // Butler's latest night choice
+  pos: WalkPos | null;              // free-walk position in the 3D Town Square (null = at their seat)
 }
 
 export interface Nomination {
@@ -64,7 +65,10 @@ export interface AbilityEvent {
 
 interface Timer { label: string; endsAt: number | null; remainingMs: number | null; onExpire: (() => void) | null }
 
-export interface Storyteller { id: 'st'; token: string; name: string; avatar: Avatar; connected: boolean; location: string | null }
+export interface Storyteller { id: 'st'; token: string; name: string; avatar: Avatar; connected: boolean; location: string | null; pos: WalkPos | null }
+/** Cosmetic position in the 3D Town Square. Never affects rules: rooms are still decided by `location`. */
+export interface WalkPos { x: number; z: number; ry: number }
+export const WALK_RADIUS = 22;
 
 export type Emit = (audience: string[] | 'all', event: string, payload: unknown) => void;
 
@@ -141,7 +145,7 @@ export class Game {
   constructor(opts: { name: string; visibility: 'public' | 'private'; stName: string; stAvatar?: Partial<Avatar> }) {
     this.name = cleanText(opts.name, 40) || 'Untitled Game';
     this.visibility = opts.visibility === 'private' ? 'private' : 'public';
-    this.storyteller = { id: 'st', token: nanoid(24), name: cleanText(opts.stName, 24) || 'Storyteller', avatar: sanitizeAvatar(opts.stAvatar), connected: false, location: SQUARE };
+    this.storyteller = { id: 'st', token: nanoid(24), name: cleanText(opts.stName, 24) || 'Storyteller', avatar: sanitizeAvatar(opts.stAvatar), connected: false, location: SQUARE, pos: null };
   }
 
   // ------------------------------------------------------------ helpers
@@ -212,6 +216,7 @@ export class Game {
   /** Move a player with the 3-second join delay and an alert to the room's current occupants. */
   movePlayer(p: Player, roomId: string | null, opts: { silentAlert?: boolean } = {}) {
     if (p.location === roomId) return;
+    p.pos = null;
     p.location = roomId;
     if (roomId === null) { p.joining = false; return; }
     p.joining = true;
@@ -228,6 +233,7 @@ export class Game {
     return ids;
   }
   forceAllTo(roomId: string, alertText: string) {
+    this.clearPositions();
     const settled = new Set(this.occupantsHearing(roomId));
     for (const p of this.players) {
       if (p.location === roomId) continue;
@@ -243,6 +249,36 @@ export class Game {
       const audience = this.occupantsHearing(roomId).filter(id => id !== 'st');
       if (audience.length) this.emit(audience, 'alert', { text: `The Storyteller is joining…`, kind: 'join' });
     }
+  }
+
+  // ------------------------------------------------------------ walking (cosmetic 3D positions)
+  /** Free walking is allowed only when seats don't matter: before the game and during open day time. */
+  canWalk(): boolean {
+    if (this.paused || this.ability || this.phase === 'night' || this.phase === 'ended' || this.phase === 'dealt') return false;
+    if (this.phase === 'day') {
+      if (!['discussion', 'private', 'closed'].includes(this.stage ?? '')) return false;
+      if (this.nomination && !this.nomination.done) return false;
+    }
+    return true;
+  }
+  walk(id: string, x: unknown, z: unknown, ry: unknown) {
+    const who = id === 'st' ? this.storyteller : this.maybePlayer(id);
+    if (!who || who.location !== SQUARE || !this.canWalk()) return;
+    let nx = Number(x), nz = Number(z);
+    const nry = Number(ry);
+    if (!Number.isFinite(nx) || !Number.isFinite(nz) || !Number.isFinite(nry)) return;
+    const d = Math.hypot(nx, nz);
+    if (d > WALK_RADIUS) { nx = (nx / d) * WALK_RADIUS; nz = (nz / d) * WALK_RADIUS; }
+    who.pos = { x: Math.round(nx * 100) / 100, z: Math.round(nz * 100) / 100, ry: Math.round(nry * 100) / 100 };
+    // lightweight broadcast instead of a full state update
+    this.emit('all', 'pos', { id, ...who.pos });
+  }
+  /** Everyone back to their seat (e.g. nominations open, an ability, night). */
+  clearPositions() {
+    let any = !!this.storyteller.pos;
+    this.storyteller.pos = null;
+    for (const p of this.players) { if (p.pos) any = true; p.pos = null; }
+    if (any) this.emit('all', 'pos-reset', {});
   }
 
   // ------------------------------------------------------------ voice / chat permissions (server-enforced)
@@ -287,7 +323,7 @@ export class Game {
       characterId: null, shownCharacterId: null, alignment: 'good', shownAlignment: null, alive: true, ghostVoteUsed: false,
       claim: '', location: null, joining: false, joinReadyAt: 0, muted: false, reminders: [], notes: [], nightChoice: [],
       awake: false, wantsQuestion: null, abilityUses: {}, claimUses: {}, traveller, fakeEvilTeam: [],
-      privateMsToday: 0, revealed: false, revealedTo: [], rtt: {}, whispersToday: 0, butlerMaster: null,
+      privateMsToday: 0, revealed: false, revealedTo: [], rtt: {}, whispersToday: 0, butlerMaster: null, pos: null,
     };
     this.players.push(p);
     if (this.phase !== 'night') this.movePlayer(p, SQUARE);
@@ -553,6 +589,7 @@ export class Game {
     this.speakerId = null;
     this.ability = null; this.pendingAbility = null;
     this.focusId = null;
+    this.clearPositions();
     for (const p of this.players) { p.awake = false; p.nightChoice = []; this.movePlayer(p, null); }
     this.moveST(null);
     this.addLog(`Night ${this.night} begins.`);
@@ -643,12 +680,14 @@ export class Game {
         this.setTimer('Private conversations', t.privateRooms, () => this.setStage('nominations'));
         break;
       case 'nominations':
+        this.clearPositions();
         if (!this.settings.houseRules.privateRoomsDuringNominations) this.forceAllTo(SQUARE, 'Everyone is gathering for nominations…');
         this.nomination = this.nomination?.done ? this.nomination : null;
         this.announce('Nominations are open.', 'phase');
         this.setTimer('Nominations', t.nominations, () => this.setStage('closed'));
         break;
       case 'speedround': {
+        this.clearPositions();
         if (!this.settings.houseRules.speedRound) fail('The speed-round house rule is off.');
         this.forceAllTo(SQUARE, 'Everyone is gathering for the speed round…');
         this.speedQueue = this.players.filter(p => p.alive).map(p => p.id);
@@ -734,6 +773,7 @@ export class Game {
     if (!n || n.done) fail('No nomination to vote on.');
     if (this.stage === 'voting') return;
     this.stage = 'voting';
+    this.clearPositions();
     this.speakerId = null;
     this.clearTimer();
     n!.voteIndex = 0;

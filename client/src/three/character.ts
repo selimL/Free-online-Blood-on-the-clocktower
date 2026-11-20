@@ -99,13 +99,20 @@ export function buildCharacter(a: Avatar, opts: CharacterOptions = {}): THREE.Gr
   const holdsLantern = a.accessory === 5;
 
   // ---------------- legs
+  const legs: THREE.Group[] = [];
   if (legsVisible) {
     for (const s of [-1, 1]) {
-      limb(body, M.trousers, [s * 0.105, 1.12, 0], [s * 0.098, 0.62, 0.01], 0.105, 0.08);
-      limb(body, M.trousers, [s * 0.098, 0.62, 0.01], [s * 0.092, 0.14, 0], 0.078, 0.058);
-      // boot: shaft + foot
-      limb(body, M.boots, [s * 0.09, 0.36, 0], [s * 0.09, 0.08, 0.01], 0.064, 0.06, false);
-      ball(body, M.boots, [s * 0.09, 0.06, 0.06], [0.065, 0.06, 0.12]);
+      // each leg pivots at the hip so it can swing while walking
+      const hx = s * 0.105, hy = 1.12;
+      const leg = new THREE.Group();
+      leg.position.set(hx, hy, 0);
+      body.add(leg);
+      legs.push(leg);
+      const rel = (x: number, y: number, z: number): V3 => [x - hx, y - hy, z];
+      limb(leg, M.trousers, rel(s * 0.105, 1.12, 0), rel(s * 0.098, 0.62, 0.01), 0.105, 0.08);
+      limb(leg, M.trousers, rel(s * 0.098, 0.62, 0.01), rel(s * 0.092, 0.14, 0), 0.078, 0.058);
+      limb(leg, M.boots, rel(s * 0.09, 0.36, 0), rel(s * 0.09, 0.08, 0.01), 0.064, 0.06, false);
+      ball(leg, M.boots, rel(s * 0.09, 0.06, 0.06), [0.065, 0.06, 0.12]);
     }
     ball(body, M.trousers, [0, 1.12, 0], [0.2, 0.1, 0.15]); // seat/hips
   }
@@ -303,14 +310,22 @@ export function buildCharacter(a: Avatar, opts: CharacterOptions = {}): THREE.Gr
   const phase = Math.random() * Math.PI * 2;
   root.userData.pose = pose;
   root.userData.head = head;
+  // walking: TownScene sets userData.walk (0..1) and advances userData.stride
+  root.userData.walk = 0;
+  root.userData.stride = 0;
   root.userData.animate = (t: number) => {
+    const w: number = root.userData.walk ?? 0;
+    const stride: number = root.userData.stride ?? 0;
+    const swing = Math.sin(stride);
+    legs.forEach((leg, i) => { leg.rotation.x = (i ? -1 : 1) * swing * 0.55 * w; });
+    if (!opts.ghost) pose.position.y = pose.rotation.x === 0 ? Math.abs(Math.cos(stride)) * 0.035 * w : pose.position.y;
     const b = Math.sin(t * 1.5 + phase);
     body.scale.y = 1 + b * 0.008;
     head.position.y = 2.26 + b * 0.008;
     head.rotation.y = Math.sin(t * 0.37 + phase) * 0.22;
     head.rotation.x = Math.sin(t * 0.23 + phase) * 0.05;
-    arms[0].rotation.x = Math.sin(t * 0.9 + phase) * 0.04;
-    arms[1].rotation.x = holdsLantern ? 0 : -Math.sin(t * 0.9 + phase) * 0.04;
+    arms[0].rotation.x = Math.sin(t * 0.9 + phase) * 0.04 - swing * 0.45 * w;
+    arms[1].rotation.x = holdsLantern ? 0 : -Math.sin(t * 0.9 + phase) * 0.04 + swing * 0.45 * w;
     if (opts.ghost) pose.position.y = 0.15 + Math.sin(t * 1.1 + phase) * 0.08;
   };
   return root;

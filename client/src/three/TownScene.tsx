@@ -2,15 +2,17 @@
 // eight buildings) rendered with Three.js BEHIND the existing HTML seat circle.
 // It is decoration only: all game interaction still goes through the 2D UI on top.
 // The camera is aligned so the 3D plaza sits exactly under the seat circle.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { socket, pushAlert } from '../net';
+import { useVoice } from '../voice';
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { RoomView } from '../../../shared/types';
 import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
 
 import { PITCH, SEAT_R, ST_Z, CHAR_SCALE } from './support';
-import { buildCharacter, disposeCharacter, setAsleep } from './character';
-import type { PublicPlayer, Avatar } from '../../../shared/types';
+import { buildCharacter, disposeCharacter, setAsleep, CHARACTER_HEIGHT } from './character';
+import type { PublicPlayer, Avatar, WalkPos } from '../../../shared/types';
 const PLAZA_R = 10.2;
 const BUILDING_R = 14.2;
 const FOV = 32;
@@ -22,11 +24,34 @@ interface Props {
   night: boolean;
   rooms: RoomView[];
   players: PublicPlayer[];
-  storyteller: { avatar: Avatar; location: string | null };
+  storyteller: { name: string; avatar: Avatar; location: string | null; pos: WalkPos | null };
   /** Ids shown standing at night (woken players); everyone else lies asleep. */
   awakeIds: string[];
   reducedMotion: boolean;
   onFail: () => void;
+  /** 'st' or the viewer's player id. */
+  myId: string;
+  /** Free walking is allowed right now and the viewer is in the Town Square. */
+  canWalk: boolean;
+  onFigureClick: (id: string) => void;
+  onEnterRoom: (roomId: string) => void;
+  /** The location the viewer just came from (to step out of that building's door). */
+  arrivedFrom: string | null;
+}
+
+const WALK_SPEED = 5.2;      // world units per second
+const WORLD_R = 21;          // how far from the centre anyone may walk
+const DOOR_OFFSET = 3.4;     // door trigger point, from a building's centre toward the plaza
+const DOOR_REACH = 1.1;      // how close you must be to a door to enter
+
+interface Motion { x: number; z: number; ry: number; walk: number; stride: number; appearedAt: number; wasVisible: boolean }
+interface FigEntry { fig: THREE.Group; key: string; label: CSS2DObject; labelEl: HTMLDivElement; ring: THREE.Mesh }
+
+function setLabel(el: HTMLDivElement, p: { name: string; alive?: boolean; muted?: boolean; joining?: boolean; evilMark?: boolean; claim?: string }, mine: boolean) {
+  el.className = `fig-label ${mine ? 'mine' : ''} ${p.alive === false ? 'dead' : ''}`;
+  el.textContent = `${p.alive === false ? '👻 ' : ''}${p.name}${p.muted ? ' 🔇' : ''}${p.joining ? ' ⏳' : ''}`;
+  if (p.evilMark) { const e = document.createElement('span'); e.className = 'evil-mark'; e.textContent = ' (evil)'; el.appendChild(e); }
+  if (p.claim) { const c = document.createElement('div'); c.className = 'fig-claim'; c.textContent = `“${p.claim}”`; el.appendChild(c); }
 }
 
 // ------------------------------------------------------------ procedural textures
@@ -373,9 +398,20 @@ function buildTree(k: Kit, x: number, z: number, parent: THREE.Object3D) {
 }
 
 // ------------------------------------------------------------ the component
-export default function TownScene({ anchor, container, seatRadiusFrac, night, rooms, players, storyteller, awakeIds, reducedMotion, onFail }: Props) {
+export default function TownScene(props: Props) {
+  const { anchor, container, seatRadiusFrac, night, rooms, players, storyteller, awakeIds, reducedMotion, onFail, myId, canWalk, arrivedFrom } = props;
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const figuresRef = useRef(new Map<string, { fig: THREE.Group; key: string }>());
+  const figuresRef = useRef(new Map<string, FigEntry>());
+  const voice = useVoice();
+  const [doorPrompt, setDoorPrompt] = useState<{ i: number; name: string } | null>(null);
+  // everything the render loop needs, refreshed on every React render
+  const live = useRef({ props, speaking: voice.speaking as string[] });
+  live.current = { props, speaking: voice.speaking };
+  const motionRef = useRef(new Map<string, Motion>());
+  const remotePos = useRef(new Map<string, WalkPos>());
+  const ctrl = useRef({ keys: new Set<string>(), target: null as { x: number; z: number } | null, door: null as number | null, lastSent: 0, sentStill: true, nearDoor: null as number | null });
+  const worldRef = useRef<{ doors: { x: number; z: number }[]; colliders: { x: number; z: number; r: number }[]; buildings: THREE.Object3D[] } | null>(null);
+  const enterRef = useRef<(i: number) => void>(() => {});
   const mountRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ night, rooms, reducedMotion });
   stateRef.current = { night, rooms, reducedMotion };
@@ -428,6 +464,9 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     // buildings around the plaza, doors facing the centre
     const builders = [buildTavern, buildChapel, buildGraveyard, buildLibrary, buildApothecary, buildBlacksmith, buildStairTower, buildMill];
     const labelObjs: CSS2DObject[] = [];
+    const doors: { x: number; z: number }[] = [];
+    const colliders: { x: number; z: number; r: number }[] = [{ x: 0, z: 0, r: 1.9 }];
+    const buildingGroups: THREE.Object3D[] = [];
     builders.forEach((build, i) => {
       // index 0 at the back (top of the screen), then alternating left/right toward the front
       const a = Math.PI + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 4) + (i === 0 ? 0 : 0);
@@ -436,6 +475,10 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
       grp.position.set(Math.sin(a) * BUILDING_R, 0, Math.cos(a) * BUILDING_R);
       grp.lookAt(0, 0, 0);
       scene.add(grp);
+      grp.userData.buildingIndex = i;
+      buildingGroups.push(grp);
+      doors.push({ x: Math.sin(a) * (BUILDING_R - DOOR_OFFSET), z: Math.cos(a) * (BUILDING_R - DOOR_OFFSET) });
+      colliders.push({ x: grp.position.x, z: grp.position.z, r: 3.0 });
       // path from plaza to the door
       const path = mesh(new THREE.PlaneGeometry(2, BUILDING_R - PLAZA_R - 2), new THREE.MeshStandardMaterial({ map: cobbleTexture(), roughness: 1, color: '#9a94a8' }), Math.sin(a) * (PLAZA_R + (BUILDING_R - PLAZA_R) / 2 - 1), 0.01, Math.cos(a) * (PLAZA_R + (BUILDING_R - PLAZA_R) / 2 - 1), scene);
       path.rotation.x = -Math.PI / 2; path.rotation.z = a;
@@ -447,11 +490,19 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
       const el = document.createElement('div');
       el.className = 'town3d-label';
       labelsRef.current[i] = el;
+      // building labels are clickable too: walk to that door and go in
+      el.addEventListener('click', () => {
+        const P = live.current.props;
+        if (!(P.canWalk && !P.night)) return;
+        ctrl.current.target = { ...doors[i] }; ctrl.current.door = i;
+      });
       const obj = new CSS2DObject(el);
       obj.position.set(grp.position.x, 8.2, grp.position.z);
       scene.add(obj);
       labelObjs.push(obj);
     });
+
+    worldRef.current = { doors, colliders, buildings: buildingGroups };
 
     // trees between buildings
     for (let i = 0; i < 16; i++) {
@@ -515,6 +566,147 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     if (container.current) ro.observe(container.current);
     if (anchor.current) ro.observe(anchor.current);
 
+    // ---------------- walking: local control, remote interpolation, doors, clicks
+    const raycaster = new THREE.Raycaster();
+    const seatOf = (id: string) => {
+      if (id === 'st') return { x: 0, z: ST_Z };
+      const ps = live.current.props.players;
+      const i = ps.findIndex(p => p.id === id), n = ps.length;
+      const a = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
+      return { x: Math.cos(a) * SEAT_R, z: Math.sin(a) * SEAT_R };
+    };
+    const pushOut = (x: number, z: number) => {
+      for (const c of colliders) {
+        const dx = x - c.x, dz = z - c.z, d = Math.hypot(dx, dz);
+        if (d < c.r && d > 1e-4) { x = c.x + (dx / d) * c.r; z = c.z + (dz / d) * c.r; }
+      }
+      const d = Math.hypot(x, z);
+      if (d > WORLD_R) { x = (x / d) * WORLD_R; z = (z / d) * WORLD_R; }
+      return { x, z };
+    };
+    const sendWalk = (m: Motion, force = false) => {
+      const now = performance.now(), c = ctrl.current;
+      if (!force && now - c.lastSent < 110) return;
+      c.lastSent = now;
+      socket.emit('action', { type: 'walk', x: m.x, z: m.z, ry: m.ry });
+    };
+    const enter = (i: number) => {
+      const P = live.current.props;
+      const roomId = `r${i}`;
+      if (!P.rooms.some(r => r.id === roomId)) { pushAlert(`${ROOM_NAMES[i]} is closed in this game.`, 'error'); return; }
+      P.onEnterRoom(roomId);
+    };
+    enterRef.current = enter;
+    const stepFigures = (dt: number, t: number, reduced: boolean) => {
+      dt = Math.min(dt, 0.25); // keep walking speed right even on slow machines
+      const P = live.current.props, c = ctrl.current;
+      const walkMode = P.canWalk && !P.night;
+      for (const [id, { fig, label, ring }] of figuresRef.current) {
+        const seat = seatOf(id);
+        let m = motionRef.current.get(id);
+        if (!m) { m = { x: seat.x, z: seat.z, ry: 0, walk: 0, stride: 0, appearedAt: t, wasVisible: false }; motionRef.current.set(id, m); }
+        const visible = fig.visible;
+        if (visible && !m.wasVisible) m.appearedAt = t;
+        m.wasVisible = visible;
+        const asleep = !!fig.userData.asleep;
+        let moved = 0;
+        if (id === P.myId && walkMode && visible) {
+          // -- my own figure: keyboard or click-to-walk, with collisions
+          let vx = 0, vz = 0;
+          const k = c.keys;
+          if (k.has('w') || k.has('arrowup')) vz -= 1;
+          if (k.has('s') || k.has('arrowdown')) vz += 1;
+          if (k.has('a') || k.has('arrowleft')) vx -= 1;
+          if (k.has('d') || k.has('arrowright')) vx += 1;
+          let speed = WALK_SPEED;
+          if (vx || vz) { c.target = null; c.door = null; const l = Math.hypot(vx, vz); vx /= l; vz /= l; }
+          else if (c.target) {
+            const dx = c.target.x - m.x, dz = c.target.z - m.z, d = Math.hypot(dx, dz);
+            if (d < 0.12) c.target = null; else { vx = dx / d; vz = dz / d; speed = Math.min(WALK_SPEED, d / dt); }
+          }
+          if (vx || vz) {
+            const np = pushOut(m.x + vx * speed * dt, m.z + vz * speed * dt);
+            moved = Math.hypot(np.x - m.x, np.z - m.z);
+            m.x = np.x; m.z = np.z; m.ry = Math.atan2(vx, vz);
+            if (c.target && moved < 0.003) c.target = null; // walked into a wall
+            sendWalk(m); c.sentStill = false;
+          } else if (!c.sentStill) { sendWalk(m, true); c.sentStill = true; }
+          let near: number | null = null;
+          doors.forEach((d, i) => { if (Math.hypot(d.x - m!.x, d.z - m!.z) < DOOR_REACH) near = i; });
+          if (c.door !== null && near === c.door && !c.target) { const i = c.door; c.door = null; enter(i); }
+          if (near !== c.nearDoor) { c.nearDoor = near; setDoorPrompt(near === null ? null : { i: near, name: ROOM_NAMES[near] }); }
+        } else {
+          // -- everyone else (and me while seats matter): live position, else the seat
+          const rp = !P.night && !asleep ? remotePos.current.get(id) : undefined;
+          const tx = rp ? rp.x : seat.x, tz = rp ? rp.z : seat.z;
+          const dx = tx - m.x, dz = tz - m.z, d = Math.hypot(dx, dz);
+          if (asleep || t - m.appearedAt < 0.6 || d > 12) { m.x = tx; m.z = tz; }
+          else if (d > 0.02) {
+            const step = Math.min(d, WALK_SPEED * 1.15 * dt);
+            m.x += (dx / d) * step; m.z += (dz / d) * step; moved = step;
+            if (d > 0.1) m.ry = Math.atan2(dx, dz);
+          }
+          if (moved < 0.001) {
+            if (rp) m.ry = rp.ry;
+            else { const fx = m.x * 0.35, fz = m.z * 0.35 + 14; m.ry = Math.atan2(fx - m.x, fz - m.z); }
+          }
+          if (id === P.myId && c.nearDoor !== null) { c.nearDoor = null; setDoorPrompt(null); }
+        }
+        fig.position.set(m.x, 0, m.z);
+        fig.rotation.y = m.ry;
+        m.walk += ((moved > 0.001 ? 1 : 0) - m.walk) * Math.min(1, dt * 10);
+        m.stride += dt * 9 * m.walk;
+        fig.userData.walk = m.walk;
+        fig.userData.stride = m.stride;
+        if (visible && !reduced) fig.userData.animate?.(t);
+        label.visible = visible && walkMode; // in seat mode the HTML seats show names
+        const speaking = live.current.speaking.includes(id);
+        ring.visible = visible && (speaking || (id === P.myId && walkMode));
+        (ring.material as THREE.MeshBasicMaterial).opacity = speaking ? 0.95 : 0.35;
+      }
+    };
+    // clicks: a figure (Storyteller tools), a building (walk to its door and go in), or the ground (walk there)
+    const el = renderer.domElement;
+    const onPointer = (e: PointerEvent) => {
+      const P = live.current.props;
+      const rect = el.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1), camera);
+      const figs = [...figuresRef.current.values()].filter(f => f.fig.visible).map(f => f.fig);
+      const hitFig = raycaster.intersectObjects(figs, true)[0];
+      if (hitFig) {
+        let o: THREE.Object3D | null = hitFig.object;
+        while (o && o.userData.figureId === undefined) o = o.parent;
+        if (o && o.userData.figureId !== P.myId) { P.onFigureClick(o.userData.figureId); return; }
+      }
+      if (!(P.canWalk && !P.night)) return;
+      const hitB = raycaster.intersectObjects(buildingGroups, true)[0];
+      if (hitB) {
+        let o: THREE.Object3D | null = hitB.object;
+        while (o && o.userData.buildingIndex === undefined) o = o.parent;
+        if (o) { const i = o.userData.buildingIndex as number; ctrl.current.target = { ...doors[i] }; ctrl.current.door = i; return; }
+      }
+      const pt = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt)) {
+        // a click just in front of a door counts as choosing that building
+        const i = doors.findIndex(d => Math.hypot(d.x - pt.x, d.z - pt.z) < 2);
+        if (i >= 0) { ctrl.current.target = { ...doors[i] }; ctrl.current.door = i; return; }
+        ctrl.current.target = { x: pt.x, z: pt.z }; ctrl.current.door = null;
+      }
+    };
+    el.addEventListener('pointerdown', onPointer);
+    const typing = (e: KeyboardEvent) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? '');
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e) || !(live.current.props.canWalk && !live.current.props.night)) return;
+      const key = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) { ctrl.current.keys.add(key); e.preventDefault(); }
+      if (key === 'e' && ctrl.current.nearDoor !== null) enter(ctrl.current.nearDoor);
+    };
+    const onKeyUp = (e: KeyboardEvent) => ctrl.current.keys.delete(e.key.toLowerCase());
+    const onBlur = () => ctrl.current.keys.clear();
+    addEventListener('keydown', onKeyDown);
+    addEventListener('keyup', onKeyUp);
+    addEventListener('blur', onBlur);
+
     // day/night blend
     let nightMix = stateRef.current.night ? 1 : 0;
     const dayFog = new THREE.Color('#1c2034'), nightFog = new THREE.Color('#07070f');
@@ -523,6 +715,7 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     const clock = new THREE.Clock();
     let raf = 0;
     let last = -1;
+    let prevT = 0;
     const frame = () => {
       raf = requestAnimationFrame(frame);
       const t = clock.getElapsedTime();
@@ -542,7 +735,8 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
       } else {
         anims[0]?.(t); // the clocktower keeps real time even with reduced motion
       }
-      for (const { fig } of figuresRef.current.values()) if (fig.visible && !s.reducedMotion) fig.userData.animate?.(t);
+      stepFigures(t - prevT, t, s.reducedMotion);
+      prevT = t;
       placeCamera();
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);
@@ -552,6 +746,11 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      el.removeEventListener('pointerdown', onPointer);
+      removeEventListener('keydown', onKeyDown);
+      removeEventListener('keyup', onKeyUp);
+      removeEventListener('blur', onBlur);
+      worldRef.current = null;
       for (const { fig } of figuresRef.current.values()) disposeCharacter(fig);
       figuresRef.current.clear();
       sceneRef.current = null;
@@ -568,48 +767,74 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // townsfolk figures standing at their seats (feet exactly under the HTML seat positions)
+  // townsfolk figures: built/updated here, moved every frame by stepFigures
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     const figs = figuresRef.current;
-    const want = new Map<string, { avatar: Avatar; ghost: boolean; x: number; z: number; visible: boolean; asleep: boolean }>();
-    const n = players.length;
-    players.forEach((p, i) => {
-      const a = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
-      const inSquare = night || p.location === 'square';
-      want.set(p.id, {
-        avatar: p.avatar, ghost: !p.alive, x: Math.cos(a) * SEAT_R, z: Math.sin(a) * SEAT_R,
-        visible: inSquare, asleep: night && !awakeIds.includes(p.id),
-      });
-    });
-    want.set('st', { avatar: storyteller.avatar, ghost: false, x: 0, z: ST_Z, visible: !night && storyteller.location === 'square', asleep: false });
-    for (const [id, entry] of figs) {
-      if (!want.has(id)) { scene.remove(entry.fig); disposeCharacter(entry.fig); figs.delete(id); }
+    const removeFig = (e: FigEntry) => { scene.remove(e.fig); e.labelEl.remove(); disposeCharacter(e.fig); };
+    const want = new Map<string, { avatar: Avatar; ghost: boolean; visible: boolean; asleep: boolean; label: Parameters<typeof setLabel>[1] }>();
+    for (const p of players) {
+      want.set(p.id, { avatar: p.avatar, ghost: !p.alive, visible: night || p.location === 'square', asleep: night && !awakeIds.includes(p.id), label: p });
+      if (p.id !== myId) { if (p.pos) remotePos.current.set(p.id, p.pos); else remotePos.current.delete(p.id); }
     }
+    want.set('st', { avatar: storyteller.avatar, ghost: false, visible: !night && storyteller.location === 'square', asleep: false, label: { name: `${storyteller.name} · Storyteller` } });
+    if (myId !== 'st') { if (storyteller.pos) remotePos.current.set('st', storyteller.pos); else remotePos.current.delete('st'); }
+    for (const [id, entry] of figs) if (!want.has(id)) { removeFig(entry); figs.delete(id); motionRef.current.delete(id); }
     for (const [id, w] of want) {
       const key = JSON.stringify(w.avatar) + (w.ghost ? ':ghost' : '');
       let entry = figs.get(id);
       if (!entry || entry.key !== key) {
-        if (entry) { scene.remove(entry.fig); disposeCharacter(entry.fig); }
+        if (entry) removeFig(entry);
         const fig = buildCharacter(w.avatar, { ghost: w.ghost });
         fig.scale.setScalar(CHAR_SCALE);
+        fig.userData.figureId = id;
         // a faint self-glow so figures stay readable on the dark plaza
         if (!w.ghost) fig.traverse(o => {
           const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
           if (mat?.isMeshStandardMaterial && mat.emissiveIntensity <= 1) { mat.emissive = mat.color.clone(); mat.emissiveIntensity = 0.22; }
         });
+        const labelEl = document.createElement('div');
+        const label = new CSS2DObject(labelEl);
+        label.position.set(0, CHARACTER_HEIGHT + 0.35, 0);
+        fig.add(label);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.52, 32), new THREE.MeshBasicMaterial({ color: '#ffcf6b', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.03;
+        ring.visible = false;
+        fig.add(ring);
         scene.add(fig);
-        entry = { fig, key };
+        entry = { fig, key, label, labelEl, ring };
         figs.set(id, entry);
       }
-      entry.fig.position.set(w.x, 0, w.z);
-      // face mostly toward the camera, a little toward the centre
-      entry.fig.lookAt(w.x * 0.35, 0, w.z * 0.35 + 14);
       entry.fig.visible = w.visible;
+      entry.fig.userData.asleep = w.asleep;
       setAsleep(entry.fig, w.asleep);
+      setLabel(entry.labelEl, w.label, id === myId);
     }
-  }, [players, storyteller, night, awakeIds]);
+  }, [players, storyteller, night, awakeIds, myId]);
+
+  // positions from other players arrive as small events, not full state updates
+  useEffect(() => {
+    const onPos = (d: { id: string } & WalkPos) => { if (d.id !== live.current.props.myId) remotePos.current.set(d.id, { x: d.x, z: d.z, ry: d.ry }); };
+    const onReset = () => { remotePos.current.clear(); ctrl.current.target = null; ctrl.current.door = null; };
+    socket.on('pos', onPos);
+    socket.on('pos-reset', onReset);
+    return () => { socket.off('pos', onPos); socket.off('pos-reset', onReset); };
+  }, []);
+
+  // coming back out of a building: step out of its door
+  useEffect(() => {
+    const m = arrivedFrom?.match(/^r(\d+)$/);
+    const w = worldRef.current;
+    if (!m || !w || !canWalk) return;
+    const d = w.doors[Number(m[1])];
+    if (!d) return;
+    const out = { x: d.x * 0.92, z: d.z * 0.92 };
+    motionRef.current.set(myId, { x: out.x, z: out.z, ry: Math.atan2(-d.x, -d.z), walk: 0, stride: 0, appearedAt: -1, wasVisible: true });
+    socket.emit('action', { type: 'walk', x: out.x, z: out.z, ry: Math.atan2(-d.x, -d.z) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivedFrom]);
 
   // building labels: name + occupancy from the live room list
   useEffect(() => {
@@ -624,5 +849,17 @@ export default function TownScene({ anchor, container, seatRadiusFrac, night, ro
     });
   }, [rooms]);
 
-  return <div ref={mountRef} className="town3d" aria-hidden="true" />;
+  const walkMode = canWalk && !night;
+  return (
+    <>
+      <div ref={mountRef} className={`town3d ${walkMode ? 'interactive' : ''}`} aria-hidden="true" />
+      {walkMode && (
+        <div className="walk-help" aria-live="polite">
+          {doorPrompt
+            ? <><b>{doorPrompt.name}</b> <button className="btn small primary" onClick={() => enterRef.current(doorPrompt.i)}>Enter (E)</button></>
+            : <span>Click the ground to walk · WASD / arrow keys · click a building to go inside</span>}
+        </div>
+      )}
+    </>
+  );
 }
