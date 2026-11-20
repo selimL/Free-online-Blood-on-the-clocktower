@@ -369,5 +369,32 @@ textarea.notes { width: 100%; min-height: 180px; }
   background: linear-gradient(90deg, rgba(7, 6, 11, .92) 0%, rgba(7, 6, 11, .55) 55%, rgba(7, 6, 11, .2) 100%), url(/art/lobby.jpg) center / cover no-repeat, var(--night-1);
 }
 .plaza { background-image: radial-gradient(circle, transparent 35%, rgba(7, 6, 11, .55) 100%), url(/art/town-square.jpg); background-size: cover; background-position: center; }
-.stage.has-room-art { background: linear-gradient(180deg, rgba(7, 6, 11, .55), rgba(7, 6, 11, .85)), var(--room-art) center / cover no-repeat, var(--night-1); }
+/* Side rooms: the painted image tilts and shifts with the pointer, with flickering candlelight, for a sense of depth. */
+.stage.has-room-art { background: var(--night-1); perspective: 1200px; }
+.room-art-layer, .room-art-light { position: absolute; inset: 0; pointer-events: none; }
+.room-art-layer {
+  inset: -6%;
+  background: linear-gradient(180deg, rgba(7, 6, 11, .45), rgba(7, 6, 11, .8)), var(--room-art) center / cover no-repeat;
+  transform: translate3d(calc(var(--px, 0) * -28px), calc(var(--py, 0) * -18px), 0)
+    rotateY(calc(var(--px, 0) * 4deg)) rotateX(calc(var(--py, 0) * -3deg)) scale(1.06);
+  transition: transform .25s ease-out;
+  animation: dolly 26s ease-in-out infinite alternate;
+}
+.room-art-light { background: radial-gradient(ellipse at 50% 85%, rgba(255, 180, 90, .16), transparent 60%); animation: candle 3.2s infinite alternate; mix-blend-mode: screen; }
+@keyframes dolly { from { background-size: auto, cover; } to { background-size: auto, 112%; } }
+@keyframes candle { 0% { opacity: .65; } 35% { opacity: 1; } 60% { opacity: .75; } 100% { opacity: .95; } }
 .stage.has-room-art .plaza { opacity: .35; }
+.stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d) { position: relative; z-index: 1; }
+
+/* 3D Town Square (three.js) behind the seat circle */
+.town3d { position: absolute; top: 0; left: 0; right: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.town3d canvas { display: block; }
+.town3d-labels { position: absolute; top: 0; left: 0; pointer-events: none; }
+.town3d-label {
+  font: 600 .78rem 'Cinzel', serif; color: var(--parchment); white-space: nowrap; padding: .1rem .45rem; border-radius: 999px;
+  background: rgba(13, 10, 18, .78); border: 1px solid #6a5e74; box-shadow: 0 2px 8px rgba(0, 0, 0, .6);
+}
+.town3d-label.closed { opacity: .5; font-style: italic; }
+.stage.has-3d .town-circle { width: min(100%, 560px); max-height: none; margin-top: 4.5rem; }
+.town-circle.three .center { top: 58%; }
+.town-circle.three .st-mini { margin-top: 1rem; }

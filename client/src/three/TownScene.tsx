@@ -1,0 +1,573 @@
+// 3D Town Square: a procedurally built low-poly gothic town (plaza, clocktower and
+// eight buildings) rendered with Three.js BEHIND the existing HTML seat circle.
+// It is decoration only: all game interaction still goes through the 2D UI on top.
+// The camera is aligned so the 3D plaza sits exactly under the seat circle.
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import type { RoomView } from '../../../shared/types';
+import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
+
+import { PITCH } from './support';
+const SEAT_R = 8.6;          // world radius on which the HTML seats sit
+const PLAZA_R = 10.2;
+const BUILDING_R = 14.2;
+const FOV = 32;
+
+interface Props {
+  anchor: React.RefObject<HTMLElement | null>;    // the seat-circle element
+  container: React.RefObject<HTMLElement | null>; // the scrolling stage element
+  seatRadiusFrac: number;                         // seat radius as a fraction of the circle's width
+  night: boolean;
+  rooms: RoomView[];
+  reducedMotion: boolean;
+  onFail: () => void;
+}
+
+// ------------------------------------------------------------ procedural textures
+function canvasTexture(size: number, draw: (g: CanvasRenderingContext2D, s: number) => void, repeat = 1) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d')!, size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeat, repeat);
+  t.anisotropy = 4;
+  return t;
+}
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+
+const cobbleTexture = () => canvasTexture(1024, (g, s) => {
+  g.fillStyle = '#1b1820'; g.fillRect(0, 0, s, s);
+  const cx = s / 2;
+  for (let r = 18; r < s / 2; r += 26) {
+    const n = Math.max(6, Math.floor((2 * Math.PI * r) / 30));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + r * 0.013;
+      const l = rand(34, 52);
+      g.save();
+      g.translate(cx + Math.cos(a) * r, cx + Math.sin(a) * r);
+      g.rotate(a + Math.PI / 2);
+      g.fillStyle = `hsl(${rand(225, 260)}, 8%, ${l}%)`;
+      g.beginPath();
+      g.roundRect(-12, -10, rand(20, 26), rand(16, 20), 6);
+      g.fill();
+      g.restore();
+    }
+  }
+  // worn centre + moonlit sheen
+  const grd = g.createRadialGradient(cx, cx, 0, cx, cx, cx);
+  grd.addColorStop(0, 'rgba(220,230,255,0.10)'); grd.addColorStop(1, 'rgba(0,0,0,0.35)');
+  g.fillStyle = grd; g.fillRect(0, 0, s, s);
+});
+
+const stoneTexture = (hue = 250, light = 32) => canvasTexture(256, (g, s) => {
+  g.fillStyle = `hsl(${hue}, 6%, ${light - 12}%)`; g.fillRect(0, 0, s, s);
+  const rowH = 32;
+  for (let y = 0; y < s; y += rowH) {
+    const off = (y / rowH) % 2 ? 0 : 32;
+    for (let x = -off; x < s; x += 64) {
+      g.fillStyle = `hsl(${hue + rand(-8, 8)}, 7%, ${light + rand(-6, 6)}%)`;
+      g.fillRect(x + 2, y + 2, 60, rowH - 4);
+    }
+  }
+}, 1);
+
+const plasterTexture = () => canvasTexture(256, (g, s) => {
+  g.fillStyle = '#8f8068'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${rand(60, 140)},${rand(50, 110)},${rand(40, 80)},0.15)`; g.fillRect(rand(0, s), rand(0, s), 3, 3); }
+});
+
+const roofTexture = (color: string) => canvasTexture(256, (g, s) => {
+  g.fillStyle = '#111'; g.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 20) for (let x = (y / 20) % 2 ? -12 : 0; x < s; x += 24) {
+    g.fillStyle = color; g.globalAlpha = rand(0.7, 1);
+    g.beginPath(); g.roundRect(x + 1, y + 1, 22, 18, [0, 0, 8, 8]); g.fill();
+  }
+  g.globalAlpha = 1;
+}, 2);
+
+const clockFaceTexture = () => canvasTexture(256, (g, s) => {
+  const c = s / 2;
+  g.fillStyle = '#e9dcc0'; g.beginPath(); g.arc(c, c, c - 4, 0, Math.PI * 2); g.fill();
+  g.lineWidth = 10; g.strokeStyle = '#5a1212'; g.stroke();
+  g.fillStyle = '#2a1a12';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    g.save(); g.translate(c + Math.cos(a) * (c - 26), c + Math.sin(a) * (c - 26)); g.rotate(a);
+    g.fillRect(-4, -12, 8, 24); g.restore();
+  }
+});
+
+const bloodTexture = () => canvasTexture(128, (g, s) => {
+  g.clearRect(0, 0, s, s);
+  for (let i = 0; i < 6; i++) {
+    const x = rand(10, s - 10), w = rand(3, 8), h = rand(s * 0.3, s);
+    g.fillStyle = `rgba(${rand(110, 150)}, 10, 16, ${rand(0.7, 0.95)})`;
+    g.fillRect(x, 0, w, h);
+    g.beginPath(); g.arc(x + w / 2, h, w * 0.9, 0, Math.PI * 2); g.fill();
+  }
+});
+
+// ------------------------------------------------------------ building kit
+interface Kit {
+  stone: THREE.Material; darkStone: THREE.Material; plaster: THREE.Material; timber: THREE.Material;
+  slate: THREE.Material; redRoof: THREE.Material; wood: THREE.Material; iron: THREE.Material;
+  warmGlow: THREE.Material; greenGlow: THREE.Material; redGlass: THREE.Material; blueGlass: THREE.Material;
+  fireGlow: THREE.Material; bone: THREE.Material; leaf: THREE.Material;
+}
+function makeKit(): Kit {
+  const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, ...o });
+  return {
+    stone: std({ map: stoneTexture(250, 34) }),
+    darkStone: std({ map: stoneTexture(260, 24) }),
+    plaster: std({ map: plasterTexture() }),
+    timber: std({ color: '#2b1c12' }),
+    slate: std({ map: roofTexture('#2e3140') }),
+    redRoof: std({ map: roofTexture('#5a2420') }),
+    wood: std({ color: '#3d2a1a' }),
+    iron: std({ color: '#1a1a1f', metalness: 0.6, roughness: 0.5 }),
+    warmGlow: std({ color: '#ffb347', emissive: '#ff9a2e', emissiveIntensity: 1.6 }),
+    greenGlow: std({ color: '#7dff9a', emissive: '#39d95c', emissiveIntensity: 1.8 }),
+    redGlass: std({ color: '#c0262c', emissive: '#a3121a', emissiveIntensity: 1.4 }),
+    blueGlass: std({ color: '#3a5fd0', emissive: '#2a46b0', emissiveIntensity: 1.2 }),
+    fireGlow: std({ color: '#ff7a1a', emissive: '#ff5a00', emissiveIntensity: 2.2 }),
+    bone: std({ color: '#7d7a80' }),
+    leaf: std({ color: '#1c2a20' }),
+  };
+}
+
+function mesh(geo: THREE.BufferGeometry, mat: THREE.Material, x = 0, y = 0, z = 0, parent?: THREE.Object3D) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  parent?.add(m);
+  return m;
+}
+const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+/** Triangular prism roof spanning width w (along x) and depth d (along z), ridge height h. */
+function gable(w: number, h: number, d: number, mat: THREE.Material, y: number, parent: THREE.Object3D) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-w / 2 - 0.3, 0); shape.lineTo(w / 2 + 0.3, 0); shape.lineTo(0, h); shape.lineTo(-w / 2 - 0.3, 0);
+  const g = new THREE.ExtrudeGeometry(shape, { depth: d + 0.6, bevelEnabled: false });
+  g.translate(0, 0, -(d + 0.6) / 2);
+  return mesh(g, mat, 0, y, 0, parent);
+}
+function pyramid(r: number, h: number, mat: THREE.Material, y: number, parent: THREE.Object3D, sides = 4) {
+  const m = mesh(new THREE.ConeGeometry(r, h, sides), mat, 0, y + h / 2, 0, parent);
+  if (sides === 4) m.rotation.y = Math.PI / 4;
+  return m;
+}
+/** Arched door on the +z face. */
+function door(k: Kit, w: number, h: number, z: number, parent: THREE.Object3D, y = 0) {
+  mesh(box(w, h, 0.25), k.wood, 0, y + h / 2, z, parent);
+  const arch = mesh(new THREE.CylinderGeometry(w / 2, w / 2, 0.25, 16, 1, false, 0, Math.PI), k.wood, 0, y + h, z, parent);
+  arch.rotation.x = Math.PI / 2; arch.rotation.y = Math.PI / 2;
+  mesh(box(w + 0.3, 0.15, 0.4), k.darkStone, 0, y + 0.07, z + 0.1, parent); // step
+}
+function windowAt(mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D, w = 0.6, h = 0.9) {
+  mesh(box(w, h, 0.1), mat, x, y, z, parent);
+  mesh(box(w + 0.15, 0.1, 0.18), new THREE.MeshStandardMaterial({ color: '#1d140d' }), x, y - h / 2, z + 0.02, parent);
+}
+function lantern(k: Kit, x: number, y: number, z: number, parent: THREE.Object3D) {
+  mesh(box(0.25, 0.35, 0.25), k.warmGlow, x, y, z, parent);
+  mesh(new THREE.ConeGeometry(0.22, 0.2, 4), k.iron, x, y + 0.27, z, parent);
+}
+
+type Anim = (t: number) => void;
+
+function buildTavern(k: Kit, anims: Anim[]) {
+  const g = new THREE.Group();
+  mesh(box(5.4, 2.8, 4.2), k.stone, 0, 1.4, 0, g);
+  mesh(box(5.9, 2.6, 4.7), k.plaster, 0, 4.1, 0, g);
+  for (const x of [-2.9, -1, 1, 2.9]) mesh(box(0.18, 2.6, 0.1), k.timber, x, 4.1, 2.4, g);
+  mesh(box(5.9, 0.18, 0.12), k.timber, 0, 2.85, 2.4, g);
+  mesh(box(5.9, 0.18, 0.12), k.timber, 0, 5.35, 2.4, g);
+  gable(5.9, 2.4, 4.7, k.redRoof, 5.4, g);
+  mesh(box(0.7, 2.4, 0.7), k.darkStone, 1.8, 7, -1, g);
+  door(k, 1.1, 1.6, 2.15, g);
+  for (const x of [-1.8, 1.8]) windowAt(k.warmGlow, x, 1.5, 2.16, g, 0.9, 0.8);
+  for (const x of [-1.9, 0, 1.9]) windowAt(k.warmGlow, x, 4.2, 2.41, g, 0.6, 0.9);
+  // hanging sign
+  mesh(box(0.08, 0.08, 1.1), k.iron, -1.4, 2.9, 2.75, g);
+  const sign = mesh(box(0.8, 0.6, 0.06), k.wood, -1.4, 2.45, 3.2, g);
+  anims.push(t => { sign.rotation.x = Math.sin(t * 1.3) * 0.08; });
+  return g;
+}
+
+function buildChapel(k: Kit) {
+  const g = new THREE.Group();
+  mesh(box(4.2, 4, 6.5), k.stone, 0, 2, -0.5, g);
+  gable(4.2, 3, 6.5, k.slate, 4, g).position.z = -0.5;
+  mesh(box(2.2, 7.5, 2.2), k.stone, 0, 3.75, 2.6, g);
+  pyramid(1.7, 4.2, k.slate, 7.5, g).position.z = 2.6;
+  mesh(new THREE.CircleGeometry(0.55, 20), k.redGlass, 0, 5.6, 3.72, g);
+  for (const z of [-2.5, -0.5, 1.2]) for (const x of [-2.12, 2.12]) {
+    const w = mesh(box(0.1, 1.6, 0.55), z === -0.5 ? k.redGlass : k.blueGlass, x, 2.3, z, g);
+    w.scale.set(1, 1, 1);
+  }
+  door(k, 1, 1.9, 3.72, g);
+  return g;
+}
+
+function buildGraveyard(k: Kit) {
+  const g = new THREE.Group();
+  // mausoleum
+  mesh(box(3, 2.6, 2.6), k.darkStone, 0, 1.3, -1.6, g);
+  gable(3, 1.2, 2.6, k.darkStone, 2.6, g).position.z = -1.6;
+  for (const x of [-1.15, 1.15]) mesh(new THREE.CylinderGeometry(0.16, 0.16, 2.6, 8), k.bone, x, 1.3, -0.15, g);
+  door(k, 0.9, 1.4, -0.28, g);
+  // tombstones
+  for (let i = 0; i < 9; i++) {
+    const x = rand(-3, 3), z = rand(0.6, 3.4);
+    const t = mesh(box(0.55, rand(0.6, 1.1), 0.18), k.bone, x, 0.4, z, g);
+    t.rotation.set(rand(-0.12, 0.12), rand(-0.3, 0.3), rand(-0.12, 0.12));
+  }
+  // iron fence
+  for (let i = -8; i <= 8; i++) mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.2, 4), k.iron, i * 0.4, 0.6, 4, g);
+  mesh(box(6.6, 0.06, 0.06), k.iron, 0, 1.05, 4, g);
+  // dead tree
+  const trunk = mesh(new THREE.CylinderGeometry(0.12, 0.25, 3.6, 6), k.timber, 2.6, 1.8, -0.3, g);
+  trunk.rotation.z = 0.12;
+  for (let i = 0; i < 4; i++) {
+    const b = mesh(new THREE.CylinderGeometry(0.03, 0.08, 1.6, 4), k.timber, 2.6 + rand(-0.6, 0.6), rand(2.8, 3.6), -0.3 + rand(-0.4, 0.4), g);
+    b.rotation.set(rand(-0.9, 0.9), 0, rand(-1.1, 1.1));
+  }
+  lantern(k, -1.6, 1.4, 4.1, g);
+  return g;
+}
+
+function buildLibrary(k: Kit) {
+  const g = new THREE.Group();
+  mesh(box(7, 4.4, 4.6), k.stone, 0, 2.2, -0.3, g);
+  mesh(box(7.4, 0.4, 5), k.darkStone, 0, 4.6, -0.3, g);
+  gable(7.4, 1.6, 2.2, k.stone, 4.8, g).position.z = 1.4;
+  mesh(box(7.4, 1.5, 3), k.slate, 0, 5.4, -1, g);
+  for (const x of [-2.6, -1.3, 1.3, 2.6]) mesh(new THREE.CylinderGeometry(0.22, 0.25, 4.4, 10), k.bone, x, 2.2, 2.35, g);
+  mesh(box(7.4, 0.3, 1.2), k.darkStone, 0, 0.15, 2.4, g);
+  for (const x of [-2.6, -1.3, 1.3, 2.6]) windowAt(k.warmGlow, x, 2.4, 1.96, g, 0.55, 1.6);
+  door(k, 1.2, 2, 1.96, g, 0.3);
+  return g;
+}
+
+function buildApothecary(k: Kit, anims: Anim[]) {
+  const g = new THREE.Group();
+  mesh(box(3.2, 3, 3.4), k.stone, 0, 1.5, 0, g);
+  const upper = mesh(box(3.5, 2.8, 3.7), k.plaster, 0, 4.4, 0, g);
+  upper.rotation.z = 0.035;
+  gable(3.5, 2.8, 3.7, k.slate, 5.8, g).rotation.z = 0.05;
+  windowAt(k.greenGlow, -0.8, 1.5, 1.71, g, 1.0, 1.0);
+  for (let i = 0; i < 4; i++) mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.28, 6), i % 2 ? k.greenGlow : k.redGlass, -1.15 + i * 0.24, 1.0, 1.8, g);
+  windowAt(k.warmGlow, 0, 4.4, 1.86, g, 0.7, 0.9);
+  door(k, 0.8, 1.6, 1.71, g);
+  g.children.at(-3)!.position.x = 0.8; g.children.at(-2)!.position.x = 0.8; g.children.at(-1)!.position.x = 0.8;
+  const sign = mesh(box(0.6, 0.5, 0.06), k.wood, 1.4, 3.1, 2.4, g);
+  anims.push(t => { sign.rotation.x = Math.sin(t * 1.1 + 2) * 0.1; });
+  return g;
+}
+
+function buildBlacksmith(k: Kit, anims: Anim[]) {
+  const g = new THREE.Group();
+  mesh(box(5, 2.8, 4), k.darkStone, 0, 1.4, -0.6, g);
+  const roof = mesh(box(5.8, 0.25, 5), k.redRoof, 0, 3.1, 0, g);
+  roof.rotation.x = -0.18;
+  for (const x of [-2.6, 2.6]) mesh(box(0.25, 2.8, 0.25), k.timber, x, 1.4, 2.2, g);
+  const chimney = mesh(box(1.2, 5.5, 1.2), k.stone, -1.6, 2.75, -1.6, g);
+  void chimney;
+  mesh(box(1.4, 1, 1.2), k.darkStone, -1.6, 0.7, 0.4, g);
+  const coals = mesh(box(1, 0.2, 0.9), k.fireGlow, -1.6, 1.25, 0.4, g);
+  // anvil
+  mesh(box(0.5, 0.6, 0.4), k.iron, 1, 0.3, 1.3, g);
+  mesh(box(1.1, 0.3, 0.45), k.iron, 1, 0.75, 1.3, g);
+  const glow = new THREE.PointLight('#ff6a1a', 6, 9, 1.6);
+  glow.position.set(-1.6, 1.8, 1.2);
+  g.add(glow);
+  anims.push(t => {
+    const f = 0.75 + Math.sin(t * 9) * 0.12 + Math.sin(t * 23) * 0.08;
+    glow.intensity = 6 * f;
+    (coals.material as THREE.MeshStandardMaterial).emissiveIntensity = 2.2 * f;
+  });
+  return g;
+}
+
+function buildStairTower(k: Kit) {
+  const g = new THREE.Group();
+  mesh(new THREE.CylinderGeometry(1.6, 1.8, 8, 14), k.stone, 0, 4, 0, g);
+  mesh(new THREE.ConeGeometry(2.1, 3, 14), k.slate, 0, 9.5, 0, g);
+  for (let i = 0; i < 26; i++) {
+    const a = i * 0.42, y = 0.3 + i * 0.28;
+    const step = mesh(box(1, 0.14, 0.45), k.darkStone, Math.sin(a) * 2.15, y, Math.cos(a) * 2.15, g);
+    step.rotation.y = a;
+  }
+  for (let i = 0; i < 4; i++) windowAt(k.warmGlow, 0, 2.2 + i * 1.6, 1.7, g, 0.18, 0.6);
+  door(k, 0.9, 1.6, 1.72, g);
+  return g;
+}
+
+function buildMill(k: Kit, anims: Anim[]) {
+  const g = new THREE.Group();
+  mesh(new THREE.CylinderGeometry(1.7, 2.5, 6.5, 8), k.plaster, 0, 3.25, 0, g);
+  mesh(new THREE.ConeGeometry(2.2, 2.4, 8), k.redRoof, 0, 7.7, 0, g);
+  const hub = new THREE.Group();
+  hub.position.set(0, 6.4, 2.1);
+  g.add(hub);
+  mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.5, 8), k.timber, 0, 0, 0, hub).rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) {
+    const arm = new THREE.Group();
+    arm.rotation.z = (i * Math.PI) / 2;
+    hub.add(arm);
+    mesh(box(0.15, 4.2, 0.1), k.timber, 0, 2.1, 0.1, arm);
+    mesh(box(0.9, 3.4, 0.04), k.bone, 0.5, 2.4, 0.12, arm);
+  }
+  windowAt(k.warmGlow, 0, 3.6, 2.12, g, 0.5, 0.7);
+  door(k, 1, 1.7, 2.35, g);
+  anims.push(t => { hub.rotation.z = -t * 0.25; });
+  return g;
+}
+
+function buildClocktower(k: Kit, anims: Anim[]) {
+  const g = new THREE.Group();
+  mesh(new THREE.CylinderGeometry(2.6, 2.9, 0.6, 8), k.darkStone, 0, 0.3, 0, g);
+  mesh(box(3, 10, 3), k.stone, 0, 5.6, 0, g);
+  mesh(box(3.4, 0.4, 3.4), k.darkStone, 0, 10.8, 0, g);
+  for (const [x, z] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) mesh(box(0.4, 2.4, 0.4), k.stone, x, 12.2, z, g);
+  mesh(box(3.4, 0.4, 3.4), k.darkStone, 0, 13.5, 0, g);
+  pyramid(2.6, 4.2, k.slate, 13.7, g);
+  const faceMat = new THREE.MeshStandardMaterial({ map: clockFaceTexture(), emissive: '#e9dcc0', emissiveIntensity: 0.35 });
+  const bloodMat = new THREE.MeshStandardMaterial({ map: bloodTexture(), transparent: true, depthWrite: false });
+  const hands: { h: THREE.Object3D; m: THREE.Object3D }[] = [];
+  for (let i = 0; i < 4; i++) {
+    const side = new THREE.Group();
+    side.rotation.y = (i * Math.PI) / 2;
+    g.add(side);
+    mesh(new THREE.CircleGeometry(1.15, 32), faceMat, 0, 8.6, 1.52, side);
+    const drip = mesh(new THREE.PlaneGeometry(2, 3.2), bloodMat, 0, 6.2, 1.515, side);
+    drip.castShadow = false;
+    const h = new THREE.Group(); h.position.set(0, 8.6, 1.56); side.add(h);
+    mesh(box(0.12, 0.6, 0.03), k.iron, 0, 0.3, 0, h);
+    const m = new THREE.Group(); m.position.set(0, 8.6, 1.58); side.add(m);
+    mesh(box(0.08, 0.9, 0.03), k.iron, 0, 0.45, 0, m);
+    hands.push({ h, m });
+  }
+  door(k, 1.1, 1.8, 1.52, g, 0.6);
+  anims.push(() => {
+    const d = new Date();
+    const min = d.getMinutes() + d.getSeconds() / 60;
+    const hr = (d.getHours() % 12) + min / 60;
+    for (const { h, m } of hands) { h.rotation.z = -(hr / 12) * Math.PI * 2; m.rotation.z = -(min / 60) * Math.PI * 2; }
+  });
+  return g;
+}
+
+function buildTree(k: Kit, x: number, z: number, parent: THREE.Object3D) {
+  const s = rand(0.8, 1.3);
+  mesh(new THREE.CylinderGeometry(0.15 * s, 0.25 * s, 1.6 * s, 6), k.timber, x, 0.8 * s, z, parent);
+  mesh(new THREE.ConeGeometry(1.3 * s, 3.2 * s, 7), k.leaf, x, 2.9 * s, z, parent);
+  mesh(new THREE.ConeGeometry(1 * s, 2.4 * s, 7), k.leaf, x, 4 * s, z, parent);
+}
+
+// ------------------------------------------------------------ the component
+export default function TownScene({ anchor, container, seatRadiusFrac, night, rooms, reducedMotion, onFail }: Props) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef({ night, rooms, reducedMotion });
+  stateRef.current = { night, rooms, reducedMotion };
+  const labelsRef = useRef<HTMLDivElement[]>([]);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+    } catch {
+      onFail();
+      return;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.45;
+    mount.appendChild(renderer.domElement);
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.domElement.className = 'town3d-labels';
+    mount.appendChild(labelRenderer.domElement);
+
+    const scene = new THREE.Scene();
+    const sky = new THREE.Color('#0b0c1a');
+    scene.background = sky;
+    scene.fog = new THREE.FogExp2('#12131f', 0.009);
+    const camera = new THREE.PerspectiveCamera(FOV, 1, 1, 400);
+
+    const k = makeKit();
+    const anims: Anim[] = [];
+
+    // ground + plaza
+    const ground = mesh(new THREE.CircleGeometry(90, 48), new THREE.MeshStandardMaterial({ color: '#141a16', roughness: 1 }), 0, -0.02, 0, scene);
+    ground.rotation.x = -Math.PI / 2;
+    const plaza = mesh(new THREE.CircleGeometry(PLAZA_R, 64), new THREE.MeshStandardMaterial({ map: cobbleTexture(), roughness: 0.85 }), 0, 0, 0, scene);
+    plaza.rotation.x = -Math.PI / 2;
+    const rim = mesh(new THREE.TorusGeometry(PLAZA_R, 0.25, 6, 64), k.darkStone, 0, 0.05, 0, scene);
+    rim.rotation.x = -Math.PI / 2;
+
+    // centre clocktower
+    const tower = buildClocktower(k, anims);
+    tower.scale.setScalar(0.5);
+    scene.add(tower);
+
+    // buildings around the plaza, doors facing the centre
+    const builders = [buildTavern, buildChapel, buildGraveyard, buildLibrary, buildApothecary, buildBlacksmith, buildStairTower, buildMill];
+    const labelObjs: CSS2DObject[] = [];
+    builders.forEach((build, i) => {
+      // index 0 at the back (top of the screen), then alternating left/right toward the front
+      const a = Math.PI + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 4) + (i === 0 ? 0 : 0);
+      const grp = build(k, anims);
+      grp.scale.setScalar(0.72);
+      grp.position.set(Math.sin(a) * BUILDING_R, 0, Math.cos(a) * BUILDING_R);
+      grp.lookAt(0, 0, 0);
+      scene.add(grp);
+      // path from plaza to the door
+      const path = mesh(new THREE.PlaneGeometry(2, BUILDING_R - PLAZA_R - 2), new THREE.MeshStandardMaterial({ map: cobbleTexture(), roughness: 1, color: '#9a94a8' }), Math.sin(a) * (PLAZA_R + (BUILDING_R - PLAZA_R) / 2 - 1), 0.01, Math.cos(a) * (PLAZA_R + (BUILDING_R - PLAZA_R) / 2 - 1), scene);
+      path.rotation.x = -Math.PI / 2; path.rotation.z = a;
+      // lamp post at the path entrance
+      const lx = Math.sin(a + 0.2) * (PLAZA_R + 0.8), lz = Math.cos(a + 0.2) * (PLAZA_R + 0.8);
+      mesh(new THREE.CylinderGeometry(0.07, 0.1, 3, 6), k.iron, lx, 1.5, lz, scene);
+      lantern(k, lx, 3.1, lz, scene);
+      // floating label
+      const el = document.createElement('div');
+      el.className = 'town3d-label';
+      labelsRef.current[i] = el;
+      const obj = new CSS2DObject(el);
+      obj.position.set(grp.position.x, 8.2, grp.position.z);
+      scene.add(obj);
+      labelObjs.push(obj);
+    });
+
+    // trees between buildings
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + Math.PI / 8;
+      buildTree(k, Math.sin(a) * rand(19, 25), Math.cos(a) * rand(19, 25), scene);
+    }
+
+    // moon, stars
+    const moon = mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicMaterial({ color: '#e8eefc' }), -40, 55, -95, scene);
+    moon.castShadow = false;
+    const starGeo = new THREE.BufferGeometry();
+    const stars = new Float32Array(900);
+    for (let i = 0; i < 300; i++) {
+      const a = rand(0, Math.PI * 2), e = rand(0.15, 1.2), r = 160;
+      stars.set([Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r], i * 3);
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.8, sizeAttenuation: true, fog: false })));
+
+    // lights
+    const hemi = new THREE.HemisphereLight('#6f7fb8', '#1a1410', 0.9);
+    scene.add(hemi);
+    const moonLight = new THREE.DirectionalLight('#b9c6ff', 1.6);
+    moonLight.position.set(-30, 45, -25);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.set(1024, 1024);
+    Object.assign(moonLight.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 140 });
+    scene.add(moonLight);
+    const warm = new THREE.PointLight('#ffb347', 30, 26, 1.6);
+    warm.position.set(0, 4, 0);
+    scene.add(warm);
+
+    // sizing + camera alignment with the HTML seat circle
+    let yaw = 0;
+    const align = () => {
+      const stage = container.current, a = anchor.current;
+      if (!stage || !a) return;
+      const W = stage.clientWidth;
+      const H = Math.max(stage.clientHeight, stage.scrollHeight);
+      mount.style.height = `${H}px`;
+      renderer.setSize(W, H, false);
+      renderer.domElement.style.width = `${W}px`;
+      renderer.domElement.style.height = `${H}px`;
+      labelRenderer.setSize(W, H);
+      camera.aspect = W / H;
+      const cx = a.offsetLeft + a.offsetWidth / 2;
+      const cy = a.offsetTop + a.offsetHeight / 2;
+      const seatPx = Math.max(60, seatRadiusFrac * a.offsetWidth);
+      const dist = (SEAT_R * H) / (2 * seatPx * Math.tan(THREE.MathUtils.degToRad(FOV / 2)));
+      camera.userData.dist = dist;
+      camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
+      camera.updateProjectionMatrix();
+    };
+    const placeCamera = () => {
+      const d = camera.userData.dist ?? 60;
+      camera.position.set(Math.sin(yaw) * d * Math.cos(PITCH), d * Math.sin(PITCH), Math.cos(yaw) * d * Math.cos(PITCH));
+      camera.lookAt(0, 0, 0);
+    };
+    align();
+    const ro = new ResizeObserver(align);
+    if (container.current) ro.observe(container.current);
+    if (anchor.current) ro.observe(anchor.current);
+
+    // day/night blend
+    let nightMix = stateRef.current.night ? 1 : 0;
+    const dayFog = new THREE.Color('#1c2034'), nightFog = new THREE.Color('#07070f');
+    const daySky = new THREE.Color('#1a1d33'), nightSky = new THREE.Color('#05050c');
+
+    const clock = new THREE.Clock();
+    let raf = 0;
+    let last = -1;
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      const t = clock.getElapsedTime();
+      if (t - last < 1 / 30) return; // ~30 fps is plenty for an ambient backdrop and saves battery
+      last = t;
+      const s = stateRef.current;
+      nightMix += ((s.night ? 1 : 0) - nightMix) * 0.03;
+      hemi.intensity = THREE.MathUtils.lerp(1.7, 0.6, nightMix);
+      moonLight.intensity = THREE.MathUtils.lerp(1.8, 1.1, nightMix);
+      warm.intensity = THREE.MathUtils.lerp(22, 38, nightMix) * (0.92 + Math.sin(t * 7) * 0.05);
+      (scene.fog as THREE.FogExp2).color.copy(dayFog).lerp(nightFog, nightMix);
+      sky.copy(daySky).lerp(nightSky, nightMix);
+      k.warmGlow instanceof THREE.MeshStandardMaterial && (k.warmGlow.emissiveIntensity = THREE.MathUtils.lerp(1.2, 2.2, nightMix));
+      if (!s.reducedMotion) {
+        yaw = Math.sin(t * 0.045) * 0.22;
+        for (const fn of anims) fn(t);
+      } else {
+        anims[0]?.(t); // the clocktower keeps real time even with reduced motion
+      }
+      placeCamera();
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+    };
+    frame();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      scene.traverse(o => {
+        const m = o as THREE.Mesh;
+        m.geometry?.dispose?.();
+        const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+        for (const mat of mats) { (mat as THREE.MeshStandardMaterial).map?.dispose(); mat.dispose(); }
+      });
+      renderer.dispose();
+      mount.innerHTML = '';
+      labelsRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // building labels: name + occupancy from the live room list
+  useEffect(() => {
+    const privateRooms = rooms.filter(r => r.kind === 'private');
+    labelsRef.current.forEach((el, i) => {
+      if (!el) return;
+      const r = privateRooms[i];
+      const name = ROOM_NAMES[i].replace(/^The /, '');
+      const count = r ? r.occupants.filter(o => o !== 'st').length : 0;
+      el.className = `town3d-label ${r ? '' : 'closed'}`;
+      el.textContent = r ? `${ROOM_ICONS[i]} ${name} · ${count}/${r.capacity}` : `${name} · closed`;
+    });
+  }, [rooms]);
+
+  return <div ref={mountRef} className="town3d" aria-hidden="true" />;
+}

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameView } from '../../../shared/types';
 import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
 import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
-import { TownCircle, TownMap } from './TownSquare';
+import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
+import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
+
+const TownScene = lazy(() => import('../three/TownScene'));
 import {
   CharacterModal, CharactersInPlay, Confirm, InfoPopup, QuestionPrompt, TimerBadge, VoteBar,
   TransitionOverlay, NightSleep, Modal, CharacterToken,
@@ -23,6 +26,21 @@ export function GameScreen({ view }: { view: GameView }) {
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
   const asleep = night && !isST && !view.self.isStoryteller && !view.self.awake;
+  const [use3D, setUse3D] = useState(initial3D);
+  const [failed3D, setFailed3D] = useState(false);
+  const stageRef = useRef<HTMLElement>(null);
+  const circleRef = useRef<HTMLDivElement>(null);
+  const art = roomArt(view);
+  const show3D = use3D && !failed3D && !art && !asleep;
+  const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const toggle3D = () => { const on = !use3D; setUse3D(on); setFailed3D(false); save3D(on); };
+  // Side-room art: tilt/shift with the pointer for a sense of depth.
+  const onStageMove = (e: React.MouseEvent<HTMLElement>) => {
+    if (!art || reducedMotion) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--px', String((e.clientX - r.left) / r.width - 0.5));
+    e.currentTarget.style.setProperty('--py', String((e.clientY - r.top) / r.height - 0.5));
+  };
 
   useEffect(() => { if (!isST) void probeRegions(); }, [isST]);
   useEffect(() => { if (!night) setNightSel([]); }, [night]);
@@ -77,12 +95,19 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} />
+      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
-        <section className={`stage ${roomArt(view) ? 'has-room-art' : ''}`} style={roomArt(view) ? { ['--room-art' as string]: `url(/art/${roomArt(view)}.jpg)` } : undefined}>
+        <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
+          {art && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
+          {show3D && (
+            <Suspense fallback={null}>
+              <TownScene anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
+                night={night} rooms={view.rooms} reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} />
+            </Suspense>
+          )}
           <StageHeader view={view} />
-          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} />}
+          {asleep ? <NightSleep view={view} /> : <TownCircle view={view} onSeatClick={onSeatClick} selected={selected} anchorRef={circleRef} squash={show3D ? SQUASH : undefined} />}
           {showClickHint && <p className="hint">Click a player's avatar to nominate them.</p>}
           {!isST && night && view.self.awake && !view.self.isStoryteller && (
             <div className="night-choice parchment">
@@ -135,7 +160,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openList, openInvite, openRules }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void }) {
+function TopBar({ view, openList, openInvite, openRules, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -163,6 +188,7 @@ function TopBar({ view, openList, openInvite, openRules }: { view: GameView; ope
             {voice.connectedRoom ? (voice.canPublish ? 'voice live' : 'connecting…') : 'no voice'}
           </span>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
+        {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
         <button className="btn small ghost" onClick={leave}>Leave</button>

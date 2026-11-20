@@ -28,12 +28,17 @@ const ROLE_LABEL = { demon: 'Demon', minion: 'Minion', evil: 'evil' } as const;
 
 interface CircleProps {
   view: GameView;
+  /** 3D mode: the plaza and tower are drawn by the 3D scene behind; seats sit on a squashed ellipse. */
+  squash?: number;
+  anchorRef?: React.Ref<HTMLDivElement>;
   onSeatClick?: (id: string) => void;
   selected?: string[];
   sleepingView?: boolean;
 }
 
-export function TownCircle({ view, onSeatClick, selected = [], sleepingView }: CircleProps) {
+export const seatRadiusPct = (n: number) => (n <= 6 ? 36 : 40);
+
+export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squash, anchorRef }: CircleProps) {
   const voice = useVoice();
   const deathFlash = useStore(s => s.deathFlash);
   const n = view.players.length;
@@ -43,12 +48,13 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView }: C
   const nom = view.nomination;
   const evilRoles = !isST && view.self.evilTeam ? Object.fromEntries(view.self.evilTeam.members.map(m => [m.id, m.role])) : {};
   const grim = isST ? Object.fromEntries(view.self.grimoire.map(g => [g.id, g])) : {};
-  const radius = n <= 6 ? 36 : 40;
+  const radius = seatRadiusPct(n);
+  const three = squash !== undefined;
 
   const seat = (p: PublicPlayer, i: number) => {
     const angle = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
     const x = 50 + Math.cos(angle) * radius;
-    const y = 50 + Math.sin(angle) * radius;
+    const y = 50 + Math.sin(angle) * radius * (squash ?? 1);
     const away = !night && myLoc && p.location !== myLoc;
     const room = view.rooms.find(r => r.id === p.location);
     const hand = nom && !nom.done ? nom.hands[p.id] : undefined;
@@ -92,10 +98,10 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView }: C
   };
 
   return (
-    <div className={`town-circle ${night ? 'night' : ''}`}>
-      <div className="plaza" aria-hidden="true" />
+    <div ref={anchorRef} className={`town-circle ${night ? 'night' : ''} ${three ? 'three' : ''}`}>
+      {!three && <div className="plaza" aria-hidden="true" />}
       <div className="center">
-        <Clocktower className="tower" />
+        {!three && <Clocktower className="tower" />}
         {(!night || isST) && view.storyteller.location === (myLoc ?? 'square') && (
           <div className="st-mini" title="Storyteller">
             <Avatar avatar={view.storyteller.avatar} size={44} speaking={voice.speaking.includes('st')} video={voice.video.st} />
