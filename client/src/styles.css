@@ -364,10 +364,6 @@ textarea.notes { width: 100%; min-height: 180px; }
 .script-import textarea { width: 100%; min-height: 90px; }
 
 /* ---------- generated background art (client/public/art); a missing file just drops that layer ---------- */
-.lobby-hero {
-  padding: 2.2rem 1.6rem; border-radius: var(--radius); min-height: 260px; border: 1px solid #3b3343;
-  background: linear-gradient(90deg, rgba(7, 6, 11, .92) 0%, rgba(7, 6, 11, .55) 55%, rgba(7, 6, 11, .2) 100%), url(/art/lobby.jpg) center / cover no-repeat, var(--night-1);
-}
 .plaza { background-image: radial-gradient(circle, transparent 35%, rgba(7, 6, 11, .55) 100%), url(/art/town-square.jpg); background-size: cover; background-position: center; }
 /* Side rooms: the painted image tilts and shifts with the pointer, with flickering candlelight, for a sense of depth. */
 .stage.has-room-art { background: var(--night-1); perspective: 1200px; }
@@ -400,3 +396,42 @@ textarea.notes { width: 100%; min-height: 180px; }
 .town-circle.three .center { top: 58%; }
 .town-circle.three .st-mini { margin-top: 1rem; }
 .town-circle:not(.three) .center .tower { display: none; } /* the plaza painting has its own clocktower */
+
+/* ---------- starting screen: full-page painting, frosted-glass panels ---------- */
+.lobby-page { position: relative; min-height: 100vh; isolation: isolate; }
+.lobby-page::before { /* fixed layer instead of background-attachment: fixed, which mobile Safari ignores */
+  content: ''; position: fixed; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(7, 6, 11, .25) 0%, rgba(7, 6, 11, .35) 45%, rgba(7, 6, 11, .8) 100%),
+    url(/art/lobby.jpg) center 30% / cover no-repeat, var(--night-0);
+}
+.lobby { padding-top: 14vh; }
+.lobby-hero { display: block; text-align: center; margin-bottom: 2.2rem; }
+.lobby-hero h1 { font-size: clamp(2.2rem, 6vw, 4rem); text-shadow: 0 2px 6px #000, 0 0 30px rgba(199, 38, 44, .55); }
+.lobby-hero .subtitle { color: #ece6da; font-size: 1.15rem; text-shadow: 0 1px 4px #000, 0 0 12px #000; }
+/* Glass: only what sits behind the panel or button is blurred. */
+.glass {
+  background: rgba(14, 11, 20, .42);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+  border: 1px solid rgba(233, 220, 192, .22); border-radius: var(--radius);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06);
+  color: var(--text);
+}
+.glass h2 { color: var(--parchment); }
+.glass .muted { color: #cfc6b6; }
+.glass hr { border-top-color: rgba(233, 220, 192, .2); }
+.glass table.games th, .glass table.games td { border-bottom-color: rgba(233, 220, 192, .16); }
+.glass .status.waiting { color: #9fe39f; } .glass .status.in-progress { color: #ff9a9e; }
+.glass input { background: rgba(255, 255, 255, .1); color: var(--text); border-color: rgba(233, 220, 192, .3); }
+.glass input::placeholder { color: rgba(236, 230, 218, .6); }
+.lobby .btn {
+  background: rgba(43, 39, 51, .5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border-color: rgba(233, 220, 192, .35);
+}
+.lobby .btn:hover:not(:disabled) { background: rgba(60, 54, 70, .65); }
+.lobby .btn.primary { background: rgba(155, 27, 31, .72); border-color: rgba(255, 150, 150, .55); }
+.lobby .btn.primary:hover:not(:disabled) { background: rgba(185, 32, 38, .85); }
+.lobby .legal { color: #cfc6b6; text-shadow: 0 1px 3px #000; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: rgba(14, 11, 20, .82); } /* older browsers: darker instead of blurred */
+}
+@media (max-width: 860px) { .lobby { padding-top: 8vh; } }

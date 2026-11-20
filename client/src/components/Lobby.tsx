@@ -3,7 +3,6 @@ import { rpc, saveSession, set, pushAlert } from '../net';
 import type { LobbyEntry, Avatar } from '../../../shared/types';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
-import { Clocktower } from './TownSquare';
 
 export function Lobby() {
   const [games, setGames] = useState<LobbyEntry[]>([]);
@@ -18,16 +17,16 @@ export function Lobby() {
   const go = (c: string) => { history.pushState(null, '', `/g/${c.toUpperCase()}`); dispatchEvent(new PopStateEvent('popstate')); };
 
   return (
+    <div className="lobby-page">
     <div className="lobby">
       <header className="lobby-hero">
-        <Clocktower className="hero-tower" />
         <div>
           <h1>Clocktower Nights</h1>
           <p className="subtitle">An unofficial, voice-first fan table for <i>Blood on the Clocktower</i>, for private play among friends.</p>
         </div>
       </header>
       <div className="lobby-grid">
-        <section className="panel parchment">
+        <section className="panel glass">
           <h2>Open games</h2>
           {games.length === 0 && <p className="muted">No public games right now. Create one!</p>}
           <table className="games">
@@ -43,7 +42,7 @@ export function Lobby() {
             </tbody>
           </table>
         </section>
-        <section className="panel parchment">
+        <section className="panel glass">
           <h2>Private game</h2>
           <form className="row" onSubmit={e => { e.preventDefault(); if (code.trim()) go(code.trim()); }}>
             <input aria-label="Invite code" placeholder="Invite code" value={code} maxLength={8} onChange={e => setCode(e.target.value.toUpperCase())} />
@@ -57,6 +56,7 @@ export function Lobby() {
       </div>
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
       <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play.</footer>
+    </div>
     </div>
   );
 }
