@@ -1,12 +1,12 @@
 // Walking in the 3D Town Square: cosmetic positions, allowed only when seats don't matter.
 import { describe, it, expect } from 'vitest';
-import { Game, WALK_RADIUS } from '../server/src/game';
+import { Game, WALK_RADIUS, ROOM_HALF_W, ROOM_Z } from '../server/src/game';
 import { playerView } from '../server/src/views';
 
 function setup() {
   const g = new Game({ name: 'T', visibility: 'public', stName: 'ST' });
-  const events: { event: string; payload: any }[] = [];
-  g.emit = (_a, event, payload) => events.push({ event, payload });
+  const events: { event: string; payload: any; to?: unknown }[] = [];
+  g.emit = (to, event, payload) => { events.push({ event, payload }); Object.defineProperty(events.at(-1)!, 'to', { value: to, enumerable: false }); };
   for (let i = 0; i < 7; i++) g.join(`P${i}`, undefined);
   g.updateSettings({ characters: ['washerwoman', 'empath', 'slayer', 'monk', 'chef', 'poisoner', 'imp'] });
   return { g, events };
@@ -18,14 +18,14 @@ describe('walking', () => {
     const p = g.players[0];
     g.walk(p.id, 3.14159, -2, 1.5);
     expect(p.pos).toEqual({ x: 3.14, z: -2, ry: 1.5 });
-    expect(events.at(-1)).toEqual({ event: 'pos', payload: { id: p.id, x: 3.14, z: -2, ry: 1.5 } });
+    expect(events.at(-1)).toEqual({ event: 'pos', payload: { id: p.id, x: 3.14, z: -2, ry: 1.5, room: 'square' } });
     g.walk(p.id, 100, 0, 0);
     expect(Math.hypot(p.pos!.x, p.pos!.z)).toBeCloseTo(WALK_RADIUS, 1);
     g.walk(p.id, NaN, 0, 0);
     expect(p.pos!.x).toBeCloseTo(WALK_RADIUS, 1); // ignored
     expect(playerView(g, g.players[1]).players[0].pos).toEqual(p.pos);
   });
-  it('is refused in side rooms, at night, during nominations and abilities; seats are restored', () => {
+  it('is refused at night, during nominations and abilities; seats are restored', () => {
     const { g, events } = setup();
     g.deal(); g.reveal();
     g.beginNight();
@@ -38,8 +38,6 @@ describe('walking', () => {
     g.setStage('private');
     g.movePlayer(p, 'r0');
     expect(p.pos).toBeNull();                        // leaving the square drops the position
-    g.walk(p.id, 2, 2, 0);
-    expect(p.pos).toBeNull();                        // can't walk while inside a building
     const q = g.players[1];
     g.walk(q.id, 2, 2, 0);
     expect(q.pos).not.toBeNull();
@@ -72,5 +70,25 @@ describe('open buildings', () => {
     g.updateSettings({ openBuildings: [0, 1, 2, 3, 4] });
     expect(p.location).toBe('square');
     expect(g.privateRoomIds()).toHaveLength(5);  // more than the minimum is fine
+  });
+  it('inside a building: positions stay within the room and only its occupants are told', () => {
+    const { g, events } = setup();
+    g.deal(); g.reveal(); g.beginNight(); g.beginDay(); g.tick(Date.now() + 10_000);
+    g.setStage('private');
+    const [p, q, r] = g.players;
+    g.movePlayer(p, 'r0'); g.movePlayer(q, 'r0');
+    events.length = 0;
+    g.walk(p.id, 99, -99, 0);
+    expect(p.pos).toEqual({ x: ROOM_HALF_W, z: ROOM_Z[0], ry: 0 });   // clamped to the room's floor
+    const e = events.at(-1)!;
+    expect(e.event).toBe('pos');
+    expect(e.payload.room).toBe('r0');
+    expect(e.to).toEqual(expect.arrayContaining([p.id, q.id]));
+    expect(e.to).not.toContain(r.id);
+    expect(playerView(g, q).players[0].pos).toEqual(p.pos);       // same room: sees it
+    expect(playerView(g, r).players[0].pos).toBeNull();           // elsewhere: does not
+    g.beginNight();
+    g.walk(p.id, 1, 1, 0);
+    expect(p.pos).toBeNull();                                      // never at night
   });
 });
