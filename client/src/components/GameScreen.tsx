@@ -26,7 +26,7 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
@@ -60,6 +60,9 @@ export function GameScreen({ view }: { view: GameView }) {
 
   useEffect(() => { if (!isST) void probeRegions(); }, [isST]);
   useEffect(() => { if (!night) setNightSel([]); }, [night]);
+  // the story opens by itself when the game ends
+  const ended = view.phase === 'ended';
+  useEffect(() => { if (ended) { const t = setTimeout(() => setModal('story'), 2800); return () => clearTimeout(t); } }, [ended]);
   // atmosphere: wind and crickets at night, a heartbeat while votes are counted
   const voting = view.stage === 'voting' && !!view.nomination && !view.nomination.done;
   useEffect(() => { setNightAmbience(night); }, [night]);
@@ -116,7 +119,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
@@ -180,6 +183,7 @@ export function GameScreen({ view }: { view: GameView }) {
       {modal === 'invite' && <InviteDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'reveal' && <RevealDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'customise' && <CustomiseDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'story' && view.story && <StoryDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'rules' && <Modal title="Table rules" onClose={() => setModal(null)}><ul>{view.tableRules.map(r => <li key={r}>{r}</li>)}</ul></Modal>}
       {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
@@ -191,7 +195,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openList, openInvite, openRules, openCustomise, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; use3D: boolean; toggle3D: () => void }) {
+function TopBar({ view, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -220,6 +224,7 @@ function TopBar({ view, openList, openInvite, openRules, openCustomise, use3D, t
           </span>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
+        {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
         <VolumeControl />
         <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
@@ -237,6 +242,41 @@ function roomArt(view: GameView): string | null {
   if (loc === 'study') return 'study';
   const m = loc?.match(/^r(\d+)$/);
   return m ? ROOM_ART[Number(m[1]) % ROOM_ART.length] : null;
+}
+
+function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const story = view.story!;
+  const [tab, setTab] = useState<'timeline' | 'votes' | 'grimoire'>('timeline');
+  const name = (id: string) => view.players.find(p => p.id === id)?.name ?? (id === 'st' ? view.storyteller.name : '?');
+  // group "[Night 1] text" lines under their night/day heading
+  const groups: { when: string; lines: string[] }[] = [];
+  for (const line of story.log) {
+    const m = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+    const when = m ? m[1] : '', text = m ? m[2] : line;
+    if (!groups.length || groups[groups.length - 1].when !== when) groups.push({ when, lines: [] });
+    groups[groups.length - 1].lines.push(text);
+  }
+  const ch = (id: string | null) => (id ? CHARACTER_BY_ID[id]?.name ?? id : '—');
+  return (
+    <Modal title={`The story of ${view.name}`} onClose={onClose} wide>
+      <p className={`story-winner ${view.winner}`}>{view.winner === 'good' ? '☀ Good wins!' : view.winner === 'evil' ? '🩸 Evil wins!' : ''}</p>
+      <div className="tabs" role="tablist">
+        {(['timeline', 'votes', 'grimoire'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'timeline' ? 'Timeline' : t === 'votes' ? `Votes (${story.votes.length})` : 'Grimoire'}</button>)}
+      </div>
+      {tab === 'timeline' && <div className="story-timeline">{groups.map((g, i) => (
+        <section key={i}><h3>{g.when || 'Setup'}</h3><ul>{g.lines.map((l, j) => <li key={j} className={/BLUFF|died|executed|exiled|Demon/i.test(l) ? 'key' : ''}>{l}</li>)}</ul></section>
+      ))}</div>}
+      {tab === 'votes' && (story.votes.length ? <table className="story-votes"><thead><tr><th>Day</th><th>Nomination</th><th>Votes</th><th>Voted yes</th></tr></thead><tbody>
+        {story.votes.map((v, i) => <tr key={i}><td>{v.day}</td><td>{name(v.nominatorId)} → {name(v.nomineeId)}{v.exile ? ' (exile)' : ''}</td><td>{v.votes}/{v.needed}</td><td>{v.yes.map(name).join(', ') || '—'}</td></tr>)}
+      </tbody></table> : <p className="muted">No votes this game.</p>)}
+      {tab === 'grimoire' && <table className="story-grim"><thead><tr><th>Player</th><th>Character</th><th>Team</th><th>Notes</th></tr></thead><tbody>
+        {story.grimoire.map(g => <tr key={g.id} className={g.alignment}><td>{g.alive ? '' : '👻 '}{g.name}{g.traveller ? ' (Traveller)' : ''}</td>
+          <td><b>{ch(g.characterId)}</b>{g.shownCharacterId && g.shownCharacterId !== g.characterId ? <span className="muted"> — thought they were the {ch(g.shownCharacterId)}</span> : null}</td>
+          <td className={`align ${g.alignment}`}>{g.alignment}</td><td className="muted small">{g.reminders.join(', ')}</td></tr>)}
+      </tbody></table>}
+      {tab === 'grimoire' && story.demonBluffs.length > 0 && <p className="muted small">Demon bluffs: {story.demonBluffs.map(ch).join(', ')}</p>}
+    </Modal>
+  );
 }
 
 function VolumeControl() {

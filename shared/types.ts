@@ -255,6 +255,8 @@ export interface GameView {
   canWalk: boolean;           // free walking allowed in the 3D Town Square right now
   tableRules: string[];
   voteHistory: VoteRecord[] | null;
+  /** The whole story, revealed to everyone once the game has ended (null before then). */
+  story: GameStory | null;
   self: SelfView | StorytellerSelf;
 }
 
@@ -307,3 +309,10 @@ export interface StorytellerSelf {
 export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended' }
 
 export interface VoteRecord { day: number; nominatorId: string; nomineeId: string; exile: boolean; yes: string[]; votes: number; needed: number; result: string }
+
+export interface GameStory {
+  log: string[];
+  votes: VoteRecord[];
+  grimoire: { id: string; name: string; characterId: string | null; shownCharacterId: string | null; alignment: Alignment; alive: boolean; reminders: string[]; traveller: boolean }[];
+  demonBluffs: string[];
+}

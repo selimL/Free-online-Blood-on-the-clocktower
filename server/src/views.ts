@@ -128,6 +128,12 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Om
     voice: { enabled: false, region: g.region },
     speakerId: g.speakerId,
     tableRules: tableRules(g),
+    story: g.phase === 'ended' ? {
+      log: g.log.slice(-400),
+      votes: g.voteHistory,
+      grimoire: g.players.map(p => ({ id: p.id, name: p.name, characterId: p.characterId, shownCharacterId: p.shownCharacterId, alignment: p.alignment, alive: p.alive, reminders: [...p.reminders], traveller: p.traveller })),
+      demonBluffs: [...g.demonBluffs],
+    } : null,
     voteHistory: g.settings.houseRules.openVoteRecord
       ? g.voteHistory.map(v => ({ ...v, yes: g.settings.houseRules.anonymousVotes ? [] : v.yes })) : null,
   };
