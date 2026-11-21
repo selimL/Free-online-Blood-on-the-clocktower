@@ -7,6 +7,7 @@ import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '.
 import { useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
 import { sendEmote } from '../emotes';
 import { sunPosition } from '../daylight';
+import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
 import { setNightAmbience, setHeartbeat, setVolume, useVolume } from '../sound';
@@ -19,6 +20,8 @@ import {
   TransitionOverlay, NightSleep, Modal, CharacterToken,
 } from './Overlays';
 import { StorytellerPanel, StorytellerControls } from './Storyteller';
+import { Almanac } from './Almanac';
+import { WhisperThread, useUnread } from './Whispers';
 
 type ConfirmState = { title: string; text: React.ReactNode; confirm: string; onYes: () => void } | null;
 
@@ -28,7 +31,9 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | 'almanac' | null>(null);
+  const [almanacId, setAlmanacId] = useState<string | null>(null);
+  const openAlmanac = (id: string | null = null) => { setAlmanacId(id); setModal('almanac'); };
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
@@ -134,7 +139,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      <TopBar view={view} openAlmanac={() => openAlmanac()} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D || showSleep3D ? 'has-3d' : ''} ${showSleep3D ? 'sleep-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
@@ -179,6 +184,7 @@ export function GameScreen({ view }: { view: GameView }) {
           {view.phase === 'ended' && <div className={`winner-banner ${view.winner}`}>{view.winner === 'good' ? 'Good' : 'Evil'} wins! All characters are revealed.</div>}
         </section>
         <aside className="right">
+          {!view.self.isStoryteller && view.self.tutorial && <TutorialTip tip={view.self.tutorial} />}
           {isST ? <StorytellerPanel view={view} /> : <SidePanel view={view} />}
         </aside>
       </main>
@@ -206,7 +212,8 @@ export function GameScreen({ view }: { view: GameView }) {
       </footer>
 
       {modal === 'character' && <CharacterModal view={view} onClose={() => setModal(null)} />}
-      {modal === 'list' && <CharactersInPlay view={view} onClose={() => setModal(null)} />}
+      {modal === 'list' && <CharactersInPlay view={view} onClose={() => setModal(null)} onPick={openAlmanac} />}
+      {modal === 'almanac' && <Almanac onClose={() => setModal(null)} initial={almanacId} inPlay={view.characterList ? [...view.characterList.characters, ...view.characterList.fabled] : undefined} />}
       {modal === 'claim' && <ClaimAbilityDialog view={view} onClose={() => setModal(null)} setConfirm={setConfirm} />}
       {modal === 'label' && <ClaimLabelDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'invite' && <InviteDialog view={view} onClose={() => setModal(null)} />}
@@ -225,7 +232,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
+function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openAlmanac: () => void; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -260,6 +267,7 @@ function TopBar({ view, openVoice, openList, openInvite, openRules, openCustomis
         <VolumeControl />
         {(view.self.isStoryteller || !view.self.spectator) && <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>}
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
+        <button className="btn small ghost" onClick={openAlmanac} title="Every character's ability, with tips">📚 Almanac</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
         <button className="btn small ghost" onClick={leave}>Leave</button>
       </div>
@@ -447,6 +455,19 @@ function QuestionsBanner({ view }: { view: GameView }) {
   );
 }
 
+function TutorialTip({ tip }: { tip: { title: string; text: string; next: string | null; done: boolean } }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => setHidden(false), [tip.title, tip.text]);
+  if (hidden) return <button className="btn small tutorial-reopen" onClick={() => setHidden(false)}>🎓 Show the Guide</button>;
+  return (
+    <div className="tutorial-tip parchment" role="status" aria-live="polite">
+      <div className="tt-head"><b>🎓 {tip.title}</b><button className="icon-btn" aria-label="Hide the Guide" onClick={() => setHidden(true)}>✕</button></div>
+      <p>{tip.text}</p>
+      {tip.next && <div className="row end"><button className="btn primary small" onClick={() => act('tutorial:next')}>{tip.next}</button></div>}
+    </div>
+  );
+}
+
 function AbilityBanner({ view }: { view: GameView }) {
   const a = view.ability;
   if (!a) return null;
@@ -572,15 +593,19 @@ function InviteDialog({ view, onClose }: { view: GameView; onClose: () => void }
 }
 
 function SidePanel({ view }: { view: GameView }) {
-  const [tab, setTab] = useState<'chat' | 'log' | 'notes' | 'votes'>('chat');
-  const tabs = (['chat', 'log', 'notes', ...(view.voteHistory ? ['votes'] : [])] as ('chat' | 'log' | 'notes' | 'votes')[]);
-  const label = { chat: 'Room chat', log: 'Town crier', notes: 'My notes', votes: 'Vote record' };
+  const [tab, setTab] = useState<'chat' | 'log' | 'notes' | 'votes' | 'st'>('chat');
+  const canWhisper = !view.self.isStoryteller && !view.self.spectator && !view.self.tutorial;
+  const unread = useUnread();
+  const myUnread = !view.self.isStoryteller ? unread[view.self.id] ?? 0 : 0;
+  const tabs = (['chat', ...(canWhisper ? ['st'] : []), 'log', 'notes', ...(view.voteHistory ? ['votes'] : [])] as ('chat' | 'log' | 'notes' | 'votes' | 'st')[]);
+  const label = { chat: 'Room chat', log: 'Town crier', notes: 'My notes', votes: 'Vote record', st: `✉ Storyteller${myUnread ? ` (${myUnread})` : ''}` };
   return (
     <div className="side-panel">
       <div className="tabs" role="tablist">
         {tabs.map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{label[t]}</button>)}
       </div>
       {tab === 'votes' && <VoteRecord view={view} />}
+      {tab === 'st' && canWhisper && <WhisperThread view={view} playerId={view.self.id} />}
       {tab === 'chat' && <Chat view={view} />}
       {tab === 'log' && <Announcements view={view} />}
       {tab === 'notes' && <PersonalNotes view={view} />}
@@ -621,7 +646,25 @@ export function Announcements({ view }: { view: GameView }) {
 function PersonalNotes({ view }: { view: GameView }) {
   const key = `botc:notes:${view.id}`;
   const [txt, setTxt] = useState(() => { try { return localStorage.getItem(key) ?? ''; } catch { return ''; } });
-  return <textarea className="notes" value={txt} placeholder="Your private scribbles (stored only in this browser)…" onChange={e => { setTxt(e.target.value); try { localStorage.setItem(key, e.target.value); } catch { /* ignore */ } }} />;
+  const pnotes = usePlayerNotes(view.id);
+  return (
+    <div className="notes-tab">
+      <ul className="pnote-list">
+        {view.players.filter(p => view.self.isStoryteller || p.id !== view.self.id).map(p => {
+          const n = pnotes[p.id];
+          return (
+            <li key={p.id}>
+              <span className="pn-name">{p.alive ? '' : '👻 '}{p.name}</span>
+              <span className="pn-marks">{MARKS.map(m => <button key={m.id} className={`icon-btn ${n?.mark === m.id ? 'on' : ''}`} title={m.label} aria-pressed={n?.mark === m.id} onClick={() => setPlayerNote(view.id, p.id, { mark: n?.mark === m.id ? '' : m.id })}>{m.icon}</button>)}</span>
+              <input value={n?.text ?? ''} maxLength={80} placeholder="note…" aria-label={`Note on ${p.name}`} onChange={e => setPlayerNote(view.id, p.id, { text: e.target.value })} />
+            </li>
+          );
+        })}
+      </ul>
+      <textarea className="notes" value={txt} placeholder="Your private scribbles (stored only in this browser)…" onChange={e => { setTxt(e.target.value); try { localStorage.setItem(key, e.target.value); } catch { /* ignore */ } }} />
+      <p className="muted small">Tip: right-click a player's seat (or press and hold on a phone) to note them from the circle.</p>
+    </div>
+  );
 }
 
 export function Chat({ view }: { view: GameView }) {

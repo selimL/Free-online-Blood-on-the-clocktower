@@ -1,3 +1,6 @@
+import { ScriptBuilder } from './ScriptBuilder';
+import { loadScripts } from '../scripts';
+import { WhisperInbox, useUnread } from './Whispers';
 import { useEffect, useMemo, useState } from 'react';
 import type { GameView, StorytellerSelf, Settings, HouseRules, Timers } from '../../../shared/types';
 import { HOUSE_RULE_INFO, MIN_PLAYERS, NUMERIC_HOUSE_RULES } from '../../../shared/types';
@@ -25,7 +28,10 @@ export function StorytellerControls({ view }: { view: GameView }) {
   switch (view.phase) {
     case 'lobby': {
       const problem = residents < MIN_PLAYERS ? `Need ${MIN_PLAYERS - residents} more player(s)` : bag !== residents ? `Select ${residents} characters (have ${bag})` : null;
-      return <div className="st-controls"><button className="btn primary" disabled={!!problem} onClick={() => act('st:deal')}>Deal characters</button>{problem && <span className="muted small">{problem}</span>}</div>;
+      return <div className="st-controls">
+        <button className="btn ghost" disabled={view.players.length >= 10} onClick={() => act('st:addBot')} title="Add a computer player to try a setup on your own. Bots decline questions and vote at random. Remove them with Kick.">🤖 Add bot</button>
+        <button className="btn primary" disabled={!!problem} onClick={() => act('st:deal')}>Deal characters</button>{problem && <span className="muted small">{problem}</span>}
+      </div>;
     }
     case 'dealt':
       return <div className="st-controls">
@@ -64,7 +70,8 @@ export function StorytellerControls({ view }: { view: GameView }) {
 
 export function StorytellerPanel({ view }: { view: GameView }) {
   const self = st(view);
-  const [tab, setTab] = useState<'grim' | 'setup' | 'night' | 'chat' | 'notes'>(view.phase === 'lobby' ? 'setup' : 'grim');
+  const [tab, setTab] = useState<'grim' | 'setup' | 'night' | 'chat' | 'whispers' | 'notes'>(view.phase === 'lobby' ? 'setup' : 'grim');
+  const unread = Object.values(useUnread()).reduce((a, b) => a + b, 0);
   useEffect(() => { if (view.phase === 'night') setTab('night'); else if (tab === 'night') setTab('grim'); }, [view.phase]);
   return (
     <div className="side-panel st">
@@ -72,13 +79,14 @@ export function StorytellerPanel({ view }: { view: GameView }) {
       <PendingAbility view={view} />
       <PrivateRequests view={view} />
       <div className="tabs" role="tablist">
-        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['notes', 'Notes & log']] as const).map(([t, l]) =>
+        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['whispers', `✉ Whispers${unread ? ` (${unread})` : ''}`], ['notes', 'Notes & log']] as const).map(([t, l]) =>
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{l}</button>)}
       </div>
       {tab === 'grim' && <Grimoire view={view} />}
       {tab === 'setup' && <Setup view={view} settings={self.settings} />}
       {tab === 'night' && <NightOrder view={view} />}
       {tab === 'chat' && <Chat view={view} />}
+      {tab === 'whispers' && <WhisperInbox view={view} />}
       {tab === 'notes' && <NotesLog view={view} />}
     </div>
   );
@@ -529,6 +537,9 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
 
 function ScriptImport({ settings }: { settings: Settings }) {
   const [open, setOpen] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [mine] = useState(loadScripts);
+  const use = (sc: { name: string; ids: string[] }) => act('st:settings', { settings: { script: sc.ids, scriptName: sc.name, characters: settings.characters.filter(id => sc.ids.includes(id)) } });
   const [text, setText] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const load = () => {
@@ -545,6 +556,16 @@ function ScriptImport({ settings }: { settings: Settings }) {
       {settings.script.length > 0
         ? <p className="small">Custom script{settings.scriptName ? ` “${settings.scriptName}”` : ''}: {settings.script.length} characters. <button className="btn small ghost" onClick={() => act('st:settings', { settings: { script: [], scriptName: null } })}>Clear script</button></p>
         : <button className="btn small" onClick={() => setOpen(!open)}>Import custom script (JSON)</button>}
+      <div className="row">
+        <button className="btn small" onClick={() => setBuilding(true)}>📜 Script builder</button>
+        {mine.length > 0 && (
+          <select aria-label="My scripts" value="" onChange={e => { const sc = mine.find(x => x.id === e.target.value); if (sc) void use(sc); }}>
+            <option value="">My scripts…</option>
+            {mine.map(sc => <option key={sc.id} value={sc.id}>{sc.name} ({sc.ids.length})</option>)}
+          </select>
+        )}
+      </div>
+      {building && <ScriptBuilder initial={settings.script.length ? { name: settings.scriptName ?? '', ids: settings.script } : undefined} onClose={() => setBuilding(false)} onUse={sc => void use(sc)} />}
       {open && <>
         <textarea value={text} onChange={e => setText(e.target.value)} placeholder='Paste a Script Tool JSON, e.g. [{"id":"_meta","name":"My script"},"washerwoman","imp"]' aria-label="Script JSON" />
         <button className="btn small primary" onClick={load}>Load script</button>

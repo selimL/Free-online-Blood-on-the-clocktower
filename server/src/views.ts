@@ -41,7 +41,7 @@ function publicPlayers(g: Game, viewer: Player | null, evil: EvilTeamView | null
     claim: p.claim,
     location: night ? null : p.location,
     joining: night ? false : p.joining,
-    muted: p.muted, connected: p.connected, traveller: p.traveller,
+    muted: p.muted, connected: p.connected, traveller: p.traveller, bot: !!p.bot, offlineSince: !p.connected && p.offlineNoticed ? p.offlineSince ?? null : null,
     travellerCharacter: p.traveller ? p.characterId : null,
     revealedCharacter: p.revealed ? p.characterId : null,
     revealedGrimoire: g.phase === 'ended' && g.settings.houseRules.grimoireRevealAtEnd
@@ -139,6 +139,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
       grimoire: g.players.map(p => ({ id: p.id, name: p.name, characterId: p.characterId, shownCharacterId: p.shownCharacterId, alignment: p.alignment, alive: p.alive, reminders: [...p.reminders], traveller: p.traveller })),
       demonBluffs: [...g.demonBluffs],
     } : null,
+    whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     voteHistory: g.settings.houseRules.openVoteRecord
       ? g.voteHistory.map(v => ({ ...v, yes: g.settings.houseRules.anonymousVotes ? [] : v.yes })) : null,
   };
@@ -173,6 +174,7 @@ export function playerView(g: Game, p: Player): GameView {
     nominatedToday: g.nominatorsToday.has(p.id),
     privateMsUsedToday: p.privateMsToday,
     revealedTo: p.revealedTo,
+    tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
   const view = { ...baseView(g, p, evil), self } as GameView;
   if (g.phase === 'night' && !p.awake) {

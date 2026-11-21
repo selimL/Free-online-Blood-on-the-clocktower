@@ -48,6 +48,9 @@ export interface Player {
   whispersToday: number;            // side-room entries today (house rule)
   butlerMaster: string | null;      // Butler's latest night choice
   pos: WalkPos | null;              // free-walk position in the 3D Town Square (null = at their seat)
+  bot?: boolean;                    // a computer-controlled seat (practice games and testing)
+  offlineSince?: number | null;     // when the connection dropped (null/undefined = connected)
+  offlineNoticed?: number;          // 0 none, 1 everyone told, 2 Storyteller nudged
 }
 
 export interface Nomination {
@@ -74,6 +77,22 @@ export const WALK_RADIUS = 22;
 /** Watches without a seat; ids are prefixed 'spec:' so they never collide with players or the Storyteller. */
 export interface Spectator { id: string; token: string; name: string; avatar: Avatar; connected: boolean }
 export const MAX_SPECTATORS = 20;
+
+/** One private message in a player's thread with the Storyteller. */
+export interface Whisper { id: string; playerId: string; fromST: boolean; text: string; ts: number }
+export const OFFLINE_NOTICE_MS = 8000;
+export const OFFLINE_NUDGE_MS = 120_000;
+
+/** Progress of a practice game. Plain data, so it is saved with the game. */
+export interface TutorialState {
+  humanId: string;
+  step: string;
+  stepAt: number;
+  tip: { title: string; text: string; next: string | null };
+  chatQueue: { at: number; from: string; text: string }[];
+  attempts: number;
+  done: boolean;
+}
 
 export type Emit = (audience: string[] | 'all', event: string, payload: unknown) => void;
 
@@ -145,6 +164,11 @@ export class Game {
   pausedBySTDisconnect = false;
   /** When each person last gestured (simple flood protection; not game state). */
   lastEmoteAt: Record<string, number> = {};
+  /** Practice game run by an automatic Storyteller (see tutorial.ts). */
+  tutorial: TutorialState | null = null;
+  /** Private messages between each player and the Storyteller. */
+  whispers: Whisper[] = [];
+  lastWhisperAt: Record<string, number> = {};
 
   /** Set by the server wiring. */
   onChange: () => void = () => {};
@@ -173,11 +197,11 @@ export class Game {
       if (k === 'savedAt') continue;
       (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
-    g.storyteller.connected = false;
-    for (const p of g.players) p.connected = false;
+    g.storyteller.connected = !!g.tutorial; // a practice game's Storyteller is the server itself
+    for (const p of g.players) p.connected = !!p.bot;
     for (const s of g.spectators ?? []) s.connected = false;
     g.spectators ??= [];
-    if (g.started && g.phase !== 'ended' && !g.paused) {
+    if (g.started && g.phase !== 'ended' && !g.paused && !g.tutorial) {
       g.paused = true;
       g.pausedAt = typeof data.savedAt === 'number' ? data.savedAt : Date.now(); // timers resume where they stopped
       g.pausedBySTDisconnect = true;
@@ -390,6 +414,51 @@ export class Game {
       return v.room === loc && v.subscribe;
     });
     this.emit(audience, 'emote', { id: fromId, kind: def!.id, ts: now });
+  }
+
+  /** A private note between one player and the Storyteller (either direction). */
+  whisper(fromId: string, toId: string, text: unknown) {
+    if (fromId.startsWith('spec:')) fail('Spectators can only watch.');
+    const t = cleanText(text, 300);
+    if (!t) return;
+    const playerId = fromId === 'st' ? toId : fromId;
+    if (fromId !== 'st' && toId !== 'st') fail('You can only whisper to the Storyteller.');
+    const p = this.player(playerId);
+    if (p.bot) fail('Bots cannot read whispers.');
+    const now = Date.now();
+    if (now - (this.lastWhisperAt[fromId] ?? 0) < 800) fail('Slow down.');
+    this.lastWhisperAt[fromId] = now;
+    const w: Whisper = { id: nanoid(8), playerId: p.id, fromST: fromId === 'st', text: t, ts: now };
+    this.whispers.push(w);
+    if (this.whispers.length > 400) this.whispers.shift();
+    this.emit(['st', p.id], 'whisper', { ...w, name: p.name });
+    this.changed();
+  }
+
+  /** Connection drops: tell everyone after a short grace period, and nudge the Storyteller if it lasts. */
+  connectionTick(now: number): boolean {
+    let dirty = false;
+    for (const p of this.players) {
+      if (p.bot || p.connected || !p.offlineSince) continue;
+      const gone = now - p.offlineSince;
+      if (!p.offlineNoticed && gone >= OFFLINE_NOTICE_MS) {
+        p.offlineNoticed = 1; dirty = true;
+        this.emit('all', 'alert', { text: `📶 ${p.name} lost connection. Their seat is kept.`, kind: 'info' });
+      } else if (p.offlineNoticed === 1 && gone >= OFFLINE_NUDGE_MS && this.started && this.phase !== 'ended') {
+        p.offlineNoticed = 2;
+        this.emit(['st'], 'alert', { text: `📶 ${p.name} has been offline for 2 minutes. You can pause the game, or carry on and let them catch up.`, kind: 'info' });
+      }
+    }
+    return dirty;
+  }
+  setConnected(p: Player, on: boolean) {
+    if (on) {
+      if (p.offlineNoticed) this.emit('all', 'alert', { text: `📶 ${p.name} is back.`, kind: 'info' });
+      p.offlineSince = null; p.offlineNoticed = 0;
+    } else if (p.connected || !p.offlineSince) {
+      p.offlineSince = Date.now(); p.offlineNoticed = 0;
+    }
+    p.connected = on;
   }
 
   // ------------------------------------------------------------ lobby
@@ -655,6 +724,7 @@ export class Game {
     for (const p of this.players) {
       if (p.joining && now >= p.joinReadyAt) { p.joining = false; dirty = true; }
     }
+    if (this.connectionTick(now)) dirty = true;
     if (this.paused) { if (dirty) this.changed(); return; }
     // private-room time accounting + cap
     if (this.phase === 'day') {

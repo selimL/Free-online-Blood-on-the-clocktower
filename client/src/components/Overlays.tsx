@@ -30,9 +30,10 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
 
 export const TYPE_LABEL: Record<string, string> = { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion', demon: 'Demon', traveller: 'Traveller', fabled: 'Fabled' };
 
-export function CharacterToken({ ch, small }: { ch: Character; small?: boolean }) {
+export function CharacterToken({ ch, small, onClick }: { ch: Character; small?: boolean; onClick?: () => void }) {
   return (
-    <div className={`token ${ch.type} ${small ? 'small' : ''}`}>
+    <div className={`token ${ch.type} ${small ? 'small' : ''} ${onClick ? 'clickable' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? e => { if (e.key === 'Enter') onClick(); } : undefined}>
       <div className="token-disc"><span>{ch.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span></div>
       <div className="token-text">
         <b>{ch.name}</b> <span className="type">{TYPE_LABEL[ch.type]}</span>
@@ -95,7 +96,7 @@ export function InfoPopup({ view }: { view: GameView }) {
   return <Modal title="The Storyteller shows you…" onClose={() => set({ infoPopup: null })}><InfoCardView card={card} view={view} /><p className="muted small">Saved in your notes (Character → Notes).</p></Modal>;
 }
 
-export function CharactersInPlay({ view, onClose }: { view: GameView; onClose: () => void }) {
+export function CharactersInPlay({ view, onClose, onPick }: { view: GameView; onClose: () => void; onPick?: (id: string) => void }) {
   const list = view.characterList;
   if (!list) return null;
   const groups = ['townsfolk', 'outsider', 'minion', 'demon'];
@@ -104,8 +105,9 @@ export function CharactersInPlay({ view, onClose }: { view: GameView; onClose: (
       {groups.map(t => {
         const chars = list.characters.map(id => CHARACTER_BY_ID[id]).filter(c => c.type === t);
         if (!chars.length) return null;
-        return <div key={t}><h3>{TYPE_LABEL[t]}</h3>{chars.map(c => <CharacterToken key={c.id} ch={c} />)}</div>;
+        return <div key={t}><h3>{TYPE_LABEL[t]}</h3>{chars.map(c => <CharacterToken key={c.id} ch={c} onClick={onPick ? () => onPick(c.id) : undefined} />)}</div>;
       })}
+      {onPick && <p className="muted small">Click a character for tips in the 📚 Almanac.</p>}
       {list.hiddenExists && <p className="hidden-note">+ {list.hiddenCount ?? 'some'} hidden character{list.hiddenCount === 1 ? '' : 's'}</p>}
       {list.fabled.length > 0 && <><h3>Fabled</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
       {list.bootleggerRules && <><h3>House rules (Bootlegger)</h3><p className="bootlegger">{list.bootleggerRules}</p></>}

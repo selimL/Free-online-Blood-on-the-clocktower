@@ -5,6 +5,8 @@ import { useVoice } from '../voice';
 import { useStore, act } from '../net';
 import { SEAT_R, ST_Z } from '../three/support';
 import { useEmotes, EMOTE_ICON } from '../emotes';
+import { useRef, useState } from 'react';
+import { usePlayerNotes, setPlayerNote, MARKS, MARK_ICON } from '../playerNotes';
 
 export function Clocktower({ className }: { className?: string }) {
   return (
@@ -23,6 +25,23 @@ export function Clocktower({ className }: { className?: string }) {
       <rect x="54" y="150" width="12" height="20" rx="6" fill="#ffcf6b" className="flicker" opacity=".85" />
       <rect x="54" y="120" width="12" height="16" rx="6" fill="#0b0a0f" />
     </svg>
+  );
+}
+
+function NoteEditor({ gameId, playerId, name, note, onClose }: { gameId: string; playerId: string; name: string; note?: { mark: string; text: string }; onClose: () => void }) {
+  const [text, setText] = useState(note?.text ?? '');
+  const save = (mark?: string) => { setPlayerNote(gameId, playerId, { text, ...(mark !== undefined ? { mark: mark as '' } : {}) }); };
+  return (
+    <div className="note-editor parchment" role="dialog" aria-label={`Note on ${name}`} onClick={e => e.stopPropagation()}>
+      <div className="ne-head"><b>📝 {name}</b><button className="icon-btn" aria-label="Close" onClick={() => { save(); onClose(); }}>✕</button></div>
+      <div className="ne-marks">
+        {MARKS.map(m => <button key={m.id} className={`chip ${note?.mark === m.id ? 'on' : ''}`} onClick={() => save(note?.mark === m.id ? '' : m.id)}>{m.icon} {m.label}</button>)}
+      </div>
+      <form onSubmit={e => { e.preventDefault(); save(); onClose(); }}>
+        <input autoFocus value={text} maxLength={80} placeholder="e.g. claims Chef, said 2" onChange={e => setText(e.target.value)} onBlur={() => save()} />
+      </form>
+      <p className="muted small">Only you can see this. It is saved in this browser.</p>
+    </div>
   );
 }
 
@@ -45,6 +64,17 @@ export const seatRadiusPct = (n: number) => (n <= 6 ? 36 : 40);
 export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squash, anchorRef, walking }: CircleProps) {
   const voice = useVoice();
   const emotes = useEmotes();
+  const pnotes = usePlayerNotes(view.id);
+  const [editing, setEditing] = useState<string | null>(null);
+  const press = useRef<{ id: string; t: ReturnType<typeof setTimeout> } | null>(null);
+  // private notes: right-click a seat, or press and hold on a touch screen (not for the Storyteller, who has the Grimoire)
+  const notesOn = !view.self.isStoryteller;
+  const noteHandlers = (id: string) => notesOn ? {
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setEditing(id); },
+    onPointerDown: (e: React.PointerEvent) => { if (e.pointerType !== 'mouse') press.current = { id, t: setTimeout(() => { setEditing(id); press.current = null; }, 550) }; },
+    onPointerUp: () => { if (press.current) { clearTimeout(press.current.t); press.current = null; } },
+    onPointerLeave: () => { if (press.current) { clearTimeout(press.current.t); press.current = null; } },
+  } : {};
   const deathFlash = useStore(s => s.deathFlash);
   const n = view.players.length;
   const isST = view.self.isStoryteller;
@@ -78,13 +108,15 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
     const label = `${p.name}${p.alive ? '' : ' (dead)'}${p.claim ? `, claims ${CHARACTER_BY_ID[p.claim]?.name ?? p.claim}` : ''}`;
     return (
       <div key={p.id} className={classes} style={{ left: `${x}%`, top: `${y}%` }}>
-        <button className="seat-btn" onClick={() => onSeatClick?.(p.id)} disabled={!onSeatClick} aria-label={label}>
+        <button className="seat-btn" onClick={() => { if (editing !== p.id) onSeatClick?.(p.id); }} disabled={!onSeatClick && !notesOn} aria-label={label} {...noteHandlers(p.id)}>
           <Avatar avatar={p.avatar} size={64} ghost={!p.alive} sleeping={asleep} speaking={voice.speaking.includes(p.id)} video={night ? undefined : voice.video[p.id]} title={p.name} />
           {(hand || locked) && <span className="hand" aria-label="hand raised">✋</span>}
           {emotes[p.id] && <span key={emotes[p.id].ts} className="emote-bubble" role="img" aria-label={`${p.name}: ${emotes[p.id].kind}`}>{EMOTE_ICON[emotes[p.id].kind]}</span>}
           {locked === false && nom?.done === false && <span className="hand down" aria-hidden>·</span>}
           {p.muted && <span className="badge muted" title="Muted by Storyteller">🔇</span>}
           {p.joining && <span className="badge joining" title="Joining…">⏳</span>}
+          {p.bot && <span className="badge bot" title="Computer player">🤖</span>}
+          {p.offlineSince && <span className="badge offline" title={`Lost connection ${Math.max(1, Math.round((Date.now() - p.offlineSince) / 60000))} min ago. Their seat is kept.`}>📶✕</span>}
           {away && room && <span className="badge room" title={room.name}>{room.icon}</span>}
           {!p.alive && <span className={`badge ghostvote ${p.ghostVoteUsed ? 'used' : ''}`} title={p.ghostVoteUsed ? 'Ghost vote used' : 'Ghost vote available'}>{p.ghostVoteUsed ? '◌' : '●'}</span>}
         </button>
@@ -93,6 +125,8 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
           {p.evilMark && <span className="evil-mark"> (evil{evilRoles[p.id] && evilRoles[p.id] !== 'evil' ? ` · ${ROLE_LABEL[evilRoles[p.id] as 'demon' | 'minion']}` : ''})</span>}
         </div>
         {p.claim && <div className="claim">“{CHARACTER_BY_ID[p.claim]?.name ?? p.claim}”</div>}
+        {notesOn && pnotes[p.id] && <button className="pnote" onClick={() => setEditing(p.id)} title="Your private note (only you can see it)">{MARK_ICON[pnotes[p.id].mark] ?? '📝'} {pnotes[p.id].text}</button>}
+        {editing === p.id && <NoteEditor gameId={view.id} playerId={p.id} name={p.name} onClose={() => setEditing(null)} note={pnotes[p.id]} />}
         {p.traveller && p.travellerCharacter && <div className="claim traveller">Traveller: {CHARACTER_BY_ID[p.travellerCharacter]?.name}</div>}
         {p.revealedCharacter && <div className="claim revealed">{CHARACTER_BY_ID[p.revealedCharacter]?.name}{p.revealedGrimoire ? ` · ${p.revealedGrimoire.alignment}` : ''}</div>}
         {p.revealedGrimoire && (p.revealedGrimoire.shownCharacterId !== p.revealedCharacter || p.revealedGrimoire.reminders.length > 0) && (

@@ -3,6 +3,8 @@ import { Game, GameError, cleanText, sanitizeAvatar, type Player } from './game'
 import { playerView, storytellerView, spectatorView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
 import { encode, decode, type GameStore } from './persist';
+import { addBot, botTick } from './bots';
+import { startTutorial, tutorialNext, tutorialTick } from './tutorial';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
@@ -17,7 +19,12 @@ export class Lobby {
 
   constructor(private io: Server, private voice: VoiceManager, private store?: GameStore) {
     setInterval(() => void this.flush(), 2000);
-    setInterval(() => { for (const g of this.games.values()) g.tick(); }, 250);
+    setInterval(() => {
+      for (const g of this.games.values()) {
+        g.tick();
+        try { if (g.tutorial) tutorialTick(g); else botTick(g); } catch (e) { console.warn('[bots]', (e as Error).message); }
+      }
+    }, 250);
     setInterval(() => this.cleanup(), 60_000);
   }
 
@@ -77,6 +84,17 @@ export class Lobby {
     g.changed();
     return { gameId: g.id, code: g.code, token: g.storyteller.token, id: 'st' };
   }
+  /** A private practice game: the player, six bots and an automatic Storyteller. */
+  tutorial(socket: Socket, d: any) {
+    const g = new Game({ name: 'Practice game', visibility: 'private', stName: 'The Guide' });
+    this.games.set(g.id, g);
+    this.wire(g);
+    const p = g.join(d.name, d.avatar);
+    g.storyteller.connected = true; // the server plays the Storyteller
+    startTutorial(g, p.id);
+    this.bind(socket, g, p.id);
+    return { gameId: g.id, code: g.code, token: p.token, id: p.id };
+  }
   private byCode(code: string) {
     const c = code.trim().toUpperCase();
     return [...this.games.values()].find(g => g.code === c || g.id === code) ?? fail('No game with that code.');
@@ -118,7 +136,7 @@ export class Lobby {
     }
     const p = g.players.find(x => x.token === token) ?? fail('Seat not found.');
     this.bind(socket, g, p.id);
-    p.connected = true;
+    g.setConnected(p, true);
     g.changed();
     return { gameId: g.id, code: g.code, id: p.id };
   }
@@ -142,13 +160,17 @@ export class Lobby {
       if (sp) sp.connected = false;
     } else {
       const p = g.maybePlayer(id);
-      if (p) p.connected = false;
+      if (p) g.setConnected(p, false);
     }
     g.changed();
   }
   voiceConnected(socket: Socket, room: string) {
     const { g, id } = this.binding(socket);
     this.voice.markConnected(g, id, room);
+  }
+  whisper(socket: Socket, d: any) {
+    const { g, id } = this.binding(socket);
+    g.whisper(id, String(d.to ?? 'st'), d.text);
   }
   chat(socket: Socket, text: string) {
     const { g, id } = this.binding(socket);
@@ -204,6 +226,7 @@ export class Lobby {
         return g.changed();
       }
       case 'claim': return g.setClaim(p, String(d.claim ?? ''));
+      case 'tutorial:next': return tutorialNext(g, p.id);
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'emote': return g.emote(p.id, d.kind);
       case 'question': return g.answerQuestion(p, !!d.yes);
@@ -236,6 +259,7 @@ export class Lobby {
         return;
       }
       case 'st:deal': return g.deal();
+      case 'st:addBot': { if (g.players.filter(p => p.bot).length >= 9) fail('That is plenty of bots.'); addBot(g); return; }
       case 'st:reveal': return g.reveal();
       case 'st:nextQuestion': return g.nextQuestion();
       case 'st:night': return g.beginNight();

@@ -170,6 +170,8 @@ export interface PublicPlayer {
   revealedCharacter: string | null;  // end of game / reveal-on-death
   evilMark: boolean;         // only ever true in views of (believed) evil players
   pos: WalkPos | null;       // free-walk position in the 3D town (null = at seat)
+  bot: boolean;              // computer-controlled seat
+  offlineSince: number | null; // lost connection at (shown after a short grace period)
   revealedGrimoire: { alignment: Alignment; shownCharacterId: string | null; reminders: string[] } | null; // end of game, house rule
 }
 
@@ -224,10 +226,14 @@ export interface SelfView {
   revealedTo: { fromId: string; characterId: string }[];
   /** Watching only: no seat, no character, no voice or chat of their own. */
   spectator?: boolean;
+  /** Practice game: the Guide's current tip for this player. */
+  tutorial?: { title: string; text: string; next: string | null; done: boolean } | null;
 }
 
 export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
 export interface WalkPos { x: number; z: number; ry: number }
+
+export interface WhisperView { id: string; playerId: string; fromST: boolean; text: string; ts: number }
 
 export interface GameView {
   id: string;
@@ -260,6 +266,8 @@ export interface GameView {
   spectators: { id: string; name: string; connected: boolean }[];
   tableRules: string[];
   voteHistory: VoteRecord[] | null;
+  /** Private messages with the Storyteller: a player sees their own thread, the Storyteller sees all. */
+  whispers: WhisperView[];
   /** The whole story, revealed to everyone once the game has ended (null before then). */
   story: GameStory | null;
   self: SelfView | StorytellerSelf;

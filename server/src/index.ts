@@ -58,11 +58,13 @@ io.on('connection', (socket: Socket) => {
   socket.on('game:create', guard(d => lobby.create(socket, d)));
   socket.on('game:lookup', guard(d => lobby.lookup(String(d.code ?? ''))));
   socket.on('game:join', guard(d => lobby.join(socket, d)));
+  socket.on('game:tutorial', guard(d => lobby.tutorial(socket, d)));
   socket.on('game:spectate', guard(d => lobby.spectate(socket, d)));
   socket.on('game:rejoin', guard(d => lobby.rejoin(socket, d)));
   socket.on('game:leave', guard(() => lobby.leave(socket)));
   socket.on('action', guard(d => lobby.action(socket, d)));
   socket.on('chat', guard(d => lobby.chat(socket, String(d.text ?? ''))));
+  socket.on('whisper', guard(d => lobby.whisper(socket, d)));
   socket.on('voice:connected', guard(d => lobby.voiceConnected(socket, String(d.room ?? ''))));
   socket.on('disconnect', () => { clearInterval(interval); lobby.disconnected(socket); });
 });
