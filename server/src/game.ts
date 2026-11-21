@@ -673,6 +673,12 @@ export class Game {
     }
     this.changed();
   }
+  /** Wake or sleep a player explicitly (used by the night helper). */
+  setAwake(pid: string, awake: boolean) {
+    const p = this.player(pid);
+    if (this.phase !== 'night') fail('Only at night.');
+    if (p.awake !== !!awake) this.toggleWake(pid);
+  }
   setFocus(pid: string) {
     const p = this.player(pid);
     if (this.phase !== 'night' || !p.awake) fail('That player is not awake.');

@@ -214,6 +214,7 @@ export class Lobby {
       case 'st:pause': g.pausedBySTDisconnect = false; return g.setPaused(!!d.paused);
       case 'st:wake': return g.toggleWake(pid);
       case 'st:focus': return g.setFocus(pid);
+      case 'st:setAwake': return g.setAwake(pid, !!d.awake);
       case 'st:info': return g.sendInfoCard(pid, d.card ?? {});
       case 'st:kill': return g.kill(pid, d.cause);
       case 'st:revive': return g.revive(pid);

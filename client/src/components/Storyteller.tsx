@@ -264,6 +264,130 @@ function InfoComposer({ view, playerId, onClose }: { view: GameView; playerId: s
   );
 }
 
+// ---------------------------------------------------------------- night helper
+type Template = 'number' | 'yesno' | 'pair' | 'character' | 'minions' | 'demon' | 'text';
+const TEMPLATE: Record<string, Template> = {
+  chef: 'number', empath: 'number', clockmaker: 'number', oracle: 'number', mathematician: 'number', chambermaid: 'number', juggler: 'number',
+  fortuneteller: 'yesno', flowergirl: 'yesno', towncrier: 'yesno', seamstress: 'yesno',
+  washerwoman: 'pair', librarian: 'pair', investigator: 'pair',
+  undertaker: 'character', ravenkeeper: 'character', grandmother: 'character', dreamer: 'character',
+  minioninfo: 'minions', demoninfo: 'demon',
+};
+const PAIR_TYPE: Record<string, CharacterType> = { washerwoman: 'townsfolk', librarian: 'outsider', investigator: 'minion' };
+
+function NightHelper({ view }: { view: GameView }) {
+  const self = st(view);
+  const steps = self.nightOrder.filter(s => s.id !== 'dusk' && s.id !== 'dawn');
+  const [index, setIndex] = useState(-1);
+  const [busy, setBusy] = useState(false);
+  const step = index >= 0 ? steps[index] : null;
+  const grim = Object.fromEntries(self.grimoire.map(g => [g.id, g]));
+  const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
+  // which players this step wakes
+  const evilOf = (role: 'minion' | 'demon') => self.grimoire.filter(g => CHARACTER_BY_ID[g.characterId ?? '']?.type === role && g.characterId !== 'lunatic').map(g => g.id);
+  const targetsOf = (s: typeof step) => !s ? [] : s.id === 'minioninfo' ? evilOf('minion') : s.id === 'demoninfo' ? [...evilOf('demon'), ...self.grimoire.filter(g => g.characterId === 'lunatic').map(g => g.id)] : s.players;
+  const go = async (to: number) => {
+    setBusy(true);
+    const next = to >= 0 && to < steps.length ? steps[to] : null;
+    const want = new Set(targetsOf(next).filter(id => view.players.find(p => p.id === id)?.alive !== false || next?.id === 'ravenkeeper'));
+    for (const g of self.grimoire) if (g.awake && !want.has(g.id)) await act('st:setAwake', { playerId: g.id, awake: false });
+    for (const id of want) if (!grim[id]?.awake) await act('st:setAwake', { playerId: id, awake: true });
+    setIndex(to >= steps.length ? -1 : to);
+    setBusy(false);
+  };
+  const targets = targetsOf(step);
+  const [who, setWho] = useState<string | null>(null);
+  const recipient = who && targets.includes(who) ? who : targets[0] ?? null;
+  const send = (card: { text?: string; playerIds?: string[]; characterIds?: string[] }, to: string | null = recipient) => (to ? act('st:info', { playerId: to, card }) : undefined);
+  return (
+    <div className="night-helper">
+      <div className="nh-head">
+        <b>🌙 Night helper</b>
+        {index < 0
+          ? <button className="btn small primary" disabled={!steps.length || busy} onClick={() => go(0)}>Start the night ▶</button>
+          : <span className="row">
+            <button className="btn small ghost" disabled={busy || index === 0} onClick={() => go(index - 1)}>◀ Back</button>
+            <span className="muted small">Step {index + 1} of {steps.length}</span>
+            <button className="btn small primary" disabled={busy} onClick={() => go(index + 1)}>{index + 1 >= steps.length ? 'Finish (all asleep)' : 'Next ▶'}</button>
+          </span>}
+      </div>
+      {!steps.length && <p className="muted small">Nobody acts tonight.</p>}
+      {step && (
+        <div className="nh-step">
+          <h3>{step.name}</h3>
+          <p className="muted small">{step.text}</p>
+          {targets.length === 0 && <p className="warn small">No living player to wake for this step.</p>}
+          {targets.length > 1 && <div className="chips">Card goes to: {targets.map(id => <button key={id} className={`chip ${recipient === id ? 'active' : ''}`} onClick={() => setWho(id)}>{name(id)}</button>)}</div>}
+          {targets.map(id => {
+            const g = grim[id];
+            return <p key={id} className="small">👁 <b>{name(id)}</b> — {CHARACTER_BY_ID[g?.characterId ?? '']?.name ?? '—'}
+              {g?.shownCharacterId && g.shownCharacterId !== g.characterId ? <span className="warn"> (thinks: {CHARACTER_BY_ID[g.shownCharacterId]?.name})</span> : null}
+              {g?.reminders.length ? <span className="muted"> · {g.reminders.join(', ')}</span> : null}
+              {g?.nightChoice.length ? <> · chose <b>{g.nightChoice.map(name).join(', ')}</b></> : <span className="muted"> · no choice yet</span>}</p>;
+          })}
+          {recipient && <HelperCard step={step.id} view={view} send={send} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HelperCard({ step, view, send }: { step: string; view: GameView; send: (c: { text?: string; playerIds?: string[]; characterIds?: string[] }, to?: string | null) => unknown }) {
+  const self = st(view);
+  const kind = TEMPLATE[step] ?? 'text';
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
+  const [c, setC] = useState<string | null>(null);
+  const [text, setText] = useState('');
+  const others = view.players;
+  const playerSel = (v: string, set: (x: string) => void, label: string) => (
+    <select aria-label={label} value={v} onChange={e => set(e.target.value)}><option value="">{label}</option>{others.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+  );
+  switch (kind) {
+    case 'number':
+      return <div className="nh-card">Show a number: {[0, 1, 2, 3, 4, 5].map(n => <button key={n} className="btn small" onClick={() => send({ text: `You learn: ${n}` })}>{n}</button>)}</div>;
+    case 'yesno':
+      return <div className="nh-card">Answer: <button className="btn small" onClick={() => send({ text: 'Yes' })}>👍 Yes</button> <button className="btn small" onClick={() => send({ text: 'No' })}>👎 No</button></div>;
+    case 'pair':
+      return (
+        <div className="nh-card">
+          <div className="row wrap">{playerSel(a, setA, 'Player 1')}{playerSel(b, setB, 'Player 2')}
+            <CharSelect label="Character" value={c} filter={t => t === PAIR_TYPE[step]} onChange={setC} /></div>
+          <div className="row wrap">
+            <button className="btn small primary" disabled={!a || !b || !c} onClick={() => send({ text: 'One of these two players is this character:', playerIds: [a, b], characterIds: [c!] })}>Show</button>
+            {step === 'librarian' && <button className="btn small" onClick={() => send({ text: 'There are no Outsiders in play.' })}>No Outsiders in play</button>}
+          </div>
+        </div>
+      );
+    case 'character':
+      return (
+        <div className="nh-card row wrap">
+          {step === 'grandmother' && playerSel(a, setA, 'Grandchild')}
+          <CharSelect label="Character" value={c} onChange={setC} />
+          <button className="btn small primary" disabled={!c || (step === 'grandmother' && !a)} onClick={() => send({ text: step === 'grandmother' ? 'Your grandchild is:' : 'You learn this character:', playerIds: a ? [a] : [], characterIds: [c!] })}>Show</button>
+        </div>
+      );
+    case 'minions': {
+      const demons = self.grimoire.filter(g => CHARACTER_BY_ID[g.characterId ?? '']?.type === 'demon').map(g => g.id);
+      const minions = self.grimoire.filter(g => CHARACTER_BY_ID[g.characterId ?? '']?.type === 'minion').map(g => g.id);
+      return <div className="nh-card"><button className="btn small primary" onClick={() => minions.forEach(m => send({ text: 'The Demon is:', playerIds: demons }, m))}>Show each Minion their Demon</button>
+        <p className="muted small">Their screens already mark the evil team; this card also stays in their notes.</p></div>;
+    }
+    case 'demon': {
+      const minions = self.grimoire.filter(g => CHARACTER_BY_ID[g.characterId ?? '']?.type === 'minion').map(g => g.id);
+      const demons = self.grimoire.filter(g => CHARACTER_BY_ID[g.characterId ?? '']?.type === 'demon').map(g => g.id);
+      const lunatics = self.grimoire.filter(g => g.characterId === 'lunatic');
+      return <div className="nh-card">
+        <button className="btn small primary" onClick={() => demons.forEach(d => send({ text: 'Your Minions, and three characters not in play:', playerIds: minions, characterIds: self.demonBluffs }, d))}>Show the Demon their Minions & bluffs</button>
+        {lunatics.map(l => <button key={l.id} className="btn small" onClick={() => send({ text: 'Your Minions, and three characters not in play:', playerIds: l.fakeEvilTeam, characterIds: self.lunaticBluffs }, l.id)}>Lunatic's fake version</button>)}
+      </div>;
+    }
+    default:
+      return <form className="nh-card row" onSubmit={e => { e.preventDefault(); if (text.trim()) { void send({ text }); setText(''); } }}>
+        <input value={text} onChange={e => setText(e.target.value)} placeholder="Quick info card text…" aria-label="Info card text" /><button className="btn small">Send</button></form>;
+  }
+}
+
 function NightOrder({ view }: { view: GameView }) {
   const self = st(view);
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
@@ -271,6 +395,7 @@ function NightOrder({ view }: { view: GameView }) {
   const awake = self.grimoire.filter(g => g.awake);
   return (
     <div className="night-order">
+      <NightHelper view={view} />
       <p className="muted small">{view.night <= 1 ? 'First night' : `Night ${view.night}`}. Click a player to wake / sleep them (or click their avatar). Their choices appear in the Grimoire.</p>
       {awake.length > 0 && <div className="awake-list">Awake: {awake.map(g => (
         <button key={g.id} className={`chip ${self.focusId === g.id ? 'active' : ''}`} onClick={() => act('st:focus', { playerId: g.id })} title="Talk to this player">{name(g.id)}{self.focusId === g.id ? ' 🎙' : ''}{g.nightChoice.length ? ` → ${g.nightChoice.map(name).join(', ')}` : ''}</button>

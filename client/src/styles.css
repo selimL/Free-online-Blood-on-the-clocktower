@@ -507,3 +507,10 @@ textarea.notes { width: 100%; min-height: 180px; }
 .story-votes, .story-grim { width: 100%; border-collapse: collapse; font-size: .92rem; }
 .story-votes th, .story-votes td, .story-grim th, .story-grim td { text-align: left; padding: .25rem .3rem; border-bottom: 1px solid rgba(31, 22, 15, .18); }
 .story-grim td.align.good { color: #1e5e28; } .story-grim td.align.evil { color: #a3121a; font-weight: 600; }
+
+/* night helper */
+.night-helper { border: 1px solid var(--moon); border-radius: 8px; padding: .5rem .6rem; margin-bottom: .7rem; background: rgba(30, 40, 80, .25); }
+.nh-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.nh-step h3 { margin: .4rem 0 .1rem; color: var(--candle); }
+.nh-card { margin-top: .4rem; display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+.nh-card .row { width: 100%; }
