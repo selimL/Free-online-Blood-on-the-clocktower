@@ -171,6 +171,10 @@ export class Game {
   lastEmoteAt: Record<string, number> = {};
   /** Practice game run by an automatic Storyteller (see tutorial.ts). */
   tutorial: TutorialState | null = null;
+  /** Planned start time (ms) shared with the invite link; null = no schedule. */
+  scheduledFor: number | null = null;
+  /** End-of-game MVP votes: voter id → player id. */
+  mvpVotes: Record<string, string> = {};
   /** Private messages between each player and the Storyteller. */
   whispers: Whisper[] = [];
   lastWhisperAt: Record<string, number> = {};
@@ -455,6 +459,30 @@ export class Game {
       return v.room === loc && v.subscribe;
     });
     this.emit(audience, 'emote', { id: fromId, kind: def!.id, ts: now });
+  }
+
+  setSchedule(when: unknown) {
+    const t = Number(when);
+    if (when === null || when === undefined || when === '' || !Number.isFinite(t) || t <= 0) { this.scheduledFor = null; this.changed(); return; }
+    if (this.started) fail('The game has already started.');
+    if (t < Date.now() - 3600_000) fail('That time has already passed.');
+    if (t > Date.now() + 30 * 86400_000) fail('Schedule at most 30 days ahead.');
+    this.scheduledFor = Math.round(t);
+    this.changed();
+  }
+  /** After the game: everyone (players and the Storyteller) may name one MVP; votes can be changed. */
+  voteMvp(voterId: string, candidateId: string) {
+    if (this.phase !== 'ended') fail('MVP votes open when the game is over.');
+    if (voterId.startsWith('spec:')) fail('Spectators cannot vote.');
+    const c = this.player(candidateId);
+    if (c.id === voterId) fail('You cannot vote for yourself.');
+    this.mvpVotes[voterId] = c.id;
+    this.changed();
+  }
+  mvpTally(): Record<string, number> {
+    const t: Record<string, number> = {};
+    for (const id of Object.values(this.mvpVotes)) if (this.maybePlayer(id)) t[id] = (t[id] ?? 0) + 1;
+    return t;
   }
 
   /** A private note between one player and the Storyteller (either direction). */

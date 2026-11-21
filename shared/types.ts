@@ -285,6 +285,10 @@ export interface GameView {
   voteHistory: VoteRecord[] | null;
   /** Today's weather in the 3D town. */
   weather: Weather;
+  /** Planned start time (ms), shown with a countdown. */
+  scheduledFor: number | null;
+  /** After the game: MVP votes per player, and the viewer's own vote. */
+  mvp: { votes: Record<string, number>; mine: string | null } | null;
   /** Private messages with the Storyteller: a player sees their own thread, the Storyteller sees all. */
   whispers: WhisperView[];
   /** The whole story, revealed to everyone once the game has ended (null before then). */
@@ -342,7 +346,7 @@ export interface StorytellerSelf {
   lastExecutedId: string | null;
 }
 
-export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended' }
+export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended'; scheduledFor: number | null }
 
 export interface VoteRecord { day: number; nominatorId: string; nomineeId: string; exile: boolean; yes: string[]; votes: number; needed: number; result: string }
 

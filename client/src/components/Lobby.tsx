@@ -6,12 +6,16 @@ import { AvatarCreator } from './Avatar';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts, fromShareParam, saveScript, newScriptId, type SavedScript } from '../scripts';
 import { act } from '../net';
+import { Countdown, fromLocalInput } from './Schedule';
+import { loadHistory, stats } from '../history';
+import { CHARACTER_BY_ID } from '../../../shared/characters';
 
 export function Lobby() {
   const [games, setGames] = useState<LobbyEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [practice, setPractice] = useState(false);
   const [builder, setBuilder] = useState<Partial<SavedScript> | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   // a shared script link (/?script=…): offer to save it
   useEffect(() => {
     const v = new URLSearchParams(location.search).get('script');
@@ -52,7 +56,7 @@ export function Lobby() {
               {games.map(g => (
                 <tr key={g.id}>
                   <td>{g.name}</td><td>{g.players}/{g.max}</td><td>{g.edition}</td>
-                  <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span></td>
+                  <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span>{g.scheduledFor && g.status === 'waiting' && <div className="small"><Countdown at={g.scheduledFor} /></div>}</td>
                   <td className="row"><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join / Watch'}</button></td>
                 </tr>
               ))}
@@ -73,14 +77,53 @@ export function Lobby() {
           <hr />
           <h2>New to the game?</h2>
           <p className="muted">Play a short guided practice game with six computer players. The Guide explains each step.</p>
-          <button className="btn" onClick={() => setPractice(true)}>🎓 Learn to play</button>
+          <div className="row"><button className="btn" onClick={() => setPractice(true)}>🎓 Learn to play</button>
+            <button className="btn ghost" onClick={() => setShowHistory(true)}>📊 My games</button></div>
         </section>
       </div>
       {creating && <CreateDialog onClose={() => setCreating(false)} />}
       {practice && <PracticeDialog onClose={() => setPractice(false)} />}
       {builder && <ScriptBuilder initial={builder} onClose={() => setBuilder(null)} />}
+      {showHistory && <HistoryDialog onClose={() => setShowHistory(false)} />}
       <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play.</footer>
     </div>
+    </div>
+  );
+}
+
+function HistoryDialog({ onClose }: { onClose: () => void }) {
+  const [list] = useState(loadHistory);
+  const s = stats(list);
+  const pct = (w: number, g: number) => (g ? `${Math.round((w / g) * 100)}%` : '—');
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal parchment wide" role="dialog" aria-label="My games" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>📊 My games</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>✕</button></div>
+        {list.length === 0 ? <p className="muted">No finished games yet. Games you finish in this browser appear here.</p> : <>
+          <div className="stat-cards">
+            <div><b>{s.games}</b><span>games played</span></div>
+            <div><b>{pct(s.wins, s.games)}</b><span>won</span></div>
+            <div className="good"><b>{pct(s.good.wins, s.good.games)}</b><span>won as good ({s.good.games})</span></div>
+            <div className="evil"><b>{pct(s.evil.wins, s.evil.games)}</b><span>won as evil ({s.evil.games})</span></div>
+            <div><b>{s.mvps}</b><span>MVP awards</span></div>
+            <div><b>{s.storytold}</b><span>games as Storyteller</span></div>
+          </div>
+          {s.topCharacters.length > 0 && <p className="small">Most played: {s.topCharacters.map(([id, n]) => `${CHARACTER_BY_ID[id]?.name ?? id} (${n})`).join(', ')}</p>}
+          <table className="games history">
+            <thead><tr><th>Date</th><th>Game</th><th>You</th><th>Result</th><th>MVP</th></tr></thead>
+            <tbody>{list.map(h => (
+              <tr key={h.gameId}>
+                <td className="small">{new Date(h.endedAt).toLocaleDateString()}</td>
+                <td>{h.name} <span className="muted small">· {h.players} players</span></td>
+                <td>{h.role === 'storyteller' ? 'Storyteller' : <><span className={`align ${h.alignment}`}>{CHARACTER_BY_ID[h.character ?? '']?.name ?? '—'}</span>{h.survived === false ? ' 👻' : ''}</>}</td>
+                <td>{h.winner ? `${h.winner === 'good' ? 'Good' : 'Evil'} won` : '—'}{h.won === true ? ' ✓' : h.won === false ? ' ✗' : ''}</td>
+                <td>{h.mvpMe ? '🏆 you' : h.mvp.join(', ') || '—'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>}
+        <p className="muted small">Kept in this browser only.</p>
+      </div>
     </div>
   );
 }
@@ -118,9 +161,10 @@ function CreateDialog({ onClose }: { onClose: () => void }) {
   const [edition, setEdition] = useState('tb');
   const [avatar, setAvatar] = useState<Avatar>(defaultAvatar);
   const [mine] = useState(loadScripts);
+  const [when, setWhen] = useState('');
   const create = async () => {
     const custom = mine.find(x => `my:${x.id}` === edition);
-    const r = await rpc('game:create', { name, visibility, stName, stAvatar: avatar, edition: custom ? 'custom' : edition });
+    const r = await rpc('game:create', { name, visibility, stName, stAvatar: avatar, edition: custom ? 'custom' : edition, scheduledFor: fromLocalInput(when) });
     if (!r.ok) return pushAlert(r.error ?? 'Failed', 'error');
     const s = { gameId: r.gameId, code: r.code, token: r.token, id: 'st' };
     saveSession(s);
@@ -148,6 +192,7 @@ function CreateDialog({ onClose }: { onClose: () => void }) {
             </select>
           </label>
         </div>
+        <label className="field">Start time (optional: players see a countdown and can add it to their calendar)<input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></label>
         <AvatarCreator value={avatar} onChange={setAvatar} />
         <div className="row end"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!name.trim() || !stName.trim()} onClick={create}>Create</button></div>
       </div>

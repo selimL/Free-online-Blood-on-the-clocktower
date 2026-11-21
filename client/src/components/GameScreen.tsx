@@ -7,6 +7,8 @@ import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '.
 import { useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
 import { sendEmote } from '../emotes';
 import { sunPosition } from '../daylight';
+import { recordGame } from '../history';
+import { Countdown, downloadIcs, toLocalInput, fromLocalInput } from './Schedule';
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
@@ -77,6 +79,10 @@ export function GameScreen({ view }: { view: GameView }) {
   // the story opens by itself when the game ends
   const ended = view.phase === 'ended';
   useEffect(() => { if (ended) { const t = setTimeout(() => setModal('story'), 2800); return () => clearTimeout(t); } }, [ended]);
+  // remember finished games in "My games" (updated as MVP votes come in)
+  const mvpKey = JSON.stringify(view.mvp?.votes ?? null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (ended) recordGame(view); }, [ended, mvpKey]);
   // atmosphere: wind and crickets at night, a heartbeat while votes are counted
   const voting = view.stage === 'voting' && !!view.nomination && !view.nomination.done;
   useEffect(() => { setNightAmbience(night); }, [night]);
@@ -254,6 +260,7 @@ function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules,
         <button className="btn small ghost" onClick={openInvite} title="Invite players">Code <b>{view.code}</b></button>
       </div>
       <div className="tc">
+        {view.phase === 'lobby' && view.scheduledFor && <Countdown at={view.scheduledFor} />}
         <span className="phase">{PHASE_LABEL[view.phase]}{view.phase === 'day' ? ` ${view.day}` : view.phase === 'night' ? ` ${view.night}` : ''}{view.stage ? ` · ${STAGE_LABEL[view.stage]}` : ''}</span>
         <TimerBadge view={view} />
       </div>
@@ -305,6 +312,7 @@ function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void })
   return (
     <Modal title={`The story of ${view.name}`} onClose={onClose} wide>
       <p className={`story-winner ${view.winner}`}>{view.winner === 'good' ? '☀ Good wins!' : view.winner === 'evil' ? '🩸 Evil wins!' : ''}</p>
+      {view.mvp && !(!view.self.isStoryteller && view.self.spectator) && <MvpVote view={view} />}
       <div className="tabs" role="tablist">
         {(['timeline', 'votes', 'grimoire'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'timeline' ? 'Timeline' : t === 'votes' ? `Votes (${story.votes.length})` : 'Grimoire'}</button>)}
       </div>
@@ -321,6 +329,24 @@ function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void })
       </tbody></table>}
       {tab === 'grimoire' && story.demonBluffs.length > 0 && <p className="muted small">Demon bluffs: {story.demonBluffs.map(ch).join(', ')}</p>}
     </Modal>
+  );
+}
+
+function MvpVote({ view }: { view: GameView }) {
+  const mvp = view.mvp!;
+  const isST = view.self.isStoryteller;
+  const top = Math.max(0, ...Object.values(mvp.votes));
+  return (
+    <div className="mvp">
+      <b>🏆 Most valuable player:</b> <span className="muted small">vote for who played best (you can change your vote)</span>
+      <div className="chips">
+        {view.players.filter(p => isST || p.id !== view.self.id).map(p => {
+          const n = mvp.votes[p.id] ?? 0;
+          return <button key={p.id} className={`chip ${mvp.mine === p.id ? 'active' : ''} ${n && n === top ? 'lead' : ''}`}
+            onClick={() => act(isST ? 'st:mvp' : 'mvp', { candidateId: p.id })}>{n && n === top ? '🏆 ' : ''}{p.name}{n ? ` · ${n}` : ''}</button>;
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -595,8 +621,18 @@ function CustomiseDialog({ view, onClose }: { view: GameView; onClose: () => voi
 
 function InviteDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
   const link = `${location.origin}/join/${view.code}`;
+  const [when, setWhen] = useState(toLocalInput(view.scheduledFor));
+  const canSchedule = view.self.isStoryteller && view.phase === 'lobby';
   return (
     <Modal title="Invite players" onClose={onClose}>
+      {view.scheduledFor && <p><Countdown at={view.scheduledFor} /> <button className="btn small ghost" onClick={() => downloadIcs(view.name, view.scheduledFor!, link)}>📅 Add to calendar</button></p>}
+      {canSchedule && (
+        <form className="row" onSubmit={e => { e.preventDefault(); void act('st:schedule', { scheduledFor: fromLocalInput(when) }); }}>
+          <label className="field">Start time (optional)<input type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></label>
+          <button className="btn small">Save time</button>
+          {view.scheduledFor && <button type="button" className="btn small ghost" onClick={() => { setWhen(''); void act('st:schedule', { scheduledFor: null }); }}>Clear</button>}
+        </form>
+      )}
       <p>Invite code: <b className="code">{view.code}</b></p>
       <p><input readOnly value={link} onFocus={e => e.target.select()} aria-label="Invite link" /></p>
       <button className="btn" onClick={() => navigator.clipboard?.writeText(link)}>Copy link</button>

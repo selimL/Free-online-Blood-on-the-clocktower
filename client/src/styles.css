@@ -645,3 +645,19 @@ textarea.notes { width: 100%; min-height: 180px; }
 .nh-suggest .btn { margin-top: .3rem; }
 .nh-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .35rem 0; }
 .btn.suggested { box-shadow: 0 0 0 2px var(--good), 0 0 10px rgba(46, 125, 58, .6); font-weight: 700; }
+
+/* ---------------- MVP, history, schedule */
+.mvp { margin: .4rem 0 .8rem; padding: .5rem .7rem; border: 1px solid rgba(201, 161, 91, .6); border-radius: 8px; background: rgba(201, 161, 91, .1); }
+.mvp .chips { margin-top: .35rem; }
+.mvp .chip { cursor: pointer; border: 1px solid #8a7a5a; background: transparent; color: var(--ink); border-radius: 999px; padding: .1rem .55rem; font: inherit; }
+.mvp .chip.active { background: var(--ink); color: var(--parchment); }
+.mvp .chip.lead { border-color: #c9a15b; font-weight: 700; }
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem; margin-bottom: .6rem; }
+.stat-cards > div { padding: .5rem; border-radius: 8px; border: 1px solid rgba(74, 58, 42, .3); text-align: center; display: flex; flex-direction: column; }
+.stat-cards b { font: 700 1.5rem 'Cinzel', serif; }
+.stat-cards span { font-size: .8rem; color: var(--ink-soft); }
+.stat-cards .good b { color: var(--good); } .stat-cards .evil b { color: var(--evil); }
+.games.history { width: 100%; color: var(--ink); }
+.games.history .align.good { color: var(--good); } .games.history .align.evil { color: var(--evil); }
+.countdown { font-size: .85rem; color: var(--candle); }
+.parchment .countdown, .modal .countdown { color: var(--ink-soft); }

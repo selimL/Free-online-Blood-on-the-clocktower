@@ -78,3 +78,20 @@ describe('saving games', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('scheduled games are kept until their start time', () => {
+  it('an old save survives if the game is scheduled for later', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { FileStore, TTL_SECONDS } = await import('../server/src/persist');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'botc-sched-'));
+    const store = new FileStore(dir);
+    await store.save('later', JSON.stringify({ name: 'Later', scheduledFor: Date.now() + 3 * 86400_000 }));
+    await store.save('stale', JSON.stringify({ name: 'Stale', scheduledFor: null }));
+    const old = (Date.now() - (TTL_SECONDS + 60) * 1000) / 1000;
+    for (const f of fs.readdirSync(dir)) fs.utimesSync(path.join(dir, f), old, old);
+    const loaded = (await store.loadAll()).map(j => JSON.parse(j).name);
+    expect(loaded).toEqual(['Later']);
+  });
+});

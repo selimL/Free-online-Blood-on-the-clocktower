@@ -140,6 +140,8 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
       demonBluffs: [...g.demonBluffs],
     } : null,
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
+    scheduledFor: g.scheduledFor ?? null,
+    mvp: g.phase === 'ended' ? { votes: g.mvpTally(), mine: g.mvpVotes[isST ? 'st' : viewer?.id ?? ''] ?? null } : null,
     weather: resolveWeather(g.settings.weather ?? 'clear', g.id, g.day),
     voteHistory: g.settings.houseRules.openVoteRecord
       ? g.voteHistory.map(v => ({ ...v, yes: g.settings.houseRules.anonymousVotes ? [] : v.yes })) : null,
@@ -222,5 +224,6 @@ export function lobbyEntry(g: Game): LobbyEntry {
     id: g.id, code: g.code, name: g.name, players: g.players.length, max: MAX_PLAYERS,
     edition: g.settings.edition === 'custom' ? 'Custom script' : ({ tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets' } as const)[g.settings.edition],
     status: g.phase === 'lobby' ? 'waiting' : g.phase === 'ended' ? 'ended' : 'in progress',
+    scheduledFor: g.scheduledFor ?? null,
   };
 }

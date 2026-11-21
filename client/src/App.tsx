@@ -7,6 +7,7 @@ import { AvatarCreator } from './components/Avatar';
 import { defaultAvatar, type Avatar } from '../../shared/types';
 import { Alerts } from './components/Overlays';
 import { RoomPreview } from './components/RoomPreview';
+import { Countdown, downloadIcs } from './components/Schedule';
 import './styles.css';
 
 const codeFromPath = () => {
@@ -15,7 +16,7 @@ const codeFromPath = () => {
 };
 
 function JoinForm({ code }: { code: string }) {
-  const [info, setInfo] = useState<{ name: string; players: number; max: number; edition: string; status: string } | null>(null);
+  const [info, setInfo] = useState<{ name: string; players: number; max: number; edition: string; status: string; scheduledFor: number | null } | null>(null);
   const [traveller, setTraveller] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState(() => localStorage.getItem('botc:name') ?? '');
@@ -37,6 +38,7 @@ function JoinForm({ code }: { code: string }) {
     <div className="center-card parchment wide">
       <h2>Join “{info.name}”</h2>
       <p className="muted">{info.edition} · {info.players}/{info.max} players · {info.status}</p>
+      {info.scheduledFor && info.status === 'waiting' && <p><Countdown at={info.scheduledFor} /> <button className="btn small ghost" onClick={() => downloadIcs(info.name, info.scheduledFor!, location.href)}>📅 Add to calendar</button></p>}
       {traveller && <p className="warn">This game is already in progress. You will join as a <b>Traveller</b> if the Storyteller allows it.</p>}
       <label className="field">Your name<input value={name} maxLength={24} onChange={e => setName(e.target.value)} placeholder="e.g. Mortimer" autoFocus /></label>
       <AvatarCreator value={avatar} onChange={setAvatar} />

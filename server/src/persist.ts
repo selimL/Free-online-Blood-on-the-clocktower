@@ -8,11 +8,13 @@ import path from 'node:path';
 export interface GameStore {
   readonly kind: string;
   loadAll(): Promise<string[]>;
-  save(id: string, json: string): Promise<void>;
+  /** `keepUntil`: never expire before this time (scheduled games). */
+  save(id: string, json: string, keepUntil?: number | null): Promise<void>;
   remove(id: string): Promise<void>;
 }
 
-const TTL_SECONDS = 12 * 3600; // saved games expire after 12 hours without changes
+export const TTL_SECONDS = 12 * 3600; // saved games expire after 12 hours without changes
+const ttlFor = (keepUntil?: number | null) => Math.max(TTL_SECONDS, keepUntil ? Math.ceil((keepUntil - Date.now()) / 1000) + TTL_SECONDS : 0);
 
 /** JSON that survives Infinity (used for "no deadline"). */
 export const encode = (v: unknown) => JSON.stringify(v, (_k, x) => (x === Infinity ? '__inf' : x));
@@ -26,8 +28,11 @@ export class FileStore implements GameStore {
     const now = Date.now();
     return fs.readdirSync(this.dir).filter(f => /^game-.*\.json$/.test(f)).flatMap(f => {
       const full = path.join(this.dir, f);
-      if (now - fs.statSync(full).mtimeMs > TTL_SECONDS * 1000) { fs.rmSync(full, { force: true }); return []; }
-      return [fs.readFileSync(full, 'utf8')];
+      const json = fs.readFileSync(full, 'utf8');
+      let keepUntil: number | null = null;
+      try { keepUntil = Number(JSON.parse(json).scheduledFor) || null; } catch { /* damaged: treat as unscheduled */ }
+      if (now - fs.statSync(full).mtimeMs > TTL_SECONDS * 1000 && !(keepUntil && keepUntil + TTL_SECONDS * 1000 > now)) { fs.rmSync(full, { force: true }); return []; }
+      return [json];
     });
   }
   async save(id: string, json: string) {
@@ -51,7 +56,7 @@ export class UpstashStore implements GameStore {
     if (!keys.length) return [];
     return ((await this.cmd(['MGET', ...keys])) as (string | null)[]).filter((x): x is string => !!x);
   }
-  async save(id: string, json: string) { await this.cmd(['SET', `botc:game:${id}`, json, 'EX', TTL_SECONDS]); }
+  async save(id: string, json: string, keepUntil?: number | null) { await this.cmd(['SET', `botc:game:${id}`, json, 'EX', ttlFor(keepUntil)]); }
   async remove(id: string) { await this.cmd(['DEL', `botc:game:${id}`]); }
 }
 

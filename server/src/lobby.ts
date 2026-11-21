@@ -113,6 +113,7 @@ export class Lobby {
   create(socket: Socket, d: any) {
     const g = new Game({ name: d.name, visibility: d.visibility, stName: d.stName, stAvatar: d.stAvatar });
     if (['tb', 'bmr', 'snv', 'custom'].includes(d.edition)) g.settings.edition = d.edition;
+    g.setSchedule(d.scheduledFor);
     this.games.set(g.id, g);
     this.wire(g);
     this.bind(socket, g, 'st');
@@ -263,6 +264,7 @@ export class Lobby {
       }
       case 'claim': return g.setClaim(p, String(d.claim ?? ''));
       case 'tutorial:next': return tutorialNext(g, p.id);
+      case 'mvp': return g.voteMvp(p.id, String(d.candidateId ?? ''));
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'emote': return g.emote(p.id, d.kind);
       case 'question': return g.answerQuestion(p, !!d.yes);
@@ -316,6 +318,8 @@ export class Lobby {
         for (const s of this.sockets.get(g.id) ?? []) if ((s.data.binding as Binding).id === pid) this.leave(s);
         return;
       }
+      case 'st:schedule': return g.setSchedule(d.scheduledFor);
+      case 'st:mvp': return g.voteMvp('st', String(d.candidateId ?? ''));
       case 'st:deal': return g.deal();
       case 'st:addBot': { if (g.players.filter(p => p.bot).length >= 9) fail('That is plenty of bots.'); addBot(g); return; }
       case 'st:reveal': return g.reveal();
@@ -359,7 +363,8 @@ export class Lobby {
     for (const g of this.games.values()) {
       const live = (this.sockets.get(g.id)?.size ?? 0) > 0;
       const idle = now - g.lastActivity;
-      if ((!live && idle > 2 * 3600_000) || (g.phase === 'ended' && idle > 3600_000)) {
+      const waitingForStart = !!g.scheduledFor && g.phase === 'lobby' && now < g.scheduledFor + 3 * 3600_000;
+      if ((!live && idle > 2 * 3600_000 && !waitingForStart) || (g.phase === 'ended' && idle > 3600_000)) {
         this.games.delete(g.id);
         this.sockets.delete(g.id);
         this.voice.dropGame(g);
@@ -395,7 +400,7 @@ export class Lobby {
     await Promise.all(ids.map(async id => {
       const g = this.games.get(id);
       if (!g) return;
-      try { await this.store!.save(id, encode(g.toJSON())); }
+      try { await this.store!.save(id, encode(g.toJSON()), g.scheduledFor); }
       catch (e) { this.dirty.add(id); console.warn('[save] could not save game:', (e as Error).message); }
     }));
   }
