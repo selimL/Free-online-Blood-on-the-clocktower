@@ -8,6 +8,36 @@ import { startTutorial, tutorialNext, tutorialTick } from './tutorial';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
+export const UNDO_WINDOW_MS = 10 * 60_000;
+/** Storyteller actions worth undoing, with a short label (null = not undoable). */
+function undoLabel(g: Game, type: string, d: any): string | null {
+  const who = () => g.nameOf(String(d.playerId ?? ''));
+  switch (type) {
+    case 'st:kill': return `Kill ${who()}`;
+    case 'st:revive': return `Revive ${who()}`;
+    case 'st:execute': return `Execute ${who()}`;
+    case 'st:setCharacter': return `Change ${who()}'s character`;
+    case 'st:setShown': return `Change what ${who()} thinks they are`;
+    case 'st:setAlignment': return `Change ${who()}'s alignment`;
+    case 'st:reminders': return `Reminders on ${who()}`;
+    case 'st:ghostVote': return `${who()}'s ghost vote`;
+    case 'st:kick': return null; // a kicked player's connection is gone: not undoable
+    case 'st:deal': return 'Deal characters';
+    case 'st:reveal': return 'Reveal characters';
+    case 'st:night': return 'Start the night';
+    case 'st:day': return 'Start the day';
+    case 'st:stage': return `Change stage to ${String(d.stage)}`;
+    case 'st:startDefense': return 'Start the defence';
+    case 'st:startVote': return 'Start the vote';
+    case 'st:endDay': return 'End the day';
+    case 'st:skipTimer': return 'End the timer';
+    case 'st:resolveAbility': return 'Resolve the ability';
+    case 'st:end': return 'End the game';
+    case 'st:bluffs': return 'Change bluffs';
+    default: return null;
+  }
+}
+
 interface Binding { gameId: string; id: string }
 
 export class Lobby {
@@ -16,6 +46,8 @@ export class Lobby {
   private pending = new Set<string>();
 
   private dirty = new Set<string>();
+  /** Undo history per game: snapshots taken just before important Storyteller actions. Not saved. */
+  private undo = new Map<string, { label: string; at: number; json: string }[]>();
 
   constructor(private io: Server, private voice: VoiceManager, private store?: GameStore) {
     setInterval(() => void this.flush(), 2000);
@@ -65,7 +97,11 @@ export class Lobby {
         : (() => { const p = g.maybePlayer(id); return p ? playerView(g, p) : null; })();
       if (!view) continue;
       view.voice.enabled = this.voice.enabled;
-      if (id === 'st' && view.self.isStoryteller) view.self.availableRegions = this.voice.regions.map(r => r.name);
+      if (id === 'st' && view.self.isStoryteller) {
+        view.self.availableRegions = this.voice.regions.map(r => r.name);
+        const top = this.undo.get(g.id)?.at(-1);
+        view.self.undo = top && Date.now() - top.at < UNDO_WINDOW_MS ? { label: top.label, at: top.at } : null;
+      }
       s.emit('state', view);
     }
     void this.voice.reconcile(g);
@@ -249,6 +285,28 @@ export class Lobby {
   }
 
   private stAction(g: Game, type: string, d: any) {
+    if (type === 'st:undo') return this.undoLast(g);
+    const label = undoLabel(g, type, d);
+    if (!label) return this.stActionInner(g, type, d);
+    const json = encode(g.toJSON());
+    const out = this.stActionInner(g, type, d); // throws (and records nothing) if the action is refused
+    const stack = this.undo.get(g.id) ?? [];
+    stack.push({ label, at: Date.now(), json });
+    if (stack.length > 10) stack.shift();
+    this.undo.set(g.id, stack);
+    g.changed();
+    return out;
+  }
+  private undoLast(g: Game) {
+    const stack = this.undo.get(g.id) ?? [];
+    const top = stack.pop();
+    if (!top || Date.now() - top.at > UNDO_WINDOW_MS) { this.undo.set(g.id, []); fail('There is nothing to undo.'); }
+    try { g.restoreSnapshot(decode(top!.json), Date.now() - top!.at); }
+    catch (e) { this.undo.set(g.id, []); throw e; }
+    g.emit(['st'], 'alert', { text: `Undone: ${top!.label}`, kind: 'info' });
+  }
+
+  private stActionInner(g: Game, type: string, d: any) {
     const pid = String(d.playerId ?? '');
     switch (type) {
       case 'st:settings': return g.updateSettings(d.settings ?? {});

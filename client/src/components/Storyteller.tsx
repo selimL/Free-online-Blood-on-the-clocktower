@@ -1,3 +1,4 @@
+import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts } from '../scripts';
 import { WhisperInbox, useUnread } from './Whispers';
@@ -75,6 +76,7 @@ export function StorytellerPanel({ view }: { view: GameView }) {
   useEffect(() => { if (view.phase === 'night') setTab('night'); else if (tab === 'night') setTab('grim'); }, [view.phase]);
   return (
     <div className="side-panel st">
+      {self.undo && <UndoBar undo={self.undo} />}
       {self.winHint && <div className="request win-hint">⚖ {self.winHint} <span className="muted small">End the game from the Grimoire if so.</span></div>}
       <PendingAbility view={view} />
       <PrivateRequests view={view} />
@@ -90,6 +92,24 @@ export function StorytellerPanel({ view }: { view: GameView }) {
       {tab === 'notes' && <NotesLog view={view} />}
     </div>
   );
+}
+
+function UndoBar({ undo }: { undo: { label: string; at: number } }) {
+  const mins = Math.floor((Date.now() - undo.at) / 60000);
+  return (
+    <div className="undo-bar">
+      <button className="btn small" onClick={() => { if (confirm(`Undo “${undo.label}”?\n\nThe game goes back to just before it. Anything players did since then (votes, nominations…) is undone too.`)) void act('st:undo'); }}>↶ Undo</button>
+      <span className="small">{undo.label} <span className="muted">({mins < 1 ? 'just now' : `${mins} min ago`})</span></span>
+    </div>
+  );
+}
+
+/** Kill with a warning if the rules would normally stop it. */
+export function confirmKill(view: GameView, id: string) {
+  const w = killWarnings(id, view);
+  const name = view.players.find(p => p.id === id)?.name ?? '?';
+  if (w.length && !confirm(`${name} ${w.join('; ')}.\n\nKill them anyway?`)) return;
+  void act('st:kill', { playerId: id });
 }
 
 function PendingAbility({ view }: { view: GameView }) {
@@ -169,7 +189,7 @@ function Grimoire({ view }: { view: GameView }) {
                   <label>Alignment <select value={g.alignment} onChange={e => act('st:setAlignment', { playerId: g.id, alignment: e.target.value })}><option value="good">Good</option><option value="evil">Evil</option></select></label>
                 </div>
                 <div className="row wrap">
-                  {p.alive && !self.pendingDawnDeaths.includes(g.id) && <button className="btn small danger" onClick={() => act('st:kill', { playerId: g.id })}>{view.phase === 'night' ? 'Kill (at dawn)' : 'Kill'}</button>}
+                  {p.alive && !self.pendingDawnDeaths.includes(g.id) && <button className="btn small danger" onClick={() => confirmKill(view, g.id)}>{view.phase === 'night' ? 'Kill (at dawn)' : 'Kill'}</button>}
                   {(!p.alive || self.pendingDawnDeaths.includes(g.id)) && <button className="btn small" onClick={() => act('st:revive', { playerId: g.id })}>Revive</button>}
                   {view.phase === 'day' && <button className="btn small danger" onClick={() => act('st:execute', { playerId: g.id })}>Execute now</button>}
                   {!p.alive && <button className="btn small" onClick={() => act('st:ghostVote', { playerId: g.id, used: !p.ghostVoteUsed })}>{p.ghostVoteUsed ? 'Restore ghost vote' : 'Mark ghost vote used'}</button>}
@@ -307,6 +327,10 @@ function NightHelper({ view }: { view: GameView }) {
   const [who, setWho] = useState<string | null>(null);
   const recipient = who && targets.includes(who) ? who : targets[0] ?? null;
   const send = (card: { text?: string; playerIds?: string[]; characterIds?: string[] }, to: string | null = recipient) => (to ? act('st:info', { playerId: to, card }) : undefined);
+  // worked out once per step and recipient (pair suggestions pick a random second player)
+  const choiceKey = recipient ? grim[recipient]?.nightChoice.join(',') ?? '' : '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sug = useMemo(() => (step && recipient ? suggestInfo(step.id, recipient, view) : null), [step?.id, recipient, choiceKey, self.lastExecutedId]);
   return (
     <div className="night-helper">
       <div className="nh-head">
@@ -320,6 +344,7 @@ function NightHelper({ view }: { view: GameView }) {
           </span>}
       </div>
       {!steps.length && <p className="muted small">Nobody acts tonight.</p>}
+      {index < 0 && <ClearNightly view={view} />}
       {step && (
         <div className="nh-step">
           <h3>{step.name}</h3>
@@ -333,19 +358,69 @@ function NightHelper({ view }: { view: GameView }) {
               {g?.reminders.length ? <span className="muted"> · {g.reminders.join(', ')}</span> : null}
               {g?.nightChoice.length ? <> · chose <b>{g.nightChoice.map(name).join(', ')}</b></> : <span className="muted"> · no choice yet</span>}</p>;
           })}
-          {recipient && <HelperCard step={step.id} view={view} send={send} />}
+          {recipient && <StepActions step={step.id} actor={recipient} view={view} />}
+          {recipient && (() => {
+            const why = impairment(grim[recipient]);
+            return <>
+              {sug && <div className={`nh-suggest ${why ? 'impaired' : ''}`}>
+                <b>💡 Suggested:</b> {sug.why}
+                {why && <div className="warn small">⚠ {name(recipient)} {why}: you may give false information instead.</div>}
+                {sug.card && !sug.pair && sug.value === undefined && <div><button className="btn small primary" onClick={() => send(sug.card!)}>Send this</button></div>}
+              </div>}
+              <HelperCard key={`${step.id}:${recipient}:${sug?.pair ? `${sug.pair.a}${sug.pair.b}` : ''}`} step={step.id} view={view} send={send} suggestion={sug} />
+            </>;
+          })()}
         </div>
       )}
     </div>
   );
 }
 
-function HelperCard({ step, view, send }: { step: string; view: GameView; send: (c: { text?: string; playerIds?: string[]; characterIds?: string[] }, to?: string | null) => unknown }) {
+/** One-click reminders and kills implied by the acting player's choice. */
+function StepActions({ step, actor, view }: { step: string; actor: string; view: GameView }) {
+  const self = st(view);
+  const seat = self.grimoire.find(g => g.id === actor);
+  const target = seat?.nightChoice[0];
+  if (!target) return null;
+  const tName = view.players.find(p => p.id === target)?.name ?? '?';
+  const reminder = CHOICE_REMINDER[step];
+  const isDemon = CHARACTER_BY_ID[step]?.type === 'demon';
+  const mark = () => {
+    // move the token: it leaves whoever had it, and goes to the new target
+    for (const g of self.grimoire) if (g.id !== target && g.reminders.includes(reminder)) void act('st:reminders', { playerId: g.id, reminders: g.reminders.filter(r => r !== reminder) });
+    const t = self.grimoire.find(g => g.id === target)!;
+    if (!t.reminders.includes(reminder)) void act('st:reminders', { playerId: target, reminders: [...t.reminders, reminder] });
+  };
+  const warnings = isDemon ? killWarnings(target, view) : [];
+  const already = self.grimoire.find(g => g.id === target)?.reminders.includes(reminder ?? '');
+  return (
+    <div className="nh-actions">
+      {reminder && <button className="btn small" disabled={already} onClick={mark}>{already ? `✓ ${tName} is marked ${reminder}` : `🏷 Mark ${tName} as ${reminder}`}</button>}
+      {isDemon && <>
+        {warnings.length > 0 && <div className="warn small">⚠ {tName} {warnings.join('; ')}.</div>}
+        {self.pendingDawnDeaths.includes(target)
+          ? <span className="small">✓ {tName} will be found dead at dawn.</span>
+          : <button className="btn small danger" onClick={() => confirmKill(view, target)}>☠ Kill {tName} (at dawn)</button>}
+      </>}
+    </div>
+  );
+}
+
+/** At the start of a night: clear last night's one-night reminders. */
+function ClearNightly({ view }: { view: GameView }) {
+  const self = st(view);
+  const stale = self.grimoire.filter(g => g.reminders.some(r => NIGHTLY_REMINDERS.includes(r)));
+  if (!stale.length) return null;
+  const clear = () => { for (const g of stale) void act('st:reminders', { playerId: g.id, reminders: g.reminders.filter(r => !NIGHTLY_REMINDERS.includes(r)) }); };
+  return <p className="small">🧹 {stale.length} player{stale.length > 1 ? 's have' : ' has'} last night's markers (Poisoned, Protected…). <button className="btn small ghost" onClick={clear}>Clear them</button></p>;
+}
+
+function HelperCard({ step, view, send, suggestion }: { step: string; view: GameView; send: (c: { text?: string; playerIds?: string[]; characterIds?: string[] }, to?: string | null) => unknown; suggestion?: Suggestion | null }) {
   const self = st(view);
   const kind = TEMPLATE[step] ?? 'text';
-  const [a, setA] = useState('');
-  const [b, setB] = useState('');
-  const [c, setC] = useState<string | null>(null);
+  const [a, setA] = useState(suggestion?.pair?.a ?? '');
+  const [b, setB] = useState(suggestion?.pair?.b ?? '');
+  const [c, setC] = useState<string | null>(suggestion?.pair?.c ?? null);
   const [text, setText] = useState('');
   const others = view.players;
   const playerSel = (v: string, set: (x: string) => void, label: string) => (
@@ -353,9 +428,9 @@ function HelperCard({ step, view, send }: { step: string; view: GameView; send: 
   );
   switch (kind) {
     case 'number':
-      return <div className="nh-card">Show a number: {[0, 1, 2, 3, 4, 5].map(n => <button key={n} className="btn small" onClick={() => send({ text: `You learn: ${n}` })}>{n}</button>)}</div>;
+      return <div className="nh-card">Show a number: {[0, 1, 2, 3, 4, 5].map(n => <button key={n} className={`btn small ${suggestion?.value === n ? 'suggested' : ''}`} title={suggestion?.value === n ? 'Suggested (the true number)' : undefined} onClick={() => send({ text: `You learn: ${n}` })}>{n}</button>)}</div>;
     case 'yesno':
-      return <div className="nh-card">Answer: <button className="btn small" onClick={() => send({ text: 'Yes' })}>👍 Yes</button> <button className="btn small" onClick={() => send({ text: 'No' })}>👎 No</button></div>;
+      return <div className="nh-card">Answer: <button className={`btn small ${suggestion?.value === 'yes' ? 'suggested' : ''}`} onClick={() => send({ text: 'Yes' })}>👍 Yes</button> <button className={`btn small ${suggestion?.value === 'no' ? 'suggested' : ''}`} onClick={() => send({ text: 'No' })}>👎 No</button></div>;
     case 'pair':
       return (
         <div className="nh-card">

@@ -211,7 +211,7 @@ export function storytellerView(g: Game): GameView {
     demonBluffs: g.demonBluffs, lunaticBluffs: g.lunaticBluffs, pendingDawnDeaths: g.pendingDawnDeaths,
     pendingAbility: g.pendingAbility, privateRequests: g.privateRequests, notes: g.stNotes, log: g.log.slice(-200),
     regionsRtt: Object.fromEntries(g.players.map(p => [p.id, p.rtt])),
-    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(),
+    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId,
   };
   return { ...baseView(g, null, null), self } as GameView;
 }

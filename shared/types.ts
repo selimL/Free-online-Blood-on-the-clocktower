@@ -317,6 +317,10 @@ export interface StorytellerSelf {
   nightOrder: { id: string; name: string; text: string; players: string[] }[];
   focusId: string | null;
   winHint: string | null;
+  /** The last Storyteller action that can still be undone. */
+  undo?: { label: string; at: number } | null;
+  /** Who was executed on the most recent day (Undertaker). */
+  lastExecutedId: string | null;
 }
 
 export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended' }

@@ -16,10 +16,7 @@ export function addBot(g: Game, name?: string, avatar?: Avatar): Player {
   if (g.phase !== 'lobby') throw new GameError('Bots can only join before the game starts.');
   const taken = new Set(g.players.map(p => p.name));
   const n = name ?? BOT_NAMES.find(x => !taken.has(x)) ?? `Bot ${g.players.length + 1}`;
-  const p = g.join(n, avatar ?? randomAvatar());
-  p.bot = true;
-  p.connected = true;
-  p.joining = false;
+  const p = g.join(n, avatar ?? randomAvatar(), { bot: true });
   g.changed();
   return p;
 }

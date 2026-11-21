@@ -144,6 +144,8 @@ export class Game {
   aboutToDie: { playerId: string; votes: number } | null = null;
   highestVotes = 0;
   executedToday = false;
+  /** Who was executed on the most recent day (for the Undertaker). */
+  lastExecutedId: string | null = null;
   speakerId: string | null = null;
   ability: AbilityEvent | null = null;
   pendingAbility: PendingAbility | null = null;
@@ -207,6 +209,34 @@ export class Game {
       g.pausedBySTDisconnect = true;
     }
     return g;
+  }
+
+  /**
+   * Undo: put the game back to a snapshot taken `ageMs` ago. Connections, spectators and private
+   * messages stay as they are now; running timers are shifted so they resume where they were.
+   */
+  restoreSnapshot(data: Record<string, any>, ageMs: number) {
+    const ids = (list: { id: string }[]) => list.map(p => p.id).sort().join(',');
+    if (ids(data.players ?? []) !== ids(this.players)) fail('Someone joined or left since then, so this can no longer be undone.');
+    const keep = {
+      connected: new Map(this.players.map(p => [p.id, { connected: p.connected, offlineSince: p.offlineSince, offlineNoticed: p.offlineNoticed, rtt: p.rtt }])),
+      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
+    };
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'savedAt' || k === 'id' || k === 'code' || k === 'createdAt') continue;
+      (this as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
+    }
+    for (const p of this.players) Object.assign(p, keep.connected.get(p.id));
+    this.storyteller.connected = keep.st;
+    Object.assign(this, { spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
+    if (!this.paused) {
+      if (this.timer?.endsAt) this.timer.endsAt += ageMs;
+      if (this.nomination && Number.isFinite(this.nomination.deadline)) this.nomination.deadline += ageMs;
+      if (this.ability && Number.isFinite(this.ability.stageEndsAt)) this.ability.stageEndsAt += ageMs;
+      for (const p of this.players) if (p.joining) p.joinReadyAt += ageMs;
+    }
+    this.addLog('The Storyteller undid an action.');
+    this.changed();
   }
 
   // ------------------------------------------------------------ helpers
@@ -462,7 +492,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------ lobby
-  join(name: string, avatar: Partial<Avatar> | undefined): Player {
+  join(name: string, avatar: Partial<Avatar> | undefined, opts: { bot?: boolean } = {}): Player {
     if (this.phase === 'ended') fail('This game has ended.');
     if (this.players.length >= MAX_PLAYERS) fail(`The game is full (${MAX_PLAYERS} players).`);
     const traveller = this.started;
@@ -475,8 +505,10 @@ export class Game {
       awake: false, wantsQuestion: null, abilityUses: {}, claimUses: {}, traveller, fakeEvilTeam: [],
       privateMsToday: 0, revealed: false, revealedTo: [], rtt: {}, whispersToday: 0, butlerMaster: null, pos: null,
     };
+    if (opts.bot) { p.bot = true; p.connected = true; }
     this.players.push(p);
-    if (this.phase !== 'night') this.movePlayer(p, SQUARE);
+    if (this.phase !== 'night') this.movePlayer(p, SQUARE, { silentAlert: !!opts.bot });
+    if (opts.bot) p.joining = false;
     this.addLog(`${p.name} joined${traveller ? ' as a Traveller' : ''}.`);
     if (traveller) this.announce(`${p.name} has arrived as a Traveller.`);
     this.changed();
@@ -839,7 +871,7 @@ export class Game {
     const deaths = this.pendingDawnDeaths.map(id => this.maybePlayer(id)).filter((p): p is Player => !!p);
     this.pendingDawnDeaths = [];
     this.nominatedToday.clear(); this.nominatorsToday.clear(); this.abilityDeclarationsToday = 0;
-    this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null;
+    this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null; this.lastExecutedId = null;
     for (const p of this.players) { p.privateMsToday = 0; p.whispersToday = 0; }
     this.addLog(`Day ${this.day} begins.`);
     this.emit('all', 'transition', { to: 'day' });
@@ -1051,6 +1083,7 @@ export class Game {
     const p = this.player(pid);
     if (this.executedToday) fail('There has already been an execution today.');
     this.executedToday = true;
+    this.lastExecutedId = p.id;
     this.aboutToDie = null;
     this.addLog(`${p.name} was executed.`);
     this.emit('all', 'execution', { playerId: p.id });

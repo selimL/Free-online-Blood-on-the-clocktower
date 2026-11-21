@@ -637,3 +637,11 @@ textarea.notes { width: 100%; min-height: 180px; }
 .sb-ed { margin-left: auto; font-size: .65rem; opacity: .55; }
 .sb-import textarea { width: 100%; min-height: 4rem; }
 @media (max-width: 900px) { .sb-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------------- Storyteller helpers: undo, suggestions */
+.undo-bar { display: flex; align-items: center; gap: .5rem; padding: .35rem .5rem; margin-bottom: .5rem; border: 1px dashed #6a5e74; border-radius: 8px; }
+.nh-suggest { margin: .4rem 0; padding: .4rem .55rem; border-radius: 8px; background: rgba(46, 125, 58, .14); border: 1px solid rgba(46, 125, 58, .5); font-size: .9rem; }
+.nh-suggest.impaired { background: rgba(224, 72, 78, .1); border-color: rgba(224, 72, 78, .5); }
+.nh-suggest .btn { margin-top: .3rem; }
+.nh-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .35rem 0; }
+.btn.suggested { box-shadow: 0 0 0 2px var(--good), 0 0 10px rgba(46, 125, 58, .6); font-weight: 700; }
