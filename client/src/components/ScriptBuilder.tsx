@@ -16,6 +16,7 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
   const [ids, setIds] = useState<string[]>(initial?.ids ?? []);
   const [filter, setFilter] = useState('');
   const [importText, setImportText] = useState('');
+  const [info, setInfo] = useState<string | null>(null); // character whose ability is shown
   const has = useMemo(() => new Set(ids), [ids]);
   const toggle = (cid: string) => setIds(list => (list.includes(cid) ? list.filter(x => x !== cid) : [...list, cid]));
   const count = (t: string) => ids.filter(x => CHARACTER_BY_ID[x]?.type === t).length;
@@ -61,10 +62,15 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
           <section key={t} className={`sb-col ${t}`}>
             <h3>{TYPE_LABEL[t]} <span className="muted small">{count(t)}</span></h3>
             {CHARACTERS.filter(c => c.type === t && (!q || `${c.name} ${c.ability}`.toLowerCase().includes(q))).map(c => (
-              <label key={c.id} className={`sb-char ${has.has(c.id) ? 'on' : ''}`} title={c.ability}>
-                <input type="checkbox" checked={has.has(c.id)} onChange={() => toggle(c.id)} /> {c.name}
-                <span className="sb-ed">{c.edition === 'tb' ? 'TB' : c.edition === 'bmr' ? 'BMR' : c.edition === 'snv' ? 'S&V' : ''}</span>
-              </label>
+              <div key={c.id} className="sb-row">
+                <label className={`sb-char ${has.has(c.id) ? 'on' : ''}`}>
+                  <input type="checkbox" checked={has.has(c.id)} onChange={() => toggle(c.id)} /> {c.name}
+                  <span className="sb-ed">{c.edition === 'tb' ? 'TB' : c.edition === 'bmr' ? 'BMR' : c.edition === 'snv' ? 'S&V' : ''}</span>
+                </label>
+                <button type="button" className={`sb-info ${info === c.id ? 'on' : ''}`} aria-expanded={info === c.id}
+                  aria-label={`What does the ${c.name} do?`} title="What does this character do?" onClick={() => setInfo(info === c.id ? null : c.id)}>ⓘ</button>
+                {info === c.id && <p className="sb-ability">{c.ability}{c.setup ? <><br /><b>Setup:</b> {c.setup}</> : null}</p>}
+              </div>
             ))}
           </section>
         ))}
