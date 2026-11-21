@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameView, Avatar } from '../../../shared/types';
-import { defaultAvatar } from '../../../shared/types';
+import { defaultAvatar, EMOTES } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
 import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '../net';
-import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
+import { useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
+import { sendEmote } from '../emotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
 import { setNightAmbience, setHeartbeat, setVolume, useVolume } from '../sound';
@@ -26,7 +27,7 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>(null);
   const [nightSel, setNightSel] = useState<string[]>([]);
   const night = view.phase === 'night';
@@ -74,12 +75,18 @@ export function GameScreen({ view }: { view: GameView }) {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.key.toLowerCase() === 'p' && !isST) setModal(m => (m === 'character' ? null : 'character'));
+      // number keys 1-9 and 0: gestures
+      const n = /^Digit(\d)$/.exec(e.code);
+      if (n && canGestureRef.current && !e.ctrlKey && !e.metaKey && !e.altKey) { const i = (Number(n[1]) + 9) % 10; if (EMOTES[i]) sendEmote(EMOTES[i].id); }
     };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
   }, [isST]);
 
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
+  const canGesture = !spectating && !night && view.phase !== 'ended' && !!myLoc;
+  const canGestureRef = useRef(canGesture);
+  canGestureRef.current = canGesture;
 
   const onSeatClick = (id: string) => {
     if (view.self.isStoryteller) {
@@ -120,7 +127,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      <TopBar view={view} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
@@ -137,7 +144,8 @@ export function GameScreen({ view }: { view: GameView }) {
                 night={night} rooms={view.rooms} players={view.players} storyteller={view.storyteller} awakeIds={awakeIds}
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)}
                 myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={walkMode} onFigureClick={onSeatClick}
-                onEnterRoom={room => { void act('move', { room }); }} arrivedFrom={arrivedFromRef.current} />
+                onEnterRoom={room => { void act('move', { room }); }} arrivedFrom={arrivedFromRef.current}
+                nomination={view.nomination} voting={view.stage === 'voting'} />
             </Suspense>
           )}
           <StageHeader view={view} />
@@ -169,7 +177,11 @@ export function GameScreen({ view }: { view: GameView }) {
           </>}
           {!isST && !spectating && view.phase === 'lobby' && <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>}
         </div>
-        <div className="bc">{isST && <StorytellerControls view={view} />}</div>
+        <div className="bc">
+          {view.voice.enabled && <PushToTalkButton />}
+          {canGesture && <GestureMenu />}
+          {isST && <StorytellerControls view={view} />}
+        </div>
         <div className="br">
           {!isST && !spectating && <>
             <button className="btn" onClick={() => setModal('character')} title="Shortcut: P">📜 Character <kbd>P</kbd></button>
@@ -186,6 +198,7 @@ export function GameScreen({ view }: { view: GameView }) {
       {modal === 'reveal' && <RevealDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'customise' && <CustomiseDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'story' && view.story && <StoryDialog view={view} onClose={() => setModal(null)} />}
+      {modal === 'voice' && <VoiceSettings view={view} onClose={() => setModal(null)} />}
       {modal === 'rules' && <Modal title="Table rules" onClose={() => setModal(null)}><ul>{view.tableRules.map(r => <li key={r}>{r}</li>)}</ul></Modal>}
       {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
@@ -197,7 +210,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
+function TopBar({ view, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -219,11 +232,12 @@ function TopBar({ view, openList, openInvite, openRules, openCustomise, openStor
       </div>
       <div className="tr">
         {view.voice.enabled ? <>
-          <button className={`icon-btn ${voice.micOn ? 'on' : 'off'}`} onClick={toggleMic} aria-pressed={voice.micOn} title="Microphone">{voice.micOn ? '🎙' : '🔇'}</button>
+          <button className={`icon-btn ${voice.micOn ? 'on' : 'off'} ${voice.pushToTalk && voice.talking ? 'talking' : ''}`} onClick={toggleMic} aria-pressed={voice.micOn} title={voice.pushToTalk ? 'Microphone (push-to-talk: hold V or Space to speak)' : 'Microphone'}>{voice.micOn ? '🎙' : '🔇'}</button>
           <button className={`icon-btn ${voice.camOn ? 'on' : 'off'}`} onClick={toggleCam} aria-pressed={voice.camOn} title="Camera (optional)">{voice.camOn ? '📷' : '🚫'}</button>
           <span className={`voice-status ${voice.connectedRoom ? (voice.canPublish ? 'live' : 'waiting') : 'none'}`} title={voice.error ?? ''}>
-            {voice.connectedRoom ? (voice.canPublish ? 'voice live' : 'connecting…') : 'no voice'}
+            {voice.connectedRoom ? (voice.canPublish ? (voice.pushToTalk ? (voice.talking ? 'talking' : 'push-to-talk') : 'voice live') : 'connecting…') : 'no voice'}
           </span>
+          <button className="icon-btn" onClick={openVoice} title="Voice settings: push-to-talk, volumes, microphone" aria-label="Voice settings">⚙</button>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
         {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
@@ -297,6 +311,85 @@ function SpectatorBar({ view }: { view: GameView }) {
       👁 <b>You are watching.</b> <span className="muted small">Public information only · you can listen to the Town Square</span>
       {canSit && <button className="btn small primary" onClick={takeSeat}>{view.phase === 'lobby' ? 'Take a seat' : 'Join as a Traveller'}</button>}
     </span>
+  );
+}
+
+function PushToTalkButton() {
+  const voice = useVoice();
+  if (!voice.pushToTalk) return null;
+  const up = () => setTalking(false);
+  return (
+    <button className={`btn ptt ${voice.talking ? 'primary talking' : ''}`} disabled={!voice.micOn}
+      onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); setTalking(true); }}
+      onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} onContextMenu={e => e.preventDefault()}
+      title="Hold to talk (or hold V / Space)">{voice.talking ? '🎙 Talking…' : '🎙 Hold to talk'}</button>
+  );
+}
+
+function GestureMenu() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const t = setTimeout(() => addEventListener('click', close), 0);
+    return () => { clearTimeout(t); removeEventListener('click', close); };
+  }, [open]);
+  return (
+    <span className="gesture-menu">
+      <button className="btn" onClick={() => setOpen(o => !o)} aria-expanded={open} title="Gestures (keys 1–9 and 0)">😀 Gesture</button>
+      {open && (
+        <div className="gesture-pop parchment" role="menu">
+          {EMOTES.map((e, i) => (
+            <button key={e.id} role="menuitem" className="gesture" onClick={() => { sendEmote(e.id); setOpen(false); }} title={`${e.label} (key ${(i + 1) % 10})`}>
+              <span className="gi">{e.icon}</span><span className="gl">{e.label}</span><kbd>{(i + 1) % 10}</kbd>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void }) {
+  const voice = useVoice();
+  const [mics, setMics] = useState<{ deviceId: string; label: string }[]>([]);
+  useEffect(() => { void listMics().then(setMics); }, []);
+  const nameOf = (identity: string, fallback: string) => identity === 'st' ? `${view.storyteller.name} (Storyteller)` : view.players.find(p => p.id === identity)?.name ?? fallback;
+  const peers = voice.peers.filter(p => !p.identity.startsWith('spec:'));
+  return (
+    <Modal title="Voice settings" onClose={onClose}>
+      <fieldset className="voice-mode">
+        <legend>How your microphone works</legend>
+        <label><input type="radio" name="vmode" checked={!voice.pushToTalk} onChange={() => setPushToTalk(false)} /> <b>Open mic</b> — everyone in your room hears you whenever your mic is on</label>
+        <label><input type="radio" name="vmode" checked={voice.pushToTalk} onChange={() => setPushToTalk(true)} /> <b>Push-to-talk</b> — you are only heard while you hold <kbd>V</kbd> or <kbd>Space</kbd>, or the 🎙 Hold to talk button</label>
+      </fieldset>
+      {mics.length > 1 && (
+        <label className="field">Microphone
+          <select value={voice.micDevice} onChange={e => void setMicDevice(e.target.value)}>
+            <option value="">System default</option>
+            {mics.map(m => <option key={m.deviceId} value={m.deviceId}>{m.label}</option>)}
+          </select>
+        </label>
+      )}
+      <label className="field">Voices volume (everyone)
+        <span className="row"><input type="range" min={0} max={100} value={Math.round(voice.voiceVolume * 100)} onChange={e => setVoiceVolume(Number(e.target.value) / 100)} aria-label="Voices volume" /> <span className="muted small">{Math.round(voice.voiceVolume * 100)}%</span></span>
+      </label>
+      <h3>People you can hear now</h3>
+      {peers.length === 0 && <p className="muted small">{voice.connectedRoom ? 'Nobody else is in your room right now.' : 'You are not connected to voice right now.'}</p>}
+      <ul className="peer-volumes">
+        {peers.map(p => {
+          const v = voice.peerVolume[p.identity] ?? 1;
+          return (
+            <li key={p.identity}>
+              <span className={`peer-name ${voice.speaking.includes(p.identity) ? 'speaking' : ''}`}>{nameOf(p.identity, p.name)}</span>
+              <input type="range" min={0} max={100} value={Math.round(v * 100)} onChange={e => setPeerVolume(p.identity, Number(e.target.value) / 100)} aria-label={`Volume for ${nameOf(p.identity, p.name)}`} />
+              <button className="icon-btn" onClick={() => setPeerVolume(p.identity, v ? 0 : 1)} aria-label={v ? 'Silence for me' : 'Unsilence'} title={v ? 'Silence for me only' : 'Hear again'}>{v ? '🔊' : '🔇'}</button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small">These settings only change what <i>you</i> hear and are saved in this browser. Nobody else is told.</p>
+    </Modal>
   );
 }
 

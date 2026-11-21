@@ -171,6 +171,7 @@ export class Lobby {
       }
       if (type === 'move') { g.moveST(String(d.room)); g.storyteller.pos = null; g.changed(); return; }
       if (type === 'walk') return g.walk('st', d.x, d.z, d.ry);
+      if (type === 'emote') return g.emote('st', d.kind);
       fail('Storytellers use the Grimoire.');
     }
     if (id.startsWith('spec:')) return this.spectatorAction(socket, g, id, type, d);
@@ -204,6 +205,7 @@ export class Lobby {
       }
       case 'claim': return g.setClaim(p, String(d.claim ?? ''));
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
+      case 'emote': return g.emote(p.id, d.kind);
       case 'question': return g.answerQuestion(p, !!d.yes);
       case 'nominate': return g.nominate(p.id, String(d.nomineeId), !!d.exile);
       case 'vote': return g.setHand(p, !!d.raised);

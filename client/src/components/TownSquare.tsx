@@ -4,6 +4,7 @@ import { Avatar } from './Avatar';
 import { useVoice } from '../voice';
 import { useStore, act } from '../net';
 import { SEAT_R, ST_Z } from '../three/support';
+import { useEmotes, EMOTE_ICON } from '../emotes';
 
 export function Clocktower({ className }: { className?: string }) {
   return (
@@ -43,6 +44,7 @@ export const seatRadiusPct = (n: number) => (n <= 6 ? 36 : 40);
 
 export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squash, anchorRef, walking }: CircleProps) {
   const voice = useVoice();
+  const emotes = useEmotes();
   const deathFlash = useStore(s => s.deathFlash);
   const n = view.players.length;
   const isST = view.self.isStoryteller;
@@ -79,6 +81,7 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
         <button className="seat-btn" onClick={() => onSeatClick?.(p.id)} disabled={!onSeatClick} aria-label={label}>
           <Avatar avatar={p.avatar} size={64} ghost={!p.alive} sleeping={asleep} speaking={voice.speaking.includes(p.id)} video={night ? undefined : voice.video[p.id]} title={p.name} />
           {(hand || locked) && <span className="hand" aria-label="hand raised">✋</span>}
+          {emotes[p.id] && <span key={emotes[p.id].ts} className="emote-bubble" role="img" aria-label={`${p.name}: ${emotes[p.id].kind}`}>{EMOTE_ICON[emotes[p.id].kind]}</span>}
           {locked === false && nom?.done === false && <span className="hand down" aria-hidden>·</span>}
           {p.muted && <span className="badge muted" title="Muted by Storyteller">🔇</span>}
           {p.joining && <span className="badge joining" title="Joining…">⏳</span>}
@@ -108,6 +111,7 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
         {!three && (!night || isST) && view.storyteller.location === (myLoc ?? 'square') && (
           <div className="st-mini" title="Storyteller">
             <Avatar avatar={view.storyteller.avatar} size={44} speaking={voice.speaking.includes('st')} video={voice.video.st} />
+            {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={`Storyteller: ${emotes.st.kind}`}>{EMOTE_ICON[emotes.st.kind]}</span>}
             <span>{view.storyteller.name}</span>
           </div>
         )}
@@ -116,6 +120,7 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
         // the Storyteller's 3D figure stands in front of the clocktower; this is just the name label at its feet
         <div className={`st-mini three ${voice.speaking.includes('st') ? 'speaking' : ''}`} title="Storyteller"
           style={{ left: '50%', top: `${50 + (ST_Z / SEAT_R) * radius * (squash ?? 1)}%` }}>
+          {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={`Storyteller: ${emotes.st.kind}`}>{EMOTE_ICON[emotes.st.kind]}</span>}
           <span>{view.storyteller.name} · Storyteller</span>
         </div>
       )}

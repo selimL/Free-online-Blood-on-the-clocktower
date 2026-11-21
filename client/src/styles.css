@@ -381,7 +381,7 @@ textarea.notes { width: 100%; min-height: 180px; }
 @keyframes candle { 0% { opacity: .65; } 35% { opacity: 1; } 60% { opacity: .75; } 100% { opacity: .95; } }
 .stage.has-room-art .plaza { background: none; box-shadow: none; border-color: rgba(233, 220, 192, .14); }
 .stage.has-room-art .center .tower { display: none; }
-.stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d):not(.walk-help):not(.room3d) { position: relative; z-index: 1; }
+.stage > *:not(.room-art-layer):not(.room-art-light):not(.town3d):not(.walk-help):not(.room3d):not(.joystick) { position: relative; z-index: 1; }
 
 /* 3D Town Square (three.js) behind the seat circle */
 .town3d { position: absolute; top: 0; left: 0; right: 0; z-index: 0; overflow: hidden; pointer-events: none; }
@@ -518,3 +518,43 @@ textarea.notes { width: 100%; min-height: 180px; }
 /* spectators */
 .spectator-bar { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .watchers { font-size: .8rem; color: var(--muted); border: 1px solid #4a4252; border-radius: 999px; padding: .05rem .5rem; }
+
+/* ---------------- gestures (emotes) */
+.emote-bubble { position: absolute; top: -34px; left: 50%; transform: translateX(-50%); z-index: 3; font-size: 1.7rem; line-height: 1;
+  padding: .2rem .35rem; border-radius: 14px; background: rgba(233, 220, 192, .95); box-shadow: var(--shadow); pointer-events: none;
+  animation: emote-pop 2.6s ease-out forwards; }
+.emote-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: rgba(233, 220, 192, .95); border-bottom: 0; }
+.emote-bubble.three { left: 0; top: 0; margin-top: -52px; animation: none; opacity: 0; } /* CSS2DRenderer positions it */
+.emote-bubble.three:empty { display: none; }
+.emote-bubble.three.pop { animation: emote-pop3 2.6s ease-out forwards; }
+.town-circle.three .emote-bubble { top: -48px; }
+.st-mini { position: relative; }
+@keyframes emote-pop { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.5); } 10% { opacity: 1; transform: translate(-50%, 0) scale(1.15); } 18% { transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+@keyframes emote-pop3 { 0% { opacity: 0; scale: .5; } 10% { opacity: 1; scale: 1.15; } 18% { scale: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .emote-bubble, .emote-bubble.three.pop { animation: none; opacity: 1; } }
+.gesture-menu { position: relative; }
+.gesture-pop { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 30; display: grid; grid-template-columns: repeat(2, minmax(9rem, 1fr));
+  gap: .25rem; padding: .5rem; border-radius: var(--radius); box-shadow: var(--shadow); }
+.gesture-pop .gesture { display: flex; align-items: center; gap: .4rem; padding: .3rem .5rem; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
+.gesture-pop .gesture:hover, .gesture-pop .gesture:focus-visible { background: rgba(155, 27, 31, .12); border-color: rgba(155, 27, 31, .4); }
+.gesture-pop .gi { font-size: 1.3rem; }
+.gesture-pop .gl { flex: 1; }
+.gesture-pop kbd { font-size: .7rem; opacity: .6; }
+
+/* ---------------- push-to-talk & voice settings */
+.btn.ptt { user-select: none; -webkit-user-select: none; touch-action: none; }
+.btn.ptt.talking { box-shadow: 0 0 0 3px rgba(159, 227, 159, .55), 0 0 16px rgba(159, 227, 159, .6); }
+.icon-btn.talking { box-shadow: 0 0 0 2px #9fe39f; }
+.voice-mode { border: 1px solid rgba(74, 58, 42, .35); border-radius: 8px; padding: .5rem .8rem; margin: 0 0 .8rem; display: grid; gap: .45rem; }
+.voice-mode label { display: flex; gap: .5rem; align-items: baseline; }
+.peer-volumes { list-style: none; padding: 0; margin: 0 0 .6rem; display: grid; gap: .35rem; }
+.peer-volumes li { display: grid; grid-template-columns: minmax(6rem, 1fr) 2fr auto; gap: .5rem; align-items: center; }
+.peer-name.speaking { color: var(--good); font-weight: 600; }
+
+/* ---------------- phone joystick for the 3D town */
+.stage > .joystick { position: absolute; left: 22px; bottom: 22px; z-index: 5; width: 124px; height: 124px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(233, 220, 192, .10), rgba(13, 10, 18, .55)); border: 2px solid rgba(233, 220, 192, .45);
+  touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-items: center; }
+.joystick-knob { width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3e6c8, #b99b62); box-shadow: 0 3px 10px rgba(0, 0, 0, .6); pointer-events: none; }
+@media (max-width: 860px) { .stage > .walk-help { bottom: 150px; } }
+.st-mini.three span.emote-bubble { font: inherit; font-size: 1.7rem; background: rgba(233, 220, 192, .95); padding: .2rem .35rem; border-radius: 14px; top: -46px; }

@@ -6,7 +6,7 @@ import {
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES,
+  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES,
 } from '../../shared/types';
 
 const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -143,6 +143,8 @@ export class Game {
   region: string | null = null;
   lastNightStart = 0;
   pausedBySTDisconnect = false;
+  /** When each person last gestured (simple flood protection; not game state). */
+  lastEmoteAt: Record<string, number> = {};
 
   /** Set by the server wiring. */
   onChange: () => void = () => {};
@@ -365,6 +367,29 @@ export class Game {
       return v.room === me.room && v.subscribe;
     });
     this.emit(audience, 'chat', { id: nanoid(8), fromId, name: this.nameOf(fromId), text: t, ts: Date.now(), room: me.room });
+  }
+
+  /**
+   * A gesture (emoji bubble + figure animation). It is shown only to the people who can
+   * see the gesturer right now: the same audience as their voice, so a side-room gesture
+   * never reaches the square. Never at night: who is awake is secret.
+   */
+  emote(fromId: string, kind: unknown) {
+    if (fromId.startsWith('spec:')) fail('Spectators can only watch and listen.');
+    const def = EMOTES.find(e => e.id === kind);
+    if (!def) fail('Unknown gesture.');
+    if (this.phase === 'night') fail('Everyone is asleep. No gestures at night.');
+    const loc = fromId === 'st' ? this.storyteller.location : this.maybePlayer(fromId)?.location;
+    if (!loc) fail('Nobody can see you right now.');
+    const now = Date.now();
+    if (now - (this.lastEmoteAt[fromId] ?? 0) < 1000) return;
+    this.lastEmoteAt[fromId] = now;
+    const audience = ['st', ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
+      if (id === fromId) return true;
+      const v = this.voiceTarget(id);
+      return v.room === loc && v.subscribe;
+    });
+    this.emit(audience, 'emote', { id: fromId, kind: def!.id, ts: now });
   }
 
   // ------------------------------------------------------------ lobby

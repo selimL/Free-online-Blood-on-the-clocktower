@@ -313,7 +313,14 @@ export function buildCharacter(a: Avatar, opts: CharacterOptions = {}): THREE.Gr
   // walking: TownScene sets userData.walk (0..1) and advances userData.stride
   root.userData.walk = 0;
   root.userData.stride = 0;
+  // voting: userData.handUp raises a hand (smoothly). gestures: userData.gesture = { kind, at } (performance.now() ms)
+  root.userData.handUp = false;
+  let lift = 0, lastT = -1;
+  const voteArm = holdsLantern ? 0 : 1;
+  const side = (i: number) => (i === 0 ? -1 : 1); // left arm is -x
   root.userData.animate = (t: number) => {
+    const dt = lastT < 0 ? 0 : Math.min(0.25, Math.max(0, t - lastT));
+    lastT = t;
     const w: number = root.userData.walk ?? 0;
     const stride: number = root.userData.stride ?? 0;
     const swing = Math.sin(stride);
@@ -322,10 +329,43 @@ export function buildCharacter(a: Avatar, opts: CharacterOptions = {}): THREE.Gr
     const b = Math.sin(t * 1.5 + phase);
     body.scale.y = 1 + b * 0.008;
     head.position.y = 2.26 + b * 0.008;
-    head.rotation.y = Math.sin(t * 0.37 + phase) * 0.22;
-    head.rotation.x = Math.sin(t * 0.23 + phase) * 0.05;
-    arms[0].rotation.x = Math.sin(t * 0.9 + phase) * 0.04 - swing * 0.45 * w;
-    arms[1].rotation.x = holdsLantern ? 0 : -Math.sin(t * 0.9 + phase) * 0.04 + swing * 0.45 * w;
+    let hx = Math.sin(t * 0.23 + phase) * 0.05, hy = Math.sin(t * 0.37 + phase) * 0.22, hz = 0;
+    // base arm pose: idle sway + walking swing
+    const ax = [Math.sin(t * 0.9 + phase) * 0.04 - swing * 0.45 * w, holdsLantern ? 0 : -Math.sin(t * 0.9 + phase) * 0.04 + swing * 0.45 * w];
+    const az = [0, 0];
+    // a raised hand for a yes vote (straight up, slightly out)
+    lift += ((root.userData.handUp ? 1 : 0) - lift) * Math.min(1, dt * 8);
+    if (lift > 0.001) {
+      ax[voteArm] += (-2.95 - ax[voteArm]) * lift;
+      az[voteArm] += (side(voteArm) * 0.18 - az[voteArm]) * lift;
+    }
+    // gestures blend over the base pose
+    const g = root.userData.gesture as { kind: string; at: number } | undefined;
+    if (g) {
+      const e = (performance.now() - g.at) / 1000;
+      const D = 2.4;
+      if (e > D) root.userData.gesture = undefined;
+      else {
+        const env = Math.min(1, e / 0.25, (D - e) / 0.35);
+        const set = (i: number, x: number, z: number) => { ax[i] += (x - ax[i]) * env; az[i] += (z - az[i]) * env; };
+        const R = holdsLantern ? 0 : 1, sR = side(R); // gesturing hand
+        switch (g.kind) {
+          case 'wave': set(R, -2.6, sR * (0.45 + Math.sin(e * 11) * 0.35)); hz += side(R) * -0.12 * env; break;
+          case 'nod': hx += Math.sin(e * 9) * 0.28 * env; break;
+          case 'shake': hy += Math.sin(e * 10) * 0.45 * env; break;
+          case 'thumbsup': set(R, -1.5 - Math.sin(e * 5) * 0.08, sR * 0.12); hx -= 0.08 * env; break;
+          case 'thumbsdown': set(R, -1.15, sR * 0.12); hy += Math.sin(e * 6) * 0.15 * env; hx += 0.1 * env; break;
+          case 'shrug': set(0, -0.55, -0.75); set(1, -0.55, 0.75); hz += 0.22 * env; pose.position.y += Math.max(0, Math.sin(e * 3)) * 0.03 * env; break;
+          case 'think': set(R, -2.25, -sR * 0.55); hx += 0.12 * env; hz += -sR * 0.15 * env; break;
+          case 'point': set(R, -1.6, sR * 0.05); hx -= 0.05 * env; break;
+          case 'clap': { const c = Math.sin(e * 15) * 0.18; set(0, -1.25, 0.42 + c); set(1, -1.25, -0.42 - c); break; }
+          case 'gasp': set(0, -2.7, -0.45); set(1, -2.7, 0.45); hx -= 0.25 * env; break;
+          default: break;
+        }
+      }
+    }
+    head.rotation.set(hx, hy, hz);
+    arms.forEach((arm, i) => { arm.rotation.x = ax[i]; arm.rotation.z = az[i]; });
     if (opts.ghost) pose.position.y = 0.15 + Math.sin(t * 1.1 + phase) * 0.08;
   };
   return root;
@@ -344,6 +384,11 @@ function makeGhost(root: THREE.Object3D) {
     });
     mesh.castShadow = false;
   });
+}
+
+/** Start a gesture animation (see EMOTES). */
+export function playGesture(fig: THREE.Object3D, kind: string) {
+  fig.userData.gesture = { kind, at: performance.now() };
 }
 
 /** Lie the figure down (asleep at night) or stand it back up. */

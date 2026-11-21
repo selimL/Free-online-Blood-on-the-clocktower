@@ -321,3 +321,19 @@ export interface GameStory {
   grimoire: { id: string; name: string; characterId: string | null; shownCharacterId: string | null; alignment: Alignment; alive: boolean; reminders: string[]; traveller: boolean }[];
   demonBluffs: string[];
 }
+
+/** Gestures a player can make: an emoji bubble plus a short animation of their 3D figure. Purely cosmetic. */
+export const EMOTES = [
+  { id: 'wave', icon: '👋', label: 'Wave' },
+  { id: 'nod', icon: '🙂', label: 'Nod' },
+  { id: 'shake', icon: '🙅', label: 'Shake head' },
+  { id: 'thumbsup', icon: '👍', label: 'Thumbs up' },
+  { id: 'thumbsdown', icon: '👎', label: 'Thumbs down' },
+  { id: 'shrug', icon: '🤷', label: 'Shrug' },
+  { id: 'think', icon: '🤔', label: 'Think' },
+  { id: 'point', icon: '👉', label: 'Point' },
+  { id: 'clap', icon: '👏', label: 'Clap' },
+  { id: 'gasp', icon: '😱', label: 'Gasp' },
+] as const;
+export type EmoteId = (typeof EMOTES)[number]['id'];
+export interface EmoteEvent { id: string; kind: EmoteId; ts: number }

@@ -11,8 +11,10 @@ import type { RoomView } from '../../../shared/types';
 import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
 
 import { PITCH, SEAT_R, ST_Z, CHAR_SCALE } from './support';
-import { buildCharacter, disposeCharacter, setAsleep, CHARACTER_HEIGHT } from './character';
-import type { PublicPlayer, Avatar, WalkPos } from '../../../shared/types';
+import { buildCharacter, disposeCharacter, setAsleep, playGesture, CHARACTER_HEIGHT } from './character';
+import type { PublicPlayer, Avatar, WalkPos, NominationView } from '../../../shared/types';
+import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
+import { Joystick, touchDevice } from './Joystick';
 const PLAZA_R = 10.2;
 const BUILDING_R = 14.2;
 const FOV = 32;
@@ -37,6 +39,9 @@ interface Props {
   onEnterRoom: (roomId: string) => void;
   /** The location the viewer just came from (to step out of that building's door). */
   arrivedFrom: string | null;
+  /** The nomination being voted on (hands go up on the figures; the clock hand points at the voter). */
+  nomination: NominationView | null;
+  voting: boolean;
 }
 
 const WALK_SPEED = 5.2;      // world units per second
@@ -45,7 +50,7 @@ const DOOR_OFFSET = 3.4;     // door trigger point, from a building's centre tow
 const DOOR_REACH = 1.1;      // how close you must be to a door to enter
 
 interface Motion { x: number; z: number; ry: number; walk: number; stride: number; appearedAt: number; wasVisible: boolean }
-interface FigEntry { fig: THREE.Group; key: string; label: CSS2DObject; labelEl: HTMLDivElement; ring: THREE.Mesh }
+interface FigEntry { fig: THREE.Group; key: string; label: CSS2DObject; labelEl: HTMLDivElement; ring: THREE.Mesh; mark: THREE.Mesh; bubble: CSS2DObject; bubbleEl: HTMLDivElement }
 
 function setLabel(el: HTMLDivElement, p: { name: string; alive?: boolean; muted?: boolean; joining?: boolean; evilMark?: boolean; claim?: string }, mine: boolean) {
   el.className = `fig-label ${mine ? 'mine' : ''} ${p.alive === false ? 'dead' : ''}`;
@@ -409,7 +414,7 @@ export default function TownScene(props: Props) {
   live.current = { props, speaking: voice.speaking };
   const motionRef = useRef(new Map<string, Motion>());
   const remotePos = useRef(new Map<string, WalkPos>());
-  const ctrl = useRef({ keys: new Set<string>(), target: null as { x: number; z: number } | null, door: null as number | null, lastSent: 0, sentStill: true, nearDoor: null as number | null });
+  const ctrl = useRef({ joy: { x: 0, y: 0 }, keys: new Set<string>(), target: null as { x: number; z: number } | null, door: null as number | null, lastSent: 0, sentStill: true, nearDoor: null as number | null });
   const worldRef = useRef<{ doors: { x: number; z: number }[]; colliders: { x: number; z: number; r: number }[]; buildings: THREE.Object3D[] } | null>(null);
   const enterRef = useRef<(i: number) => void>(() => {});
   const mountRef = useRef<HTMLDivElement>(null);
@@ -503,6 +508,37 @@ export default function TownScene(props: Props) {
     });
 
     worldRef.current = { doors, colliders, buildings: buildingGroups };
+
+    // voting: an iron clock hand on the cobbles sweeps to whoever's vote is being counted,
+    // and a pale beam of light falls on them
+    const handGrp = new THREE.Group();
+    const handShape = new THREE.Shape();
+    handShape.moveTo(-0.22, 0); handShape.lineTo(0.22, 0); handShape.lineTo(0.12, SEAT_R - 2.6); handShape.lineTo(0.5, SEAT_R - 2.6);
+    handShape.lineTo(0, SEAT_R - 1.5); handShape.lineTo(-0.5, SEAT_R - 2.6); handShape.lineTo(-0.12, SEAT_R - 2.6); handShape.lineTo(-0.22, 0);
+    const handMesh = mesh(new THREE.ExtrudeGeometry(handShape, { depth: 0.08, bevelEnabled: false }), new THREE.MeshStandardMaterial({ color: '#c9a15b', metalness: 0.7, roughness: 0.35, emissive: '#5a3a10', emissiveIntensity: 0.6 }), 0, 0.06, 0, handGrp);
+    handMesh.rotation.x = Math.PI / 2; // lie flat, pointing along +z
+    handMesh.position.z = 1.2;
+    handGrp.visible = false;
+    scene.add(handGrp);
+    const beam = mesh(new THREE.CylinderGeometry(0.9, 1.5, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#ffe7a8', transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide, fog: false }), 0, 7, 0, scene);
+    beam.castShadow = false; beam.receiveShadow = false; beam.visible = false;
+    let handAngle: number | null = null;
+    const stepVote = (dt: number) => {
+      const P = live.current.props, nom = P.nomination;
+      const cur = P.voting && nom && !nom.done ? nom.order[nom.voteIndex] : null;
+      const f = cur ? figuresRef.current.get(cur) : undefined;
+      if (!cur || !f) { handGrp.visible = false; beam.visible = false; handAngle = null; return; }
+      const target = Math.atan2(f.fig.position.x, f.fig.position.z);
+      if (handAngle === null) handAngle = target;
+      let d = target - handAngle;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      handAngle += d * Math.min(1, dt * 6);
+      handGrp.rotation.y = handAngle;
+      handGrp.visible = true;
+      beam.visible = true;
+      beam.position.set(f.fig.position.x, 7, f.fig.position.z);
+    };
 
     // trees between buildings
     for (let i = 0; i < 16; i++) {
@@ -601,7 +637,7 @@ export default function TownScene(props: Props) {
       dt = Math.min(dt, 0.25); // keep walking speed right even on slow machines
       const P = live.current.props, c = ctrl.current;
       const walkMode = P.canWalk && !P.night;
-      for (const [id, { fig, label, ring }] of figuresRef.current) {
+      for (const [id, { fig, label, ring, bubble, bubbleEl }] of figuresRef.current) {
         const seat = seatOf(id);
         let m = motionRef.current.get(id);
         if (!m) { m = { x: seat.x, z: seat.z, ry: 0, walk: 0, stride: 0, appearedAt: t, wasVisible: false }; motionRef.current.set(id, m); }
@@ -619,6 +655,8 @@ export default function TownScene(props: Props) {
           if (k.has('a') || k.has('arrowleft')) vx -= 1;
           if (k.has('d') || k.has('arrowright')) vx += 1;
           let speed = WALK_SPEED;
+          const joy = c.joy, jl = Math.hypot(joy.x, joy.y);
+          if (jl > 0.15 && !vx && !vz) { vx = joy.x; vz = joy.y; speed = WALK_SPEED * Math.min(1, jl); }
           if (vx || vz) { c.target = null; c.door = null; const l = Math.hypot(vx, vz); vx /= l; vz /= l; }
           else if (c.target) {
             const dx = c.target.x - m.x, dz = c.target.z - m.z, d = Math.hypot(dx, dz);
@@ -658,8 +696,9 @@ export default function TownScene(props: Props) {
         m.stride += dt * 9 * m.walk;
         fig.userData.walk = m.walk;
         fig.userData.stride = m.stride;
-        if (visible && !reduced) fig.userData.animate?.(t);
+        if (visible) fig.userData.animate?.(t); // always: raised hands and gestures must show even with reduced motion
         label.visible = visible && walkMode; // in seat mode the HTML seats show names
+        bubble.visible = visible && walkMode && !!bubbleEl.textContent; // in seat mode the HTML seats show gestures
         const speaking = live.current.speaking.includes(id);
         ring.visible = visible && (speaking || (id === P.myId && walkMode));
         (ring.material as THREE.MeshBasicMaterial).opacity = speaking ? 0.95 : 0.35;
@@ -736,6 +775,7 @@ export default function TownScene(props: Props) {
         anims[0]?.(t); // the clocktower keeps real time even with reduced motion
       }
       stepFigures(t - prevT, t, s.reducedMotion);
+      stepVote(t - prevT);
       prevT = t;
       placeCamera();
       renderer.render(scene, camera);
@@ -772,7 +812,7 @@ export default function TownScene(props: Props) {
     const scene = sceneRef.current;
     if (!scene) return;
     const figs = figuresRef.current;
-    const removeFig = (e: FigEntry) => { scene.remove(e.fig); e.labelEl.remove(); disposeCharacter(e.fig); };
+    const removeFig = (e: FigEntry) => { scene.remove(e.fig); e.labelEl.remove(); e.bubbleEl.remove(); disposeCharacter(e.fig); };
     const want = new Map<string, { avatar: Avatar; ghost: boolean; visible: boolean; asleep: boolean; label: Parameters<typeof setLabel>[1] }>();
     for (const p of players) {
       want.set(p.id, { avatar: p.avatar, ghost: !p.alive, visible: night || p.location === 'square', asleep: night && !awakeIds.includes(p.id), label: p });
@@ -803,8 +843,18 @@ export default function TownScene(props: Props) {
         ring.position.y = 0.03;
         ring.visible = false;
         fig.add(ring);
+        // red ring under the nominee
+        const mark = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 32), new THREE.MeshBasicMaterial({ color: '#e0303a', transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+        mark.rotation.x = -Math.PI / 2; mark.position.y = 0.035; mark.visible = false;
+        fig.add(mark);
+        const bubbleEl = document.createElement('div');
+        bubbleEl.className = 'emote-bubble three';
+        const bubble = new CSS2DObject(bubbleEl);
+        bubble.position.set(0, CHARACTER_HEIGHT + 0.95, 0);
+        bubble.visible = false;
+        fig.add(bubble);
         scene.add(fig);
-        entry = { fig, key, label, labelEl, ring };
+        entry = { fig, key, label, labelEl, ring, mark, bubble, bubbleEl };
         figs.set(id, entry);
       }
       entry.fig.visible = w.visible;
@@ -813,6 +863,26 @@ export default function TownScene(props: Props) {
       setLabel(entry.labelEl, w.label, id === myId);
     }
   }, [players, storyteller, night, awakeIds, myId]);
+
+  // votes: hands up on the figures, a red ring under the nominee
+  useEffect(() => {
+    const nom = props.nomination;
+    for (const [id, e] of figuresRef.current) {
+      e.fig.userData.handUp = !!nom && (nom.done ? nom.locked[id] === true : !!(nom.hands[id] || nom.locked[id]));
+      e.mark.visible = !!nom && !nom.done && nom.nomineeId === id;
+    }
+  });
+
+  // gestures: animate the figure and float the emoji above it
+  useEffect(() => onEmote(e => {
+    const f = figuresRef.current.get(e.id);
+    if (!f) return;
+    playGesture(f.fig, e.kind);
+    f.bubbleEl.textContent = EMOTE_ICON[e.kind] ?? '';
+    const el = f.bubbleEl;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    setTimeout(() => { if (el.textContent === (EMOTE_ICON[e.kind] ?? '')) el.textContent = ''; }, EMOTE_MS);
+  }), []);
 
   // positions from other players arrive as small events, not full state updates
   useEffect(() => {
@@ -849,6 +919,7 @@ export default function TownScene(props: Props) {
   }, [rooms]);
 
   const walkMode = canWalk && !night;
+  const touch = touchDevice();
   return (
     <>
       <div ref={mountRef} className={`town3d ${walkMode ? 'interactive' : ''}`} aria-hidden="true" />
@@ -856,9 +927,10 @@ export default function TownScene(props: Props) {
         <div className="walk-help" aria-live="polite">
           {doorPrompt
             ? <><b>{doorPrompt.name}</b> <button className="btn small primary" onClick={() => enterRef.current(doorPrompt.i)}>Enter (E)</button></>
-            : <span>Click the ground to walk · WASD / arrow keys · click a building to go inside</span>}
+            : <span>{touch ? 'Drag the joystick or tap the ground to walk · tap a building to go inside' : 'Click the ground to walk · WASD / arrow keys · click a building to go inside'}</span>}
         </div>
       )}
+      {walkMode && touch && <Joystick onChange={(x, y) => { ctrl.current.joy = { x, y }; if (x || y) { ctrl.current.target = null; ctrl.current.door = null; } }} />}
     </>
   );
 }

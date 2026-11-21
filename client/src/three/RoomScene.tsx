@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { Avatar } from '../../../shared/types';
 import type { Occupant } from './occupants';
-import { buildCharacter, disposeCharacter, CHARACTER_HEIGHT } from './character';
+import { buildCharacter, disposeCharacter, playGesture, CHARACTER_HEIGHT } from './character';
+import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { useVoice } from '../voice';
 
 
@@ -218,7 +219,7 @@ function setLabel(el: HTMLDivElement, o: Occupant, mine: boolean) {
   if (o.evilMark) { const e = document.createElement('span'); e.className = 'evil-mark'; e.textContent = ' (evil)'; el.appendChild(e); }
 }
 
-interface Fig { fig: THREE.Group; key: string; labelEl: HTMLDivElement; ring: THREE.Mesh; x: number; z: number; tx: number; tz: number; walk: number; stride: number }
+interface Fig { fig: THREE.Group; key: string; labelEl: HTMLDivElement; bubbleEl: HTMLDivElement; ring: THREE.Mesh; x: number; z: number; tx: number; tz: number; walk: number; stride: number }
 
 export default function RoomScene({ art, occupants, myId, reducedMotion, onFigureClick, onFail }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -356,7 +357,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
         f.walk += ((moved > 0.001 ? 1 : 0) - f.walk) * Math.min(1, dt * 10);
         f.stride += dt * 9 * f.walk;
         f.fig.userData.walk = f.walk; f.fig.userData.stride = f.stride;
-        if (!reduced) f.fig.userData.animate?.(t);
+        f.fig.userData.animate?.(t);
         const speaking = live.current.speaking.includes(id);
         f.ring.visible = speaking;
       }
@@ -393,7 +394,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
     if (!scene) return;
     const map = figs.current;
     const ids = new Set(occupants.map(o => o.id));
-    for (const [id, f] of map) if (!ids.has(id)) { scene.remove(f.fig); f.labelEl.remove(); disposeCharacter(f.fig); map.delete(id); }
+    for (const [id, f] of map) if (!ids.has(id)) { scene.remove(f.fig); f.labelEl.remove(); f.bubbleEl.remove(); disposeCharacter(f.fig); map.delete(id); }
     const n = occupants.length;
     occupants.forEach((o, i) => {
       // spread across the front half of a circle around the centre so nobody hides behind the props
@@ -403,7 +404,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
       let f = map.get(o.id);
       if (!f || f.key !== key) {
         const fresh = !f;
-        if (f) { scene.remove(f.fig); f.labelEl.remove(); disposeCharacter(f.fig); }
+        if (f) { scene.remove(f.fig); f.labelEl.remove(); f.bubbleEl.remove(); disposeCharacter(f.fig); }
         const fig = buildCharacter(o.avatar, { ghost: !o.alive });
         fig.userData.figureId = o.id;
         const labelEl = document.createElement('div');
@@ -413,16 +414,32 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
         const ring = new THREE.Mesh(new THREE.RingGeometry(0.4, 0.52, 32), new THREE.MeshBasicMaterial({ color: '#ffcf6b', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; ring.visible = false;
         fig.add(ring);
+        const bubbleEl = document.createElement('div');
+        bubbleEl.className = 'emote-bubble three';
+        const bubble = new CSS2DObject(bubbleEl);
+        bubble.position.set(0, CHARACTER_HEIGHT + 0.85, 0);
+        fig.add(bubble);
         scene.add(fig);
         // newcomers enter from the side door (left for even seats, right for odd), others keep their spot
         const sx = fresh ? (i % 2 ? 6.5 : -6.5) : (f?.x ?? tx), sz = fresh ? 2.5 : (f?.z ?? tz);
-        f = { fig, key, labelEl, ring, x: sx, z: sz, tx, tz, walk: 0, stride: 0 };
+        f = { fig, key, labelEl, bubbleEl, ring, x: sx, z: sz, tx, tz, walk: 0, stride: 0 };
         map.set(o.id, f);
       }
       f.tx = tx; f.tz = tz;
       setLabel(f.labelEl, o, o.id === myId);
     });
   }, [occupants, myId, look.ring]);
+
+  // gestures: animate the figure and float the emoji above it
+  useEffect(() => onEmote(e => {
+    const f = figs.current.get(e.id);
+    if (!f) return;
+    playGesture(f.fig, e.kind);
+    const el = f.bubbleEl, icon = EMOTE_ICON[e.kind] ?? '';
+    el.textContent = icon;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    setTimeout(() => { if (el.textContent === icon) el.textContent = ''; }, EMOTE_MS);
+  }), []);
 
   return <div ref={mountRef} className="room3d" />;
 }
