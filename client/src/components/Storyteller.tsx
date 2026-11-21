@@ -1,3 +1,4 @@
+import { WEATHERS } from '../../../shared/types';
 import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts } from '../scripts';
@@ -572,6 +573,11 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
       <section>
         <h3>Buildings (side rooms)</h3>
         <OpenBuildings view={view} settings={settings} />
+      </section>
+      <section>
+        <h3>Weather</h3>
+        <div className="chips">{WEATHERS.map(w => <button key={w.id} className={`chip ${(settings.weather ?? 'clear') === w.id ? 'active' : ''}`} onClick={() => save({ weather: w.id })}>{w.label}</button>)}</div>
+        <p className="muted small">Only changes how the 3D town looks and sounds. You can change it at any time{view.phase === 'day' ? ` (today: ${view.weather})` : ''}.</p>
       </section>
       <section>
         <h3>Public character list</h3>

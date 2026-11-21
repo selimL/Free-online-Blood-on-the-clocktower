@@ -10,7 +10,7 @@ import { sunPosition } from '../daylight';
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
-import { setNightAmbience, setHeartbeat, setVolume, useVolume } from '../sound';
+import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain } from '../sound';
 
 const TownScene = lazy(() => import('../three/TownScene'));
 const RoomScene = lazy(() => import('../three/RoomScene'));
@@ -81,7 +81,12 @@ export function GameScreen({ view }: { view: GameView }) {
   const voting = view.stage === 'voting' && !!view.nomination && !view.nomination.done;
   useEffect(() => { setNightAmbience(night); }, [night]);
   useEffect(() => { setHeartbeat(voting); }, [voting]);
-  useEffect(() => () => { setNightAmbience(false); setHeartbeat(false); }, []);
+  // background music follows the moment; rain is heard outdoors (or asleep in bed)
+  const mood = voting ? 'vote' : night ? 'night' : 'day';
+  useEffect(() => { setMusic(mood); }, [mood]);
+  const outdoors = asleep || night || myLoc === 'square' || spectating;
+  useEffect(() => { setRain(!outdoors ? 0 : view.weather === 'storm' ? 2 : view.weather === 'rain' ? 1 : 0); }, [view.weather, outdoors]);
+  useEffect(() => () => { setNightAmbience(false); setHeartbeat(false); setMusic('off'); setRain(0); }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -146,7 +151,7 @@ export function GameScreen({ view }: { view: GameView }) {
           {art && !show3DRoom && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
           {show3DRoom && art && (
             <Suspense fallback={null}>
-              <RoomScene art={art} occupants={roomOccupants} myId={view.self.isStoryteller ? 'st' : view.self.id}
+              <RoomScene art={art} occupants={roomOccupants} myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={!night && !spectating}
                 reducedMotion={reducedMotion} onFigureClick={onSeatClick} onFail={() => setFailed3D(true)} />
             </Suspense>
           )}
@@ -157,7 +162,7 @@ export function GameScreen({ view }: { view: GameView }) {
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)}
                 myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={walkMode} onFigureClick={onSeatClick}
                 onEnterRoom={room => { void act('move', { room }); }} arrivedFrom={arrivedFromRef.current}
-                nomination={view.nomination} voting={view.stage === 'voting'} sun={sun} />
+                nomination={view.nomination} voting={view.stage === 'voting'} sun={sun} weather={view.weather} />
             </Suspense>
           )}
           {showSleep3D && (
@@ -165,7 +170,7 @@ export function GameScreen({ view }: { view: GameView }) {
               <TownScene key="sleep" sleepView anchor={circleRef} container={stageRef} seatRadiusFrac={0.4}
                 night rooms={[]} players={[]} storyteller={sleepStoryteller} awakeIds={[]}
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} myId="" canWalk={false}
-                onFigureClick={() => {}} onEnterRoom={() => {}} arrivedFrom={null} nomination={null} voting={false} sun={sun} />
+                onFigureClick={() => {}} onEnterRoom={() => {}} arrivedFrom={null} nomination={null} voting={false} sun={sun} weather={view.weather} />
             </Suspense>
           )}
           <StageHeader view={view} />
@@ -418,13 +423,20 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
 
 function VolumeControl() {
   const volume = useVolume();
+  const music = useMusicVolume();
   const [last, setLast] = useState(0.6);
   return (
+    <>
+    <span className="volume" title="Music volume">
+      <button className="icon-btn" aria-label={music ? 'Turn music off' : 'Turn music on'} onClick={() => setMusicVolume(music ? 0 : 0.35)}>{music ? '🎵' : '🔇'}</button>
+      <input type="range" min={0} max={100} value={Math.round(music * 100)} aria-label="Music volume" onChange={e => setMusicVolume(Number(e.target.value) / 100)} />
+    </span>
     <span className="volume" title="Sound effects volume (bells, night ambience, heartbeat)">
       <button className="icon-btn" aria-label={volume ? 'Mute sound effects' : 'Unmute sound effects'}
         onClick={() => { if (volume) { setLast(volume); setVolume(0); } else setVolume(last || 0.6); }}>{volume === 0 ? '🔈' : volume < 0.5 ? '🔉' : '🔊'}</button>
       <input type="range" min={0} max={100} value={Math.round(volume * 100)} aria-label="Sound effects volume" onChange={e => setVolume(Number(e.target.value) / 100)} />
     </span>
+    </>
   );
 }
 

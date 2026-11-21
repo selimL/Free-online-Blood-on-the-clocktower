@@ -111,6 +111,22 @@ export interface Settings {
   houseRules: HouseRules;
   region: string | null;     // null = auto
   openBuildings: number[];   // building indices (0-7) the Storyteller opened; [] = automatic
+  weather: WeatherSetting;   // cosmetic: the 3D town's weather
+}
+
+export type Weather = 'clear' | 'rain' | 'fog' | 'snow' | 'storm';
+export type WeatherSetting = Weather | 'random';
+export const WEATHERS: { id: WeatherSetting; label: string }[] = [
+  { id: 'clear', label: '☀ Clear' }, { id: 'fog', label: '🌫 Fog' }, { id: 'rain', label: '🌧 Rain' },
+  { id: 'storm', label: '⛈ Storm' }, { id: 'snow', label: '❄ Snow' }, { id: 'random', label: '🎲 Different each day' },
+];
+/** "Different each day": the same for everyone, chosen from the game id and the day. */
+export function resolveWeather(setting: WeatherSetting, gameId: string, day: number): Weather {
+  if (setting !== 'random') return setting;
+  let h = day * 7919;
+  for (const ch of gameId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const pool: Weather[] = ['clear', 'clear', 'fog', 'rain', 'rain', 'storm', 'snow'];
+  return pool[h % pool.length];
 }
 
 export const defaultSettings = (): Settings => ({
@@ -122,6 +138,7 @@ export const defaultSettings = (): Settings => ({
   script: [],
   scriptName: null,
   openBuildings: [],
+  weather: 'clear',
   publicList: { visible: true, hidden: [], showHiddenCount: true },
   timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {
@@ -266,6 +283,8 @@ export interface GameView {
   spectators: { id: string; name: string; connected: boolean }[];
   tableRules: string[];
   voteHistory: VoteRecord[] | null;
+  /** Today's weather in the 3D town. */
+  weather: Weather;
   /** Private messages with the Storyteller: a player sees their own thread, the Storyteller sees all. */
   whispers: WhisperView[];
   /** The whole story, revealed to everyone once the game has ended (null before then). */

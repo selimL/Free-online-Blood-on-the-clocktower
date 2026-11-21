@@ -12,7 +12,8 @@ import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
 
 import { PITCH, SEAT_R, ST_Z, CHAR_SCALE } from './support';
 import { buildCharacter, disposeCharacter, setAsleep, playGesture, CHARACTER_HEIGHT } from './character';
-import type { PublicPlayer, Avatar, WalkPos, NominationView } from '../../../shared/types';
+import type { PublicPlayer, Avatar, WalkPos, NominationView, Weather } from '../../../shared/types';
+import { thunder, setRain } from '../sound';
 import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { Joystick, touchDevice } from './Joystick';
 const PLAZA_R = 10.2;
@@ -46,6 +47,8 @@ interface Props {
   sun: () => number | null;
   /** Asleep at night: an empty, moonlit town seen from a camera slowly circling the clocktower. */
   sleepView?: boolean;
+  /** Cosmetic weather chosen by the Storyteller. */
+  weather?: Weather;
 }
 
 const WALK_SPEED = 5.2;      // world units per second
@@ -406,6 +409,15 @@ function buildTree(k: Kit, x: number, z: number, parent: THREE.Object3D) {
   mesh(new THREE.ConeGeometry(1 * s, 2.4 * s, 7), k.leaf, x, 4 * s, z, parent);
 }
 
+// deaths and executions, remembered for a few seconds so a scene that is just appearing can still show them
+const RECENT_DEATHS: { id: string; execution: boolean; at: number }[] = [];
+const remember = (id: string, execution: boolean) => {
+  RECENT_DEATHS.push({ id, execution, at: performance.now() });
+  while (RECENT_DEATHS.length && performance.now() - RECENT_DEATHS[0].at > 10_000) RECENT_DEATHS.shift();
+};
+socket.on('death', (d: { playerId: string }) => remember(d.playerId, false));
+socket.on('execution', (d: { playerId: string }) => remember(d.playerId, true));
+
 // ------------------------------------------------------------ the component
 export default function TownScene(props: Props) {
   const { anchor, container, seatRadiusFrac, night, rooms, players, storyteller, awakeIds, reducedMotion, onFail, myId, canWalk, arrivedFrom } = props;
@@ -527,6 +539,64 @@ export default function TownScene(props: Props) {
     const beam = mesh(new THREE.CylinderGeometry(0.9, 1.5, 14, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#ffe7a8', transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide, fog: false }), 0, 7, 0, scene);
     beam.castShadow = false; beam.receiveShadow = false; beam.visible = false;
     let handAngle: number | null = null;
+
+    // ---- death scene: a beam of pale light, spirit wisps rising, and a ring spreading on the cobbles
+    const effects: { group: THREE.Group; t0: number; dur: number; update: (k: number) => void }[] = [];
+    const spawnDeath = (id: string, execution: boolean): boolean => {
+      const f = figuresRef.current.get(id);
+      if (!f || !f.fig.visible) return false;
+      const { x, z } = f.fig.position;
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+      scene.add(group);
+      const col = execution ? '#ff4a4a' : '#cfe0ff';
+      const beamMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.1, 18, 24, 1, true), beamMat);
+      beam.position.y = 9;
+      group.add(beam);
+      const ringMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.85, 40), ringMat);
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05;
+      group.add(ring);
+      const N = 60, pos = new Float32Array(N * 3), speed: number[] = [];
+      for (let i = 0; i < N; i++) { const a = rand(0, Math.PI * 2), r = rand(0, 0.8); pos.set([Math.cos(a) * r, rand(0, 1.5), Math.sin(a) * r], i * 3); speed.push(rand(1.5, 4)); }
+      const wispGeo = new THREE.BufferGeometry();
+      wispGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const wispMat = new THREE.PointsMaterial({ color: execution ? '#ffb0b0' : '#e8f0ff', size: 0.35, transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+      group.add(new THREE.Points(wispGeo, wispMat));
+      let last = 0;
+      effects.push({
+        group, t0: performance.now(), dur: 4200,
+        update: k => {
+          const dt = Math.max(0, k - last) * 4.2; last = k;
+          beamMat.opacity = Math.sin(Math.min(1, k * 2.2) * Math.PI) * 0.65 * (1 - k * 0.4);
+          ring.scale.setScalar(1 + k * 6);
+          ringMat.opacity = 0.9 * (1 - k);
+          for (let i = 0; i < N; i++) { pos[i * 3 + 1] += speed[i] * dt; pos[i * 3] += Math.sin(k * 9 + i) * 0.01; }
+          wispGeo.attributes.position.needsUpdate = true;
+          wispMat.opacity = 1 - k;
+        },
+      });
+      return true;
+    };
+    const shown = new Set<object>();
+    const stepEffects = () => {
+      const now = performance.now();
+      // deaths that just happened: wait (up to 4 s) for the figure to be on screen, e.g. at dawn
+      for (const r of RECENT_DEATHS) {
+        if (shown.has(r) || now - r.at > 4000) continue;
+        const dupe = !r.execution && RECENT_DEATHS.some(o => o.execution && o.id === r.id && Math.abs(o.at - r.at) < 1500);
+        if (dupe || spawnDeath(r.id, r.execution)) shown.add(r);
+      }
+      for (let i = effects.length - 1; i >= 0; i--) {
+        const e = effects[i], k = (now - e.t0) / e.dur;
+        if (k >= 1) {
+          scene.remove(e.group);
+          e.group.traverse(o => { const m = o as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose?.(); });
+          effects.splice(i, 1);
+        } else e.update(k);
+      }
+    };
     const stepVote = (dt: number) => {
       const P = live.current.props, nom = P.nomination;
       const cur = P.voting && nom && !nom.done ? nom.order[nom.voteIndex] : null;
@@ -564,6 +634,56 @@ export default function TownScene(props: Props) {
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     const starMat = new THREE.PointsMaterial({ color: '#ffffff', size: 0.8, sizeAttenuation: true, fog: false, transparent: true });
+
+    // ---- weather: rain streaks and snowflakes falling in a box around the plaza
+    const W_HALF = 30, W_TOP = 26;
+    const RAIN_N = 1800, SNOW_N = 1400;
+    const rainPos = new Float32Array(RAIN_N * 6);
+    for (let i = 0; i < RAIN_N; i++) { const x = rand(-W_HALF, W_HALF), y = rand(0, W_TOP), z = rand(-W_HALF, W_HALF); rainPos.set([x, y, z, x + 0.08, y + 0.9, z + 0.03], i * 6); }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+    const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: '#aab8d8', transparent: true, opacity: 0.45, depthWrite: false }));
+    rain.frustumCulled = false; rain.visible = false;
+    scene.add(rain);
+    const snowPos = new Float32Array(SNOW_N * 3);
+    for (let i = 0; i < SNOW_N; i++) snowPos.set([rand(-W_HALF, W_HALF), rand(0, W_TOP), rand(-W_HALF, W_HALF)], i * 3);
+    const snowGeo = new THREE.BufferGeometry();
+    snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+    const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: '#f4f7ff', size: 0.28, transparent: true, opacity: 0.9, depthWrite: false }));
+    snow.frustumCulled = false; snow.visible = false;
+    scene.add(snow);
+    let flash = 0, nextBolt = 4;
+    const weatherStep = (w: Weather, dt: number, t: number) => {
+      const wet = w === 'rain' || w === 'storm';
+      rain.visible = wet; snow.visible = w === 'snow';
+      if (wet) {
+        const fall = (w === 'storm' ? 34 : 24) * dt, drift = (w === 'storm' ? 6 : 2) * dt;
+        for (let i = 0; i < RAIN_N; i++) {
+          const o = i * 6;
+          let y = rainPos[o + 1] - fall, x = rainPos[o] + drift;
+          if (y < 0) { y += W_TOP; x = rand(-W_HALF, W_HALF); rainPos[o + 2] = rand(-W_HALF, W_HALF); rainPos[o + 5] = rainPos[o + 2] + 0.03; }
+          if (x > W_HALF) x -= 2 * W_HALF;
+          rainPos[o] = x; rainPos[o + 1] = y; rainPos[o + 3] = x + (w === 'storm' ? 0.25 : 0.08); rainPos[o + 4] = y + 0.9;
+        }
+        rainGeo.attributes.position.needsUpdate = true;
+      }
+      if (w === 'snow') {
+        for (let i = 0; i < SNOW_N; i++) {
+          const o = i * 3;
+          snowPos[o + 1] -= 1.6 * dt;
+          snowPos[o] += Math.sin(t * 0.7 + i) * 0.4 * dt;
+          if (snowPos[o + 1] < 0) { snowPos[o + 1] += W_TOP; snowPos[o] = rand(-W_HALF, W_HALF); snowPos[o + 2] = rand(-W_HALF, W_HALF); }
+        }
+        snowGeo.attributes.position.needsUpdate = true;
+      }
+      // storms: now and then a lightning flash, with thunder a moment later
+      if (w === 'storm') {
+        nextBolt -= dt;
+        if (nextBolt <= 0) { flash = 1; nextBolt = rand(7, 18); setTimeout(() => thunder(), rand(300, 1600)); }
+      }
+      flash = Math.max(0, flash - dt * 2.5);
+      return flash > 0 ? (flash > 0.7 || (flash > 0.35 && flash < 0.5) ? flash : 0) : 0;
+    };
     scene.add(new THREE.Points(starGeo, starMat));
 
     // lights
@@ -809,9 +929,12 @@ export default function TownScene(props: Props) {
       sunPos.set(Math.cos(a) * 60, 6 + Math.sin(a) * 52, -28);
       moonLight.position.copy(sunPos).lerp(nightPos, nightMix);
       moonLight.color.copy(tmp.copy(sunCol.low).lerp(sunCol.high, d)).lerp(moonCol, nightMix);
-      moonLight.intensity = L(0.7 + 2.0 * d, 1.1, nightMix);
+      const w = live.current.props.weather ?? 'clear';
+      const overcast = w === 'rain' ? 0.45 : w === 'storm' ? 0.65 : w === 'fog' ? 0.35 : w === 'snow' ? 0.25 : 0; // dims the sun
+      const bolt = weatherStep(w, Math.min(0.1, Math.max(0, t - prevT)), t);
+      moonLight.intensity = L(0.7 + 2.0 * d * (1 - overcast), 1.1 * (1 - overcast * 0.5), nightMix);
       hemi.color.copy(hemiDay).lerp(hemiNight, nightMix);
-      hemi.intensity = L(L(1.3, 2.3, d), 0.6, nightMix);
+      hemi.intensity = L(L(1.3, 2.3, d), 0.6, nightMix) + bolt * 4;
       warm.intensity = L(L(14, 5, d), 38, nightMix) * (0.92 + Math.sin(t * 7) * 0.05);
       (scene.fog as THREE.FogExp2).color.copy(tmp.copy(fogC.low).lerp(fogC.high, d)).lerp(nightFog, nightMix);
       sky.copy(tmp2.copy(skyC.low).lerp(skyC.high, d)).lerp(nightSky, nightMix);
@@ -821,7 +944,15 @@ export default function TownScene(props: Props) {
       sunMat.opacity = 1 - nightMix;
       sunDisc.visible = nightMix < 0.98 && sunDisc.position.y > -4;
       (moon.material as THREE.MeshBasicMaterial).opacity = nightMix;
-      starMat.opacity = nightMix;
+      starMat.opacity = nightMix * (1 - overcast * 1.4 > 0 ? 1 - overcast * 1.4 : 0);
+      (moon.material as THREE.MeshBasicMaterial).opacity = nightMix * (overcast > 0.3 ? 0.25 : 1);
+      // grey the sky for bad weather, thicken the fog for fog and snow
+      const grey = tmp.set(w === 'snow' ? '#8d95a8' : '#3c4252');
+      sky.lerp(grey, overcast * (1 - nightMix * 0.6));
+      (scene.fog as THREE.FogExp2).color.lerp(grey, overcast * (1 - nightMix * 0.6));
+      (scene.fog as THREE.FogExp2).density = w === 'fog' ? 0.017 : w === 'snow' ? 0.013 : w === 'rain' || w === 'storm' ? 0.013 : 0.009;
+      if (bolt) sky.lerp(tmp.set('#dfe6ff'), bolt * 0.8);
+      sunDisc.visible = sunDisc.visible && overcast < 0.4;
       if (sleeping) { if (!s.reducedMotion) yaw = t * 0.035; }
       else yaw = 0; // kept still so figures stay exactly under their seats
       if (!s.reducedMotion) {
@@ -831,6 +962,7 @@ export default function TownScene(props: Props) {
       }
       stepFigures(t - prevT, t, s.reducedMotion);
       stepVote(t - prevT);
+      stepEffects();
       prevT = t;
       placeCamera();
       renderer.render(scene, camera);
@@ -842,6 +974,7 @@ export default function TownScene(props: Props) {
       cancelAnimationFrame(raf);
       ro.disconnect();
       el.removeEventListener('pointerdown', onPointer);
+
       removeEventListener('keydown', onKeyDown);
       removeEventListener('keyup', onKeyUp);
       removeEventListener('blur', onBlur);
@@ -941,7 +1074,7 @@ export default function TownScene(props: Props) {
 
   // positions from other players arrive as small events, not full state updates
   useEffect(() => {
-    const onPos = (d: { id: string } & WalkPos) => { if (d.id !== live.current.props.myId) remotePos.current.set(d.id, { x: d.x, z: d.z, ry: d.ry }); };
+    const onPos = (d: { id: string; room?: string } & WalkPos) => { if (d.room && d.room !== 'square') return; if (d.id !== live.current.props.myId) remotePos.current.set(d.id, { x: d.x, z: d.z, ry: d.ry }); };
     const onReset = () => { remotePos.current.clear(); ctrl.current.target = null; ctrl.current.door = null; };
     socket.on('pos', onPos);
     socket.on('pos-reset', onReset);

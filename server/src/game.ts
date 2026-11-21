@@ -6,7 +6,7 @@ import {
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES,
+  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
 } from '../../shared/types';
 
 const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -74,6 +74,9 @@ export interface Storyteller { id: 'st'; token: string; name: string; avatar: Av
 /** Cosmetic position in the 3D Town Square. Never affects rules: rooms are still decided by `location`. */
 export interface WalkPos { x: number; z: number; ry: number }
 export const WALK_RADIUS = 22;
+/** Walkable floor inside a building (the room scene uses the same numbers). */
+export const ROOM_HALF_W = 5.2;
+export const ROOM_Z: [number, number] = [-2.6, 4.6];
 /** Watches without a seat; ids are prefixed 'spec:' so they never collide with players or the Storyteller. */
 export interface Spectator { id: string; token: string; name: string; avatar: Avatar; connected: boolean }
 export const MAX_SPECTATORS = 20;
@@ -369,15 +372,23 @@ export class Game {
   }
   walk(id: string, x: unknown, z: unknown, ry: unknown) {
     const who = id === 'st' ? this.storyteller : this.maybePlayer(id);
-    if (!who || who.location !== SQUARE || !this.canWalk()) return;
+    if (!who || !who.location) return;
+    const inside = who.location !== SQUARE;
+    if (inside ? !(this.isPrivateRoom(who.location) || who.location === STUDY) || this.phase === 'night' : !this.canWalk()) return;
     let nx = Number(x), nz = Number(z);
     const nry = Number(ry);
     if (!Number.isFinite(nx) || !Number.isFinite(nz) || !Number.isFinite(nry)) return;
-    const d = Math.hypot(nx, nz);
-    if (d > WALK_RADIUS) { nx = (nx / d) * WALK_RADIUS; nz = (nz / d) * WALK_RADIUS; }
+    if (inside) { nx = Math.max(-ROOM_HALF_W, Math.min(ROOM_HALF_W, nx)); nz = Math.max(ROOM_Z[0], Math.min(ROOM_Z[1], nz)); }
+    else {
+      const d = Math.hypot(nx, nz);
+      if (d > WALK_RADIUS) { nx = (nx / d) * WALK_RADIUS; nz = (nz / d) * WALK_RADIUS; }
+    }
     who.pos = { x: Math.round(nx * 100) / 100, z: Math.round(nz * 100) / 100, ry: Math.round(nry * 100) / 100 };
-    // lightweight broadcast instead of a full state update
-    this.emit('all', 'pos', { id, ...who.pos });
+    // lightweight broadcast instead of a full state update; inside a building only its occupants are told
+    const audience = inside
+      ? [...this.players.filter(p => p.location === who.location).map(p => p.id), ...(this.storyteller.location === who.location ? ['st'] : [])]
+      : 'all';
+    this.emit(audience, 'pos', { id, ...who.pos, room: who.location });
   }
   /** Everyone back to their seat (e.g. nominations open, an ability, night). */
   clearPositions() {
@@ -595,6 +606,7 @@ export class Game {
       }
     }
     if (s.houseRules.beginnerMode) for (const f of ['toymaker', 'angel', 'buddhist']) if (!s.fabled.includes(f)) s.fabled.push(f);
+    if (patch.weather && WEATHERS.some(w => w.id === patch.weather)) s.weather = patch.weather;
     if (patch.region !== undefined) s.region = typeof patch.region === 'string' ? patch.region : null;
     if (Array.isArray(patch.openBuildings)) {
       s.openBuildings = [...new Set(patch.openBuildings.map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < ROOM_NAMES.length))];

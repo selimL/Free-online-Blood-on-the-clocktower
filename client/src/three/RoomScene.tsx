@@ -9,6 +9,10 @@ import type { Occupant } from './occupants';
 import { buildCharacter, disposeCharacter, playGesture, CHARACTER_HEIGHT } from './character';
 import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { useVoice } from '../voice';
+import { socket } from '../net';
+
+// walkable floor (the server clamps to the same numbers)
+const HALF_W = 5.2, Z_MIN = -2.6, Z_MAX = 4.6, SPEED = 3.4;
 
 
 interface Props {
@@ -18,6 +22,8 @@ interface Props {
   reducedMotion: boolean;
   onFigureClick: (id: string) => void;
   onFail: () => void;
+  /** Daytime in a side room or the Study: you can walk around the room. */
+  canWalk?: boolean;
 }
 
 // ---------------------------------------------------------------- per-room look
@@ -219,15 +225,16 @@ function setLabel(el: HTMLDivElement, o: Occupant, mine: boolean) {
   if (o.evilMark) { const e = document.createElement('span'); e.className = 'evil-mark'; e.textContent = ' (evil)'; el.appendChild(e); }
 }
 
-interface Fig { fig: THREE.Group; key: string; labelEl: HTMLDivElement; bubbleEl: HTMLDivElement; ring: THREE.Mesh; x: number; z: number; tx: number; tz: number; walk: number; stride: number }
+interface Fig { ry?: number; mine?: boolean; fig: THREE.Group; key: string; labelEl: HTMLDivElement; bubbleEl: HTMLDivElement; ring: THREE.Mesh; x: number; z: number; tx: number; tz: number; walk: number; stride: number }
 
-export default function RoomScene({ art, occupants, myId, reducedMotion, onFigureClick, onFail }: Props) {
+export default function RoomScene({ art, occupants, myId, reducedMotion, onFigureClick, onFail, canWalk = false }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const figs = useRef(new Map<string, Fig>());
   const voice = useVoice();
-  const live = useRef({ speaking: voice.speaking as string[], reducedMotion, onFigureClick });
-  live.current = { speaking: voice.speaking, reducedMotion, onFigureClick };
+  const live = useRef({ speaking: voice.speaking as string[], reducedMotion, onFigureClick, canWalk, myId });
+  live.current = { speaking: voice.speaking, reducedMotion, onFigureClick, canWalk, myId };
+  const ctl = useRef({ keys: new Set<string>(), target: null as { x: number; z: number } | null, lastSent: 0, still: true });
   const look = LOOKS[art] ?? LOOKS.tavern;
 
   // ---------------- scene
@@ -329,8 +336,22 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
       const hit = ray.intersectObjects([...figs.current.values()].map(f => f.fig), true)[0];
       let o: THREE.Object3D | null = hit?.object ?? null;
       while (o && o.userData.figureId === undefined) o = o.parent;
-      if (o) live.current.onFigureClick(o.userData.figureId);
+      if (o && o.userData.figureId !== live.current.myId) { live.current.onFigureClick(o.userData.figureId); return; }
+      // click the floor: walk there
+      const pt = new THREE.Vector3();
+      if (live.current.canWalk && ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), pt)) {
+        ctl.current.target = { x: Math.max(-HALF_W, Math.min(HALF_W, pt.x)), z: Math.max(Z_MIN, Math.min(Z_MAX, pt.z)) };
+      }
     };
+    const typing = (e: KeyboardEvent) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? '');
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e) || !live.current.canWalk) return;
+      const k = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { ctl.current.keys.add(k); e.preventDefault(); }
+    };
+    const onKeyUp = (e: KeyboardEvent) => ctl.current.keys.delete(e.key.toLowerCase());
+    const onBlur = () => ctl.current.keys.clear();
+    addEventListener('keydown', onKeyDown); addEventListener('keyup', onKeyUp); addEventListener('blur', onBlur);
     renderer.domElement.addEventListener('pointerdown', onClick);
 
     const clock = new THREE.Clock();
@@ -347,13 +368,33 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
       const cx = reduced ? 0 : px * 0.8, cy = reduced ? 0 : -py * 0.4;
       camera.position.set(cx, 3.1 + cy, 8.5);
       camera.lookAt(0, 1.4, 0);
+      const me = figs.current.get(live.current.myId);
+      if (me && live.current.canWalk) {
+        // my own figure: keys or click-to-walk, sent to the others in the room
+        const k = ctl.current.keys, c = ctl.current;
+        let vx = 0, vz = 0;
+        if (k.has('w') || k.has('arrowup')) vz -= 1;
+        if (k.has('s') || k.has('arrowdown')) vz += 1;
+        if (k.has('a') || k.has('arrowleft')) vx -= 1;
+        if (k.has('d') || k.has('arrowright')) vx += 1;
+        if (vx || vz) { c.target = null; const l = Math.hypot(vx, vz); me.tx = Math.max(-HALF_W, Math.min(HALF_W, me.x + (vx / l) * SPEED * dt)); me.tz = Math.max(Z_MIN, Math.min(Z_MAX, me.z + (vz / l) * SPEED * dt)); }
+        else if (c.target) { me.tx = c.target.x; me.tz = c.target.z; if (Math.hypot(me.tx - me.x, me.tz - me.z) < 0.05) c.target = null; }
+        me.mine = true;
+        const moving = Math.hypot(me.tx - me.x, me.tz - me.z) > 0.03;
+        const now = performance.now();
+        if ((moving && now - c.lastSent > 110) || (!moving && !c.still)) {
+          c.lastSent = now; c.still = !moving;
+          socket.emit('action', { type: 'walk', x: me.tx, z: me.tz, ry: me.fig.rotation.y });
+        }
+      }
       for (const [id, f] of figs.current) {
         const dx = f.tx - f.x, dz = f.tz - f.z, d = Math.hypot(dx, dz);
         let moved = 0;
-        if (d > 0.02) { const step = Math.min(d, 3.2 * dt); f.x += (dx / d) * step; f.z += (dz / d) * step; moved = step; }
+        if (d > 0.02) { const step = Math.min(d, SPEED * dt); f.x += (dx / d) * step; f.z += (dz / d) * step; moved = step; }
         f.fig.position.set(f.x, 0, f.z);
-        // walk in facing the way they go; once there, face the centre and a little toward the camera
-        f.fig.rotation.y = moved > 0.001 ? Math.atan2(dx, dz) : Math.atan2(-f.x * 0.6, -f.z + 6);
+        // walk facing the way they go; once there, keep the direction they last faced (or face the room)
+        if (moved > 0.001) f.ry = Math.atan2(dx, dz);
+        f.fig.rotation.y = f.ry ?? Math.atan2(-f.x * 0.6, -f.z + 6);
         f.walk += ((moved > 0.001 ? 1 : 0) - f.walk) * Math.min(1, dt * 10);
         f.stride += dt * 9 * f.walk;
         f.fig.userData.walk = f.walk; f.fig.userData.stride = f.stride;
@@ -371,6 +412,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
       ro.disconnect();
       stage.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerdown', onClick);
+      removeEventListener('keydown', onKeyDown); removeEventListener('keyup', onKeyUp); removeEventListener('blur', onBlur);
       for (const f of figs.current.values()) disposeCharacter(f.fig);
       figs.current.clear();
       sceneRef.current = null;
@@ -425,10 +467,24 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
         f = { fig, key, labelEl, bubbleEl, ring, x: sx, z: sz, tx, tz, walk: 0, stride: 0 };
         map.set(o.id, f);
       }
-      f.tx = tx; f.tz = tz;
+      // a walked-to position wins over the default spot (my own figure is steered locally)
+      if (o.id !== myId || !canWalk) {
+        if (o.pos) { f.tx = o.pos.x; f.tz = o.pos.z; f.ry = o.pos.ry; } else { f.tx = tx; f.tz = tz; f.ry = undefined; }
+      } else if (!f.mine) { f.tx = o.pos?.x ?? tx; f.tz = o.pos?.z ?? tz; }
       setLabel(f.labelEl, o, o.id === myId);
     });
-  }, [occupants, myId, look.ring]);
+  }, [occupants, myId, look.ring, canWalk]);
+
+  // live positions of the others in this room
+  useEffect(() => {
+    const onPos = (d: { id: string; x: number; z: number; ry: number; room?: string }) => {
+      if (!d.room || d.room === 'square' || d.id === live.current.myId) return;
+      const f = figs.current.get(d.id);
+      if (f) { f.tx = d.x; f.tz = d.z; f.ry = d.ry; }
+    };
+    socket.on('pos', onPos);
+    return () => { socket.off('pos', onPos); };
+  }, []);
 
   // gestures: animate the figure and float the emoji above it
   useEffect(() => onEmote(e => {
@@ -441,6 +497,9 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
     setTimeout(() => { if (el.textContent === icon) el.textContent = ''; }, EMOTE_MS);
   }), []);
 
-  return <div ref={mountRef} className="room3d" />;
+  return <>
+    <div ref={mountRef} className="room3d" />
+    {canWalk && <div className="walk-help room"><span>Click the floor or use WASD to walk around the room</span></div>}
+  </>;
 }
 
