@@ -180,7 +180,9 @@ describe('house rules from the PDF', () => {
     expect(g.canEnter(p, 'r0')).toMatch(/visits/);
     // vote record is public
     g.setStage('nominations');
-    g.nominate(g.players[2].id, g.players[3].id); g.startDefense(); g.startVote(); runVote(g);
+    // (never the Virgin: a Townsfolk nominating them ends the nomination at once)
+    const nominee = g.players.find((x, i) => i !== 2 && x.characterId !== 'virgin')!;
+    g.nominate(g.players[2].id, nominee.id); g.startDefense(); g.startVote(); runVote(g);
     expect(playerView(g, g.players[5]).voteHistory).toHaveLength(1);
     g.endGame('good');
     const rg = playerView(g, g.players[1]).players.find(x => x.id === byChar(g, 'imp').id)!.revealedGrimoire;

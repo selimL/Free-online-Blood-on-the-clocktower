@@ -96,6 +96,10 @@ function tableRules(g: Game): string[] {
   if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
   if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
   if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
+  // timer lengths, so everyone knows how long each part of the day lasts
+  const t = g.settings.timers;
+  const len = (s: number | null) => s === null ? 'no time limit (the Storyteller ends it)' : s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+  out.push(`Timers: town discussion ${len(t.discussion)} · private conversations ${len(t.privateRooms)} · nominations ${len(t.nominations)} · accusation ${len(t.accusation)} · defence ${len(t.defense)} · questions with the Storyteller ${len(t.question)} · ${t.voteSeconds} s per voter when votes are counted${h.speedRound ? ` · speed round ${t.speedRound} s per player` : ''}.`);
   return out;
 }
 
