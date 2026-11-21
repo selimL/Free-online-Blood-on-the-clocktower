@@ -7,6 +7,7 @@ import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
+import { setNightAmbience, setHeartbeat, setVolume, useVolume } from '../sound';
 
 const TownScene = lazy(() => import('../three/TownScene'));
 const RoomScene = lazy(() => import('../three/RoomScene'));
@@ -59,6 +60,11 @@ export function GameScreen({ view }: { view: GameView }) {
 
   useEffect(() => { if (!isST) void probeRegions(); }, [isST]);
   useEffect(() => { if (!night) setNightSel([]); }, [night]);
+  // atmosphere: wind and crickets at night, a heartbeat while votes are counted
+  const voting = view.stage === 'voting' && !!view.nomination && !view.nomination.done;
+  useEffect(() => { setNightAmbience(night); }, [night]);
+  useEffect(() => { setHeartbeat(voting); }, [voting]);
+  useEffect(() => () => { setNightAmbience(false); setHeartbeat(false); }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -214,6 +220,7 @@ function TopBar({ view, openList, openInvite, openRules, openCustomise, use3D, t
           </span>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
+        <VolumeControl />
         <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
@@ -230,6 +237,18 @@ function roomArt(view: GameView): string | null {
   if (loc === 'study') return 'study';
   const m = loc?.match(/^r(\d+)$/);
   return m ? ROOM_ART[Number(m[1]) % ROOM_ART.length] : null;
+}
+
+function VolumeControl() {
+  const volume = useVolume();
+  const [last, setLast] = useState(0.6);
+  return (
+    <span className="volume" title="Sound effects volume (bells, night ambience, heartbeat)">
+      <button className="icon-btn" aria-label={volume ? 'Mute sound effects' : 'Unmute sound effects'}
+        onClick={() => { if (volume) { setLast(volume); setVolume(0); } else setVolume(last || 0.6); }}>{volume === 0 ? '🔈' : volume < 0.5 ? '🔉' : '🔊'}</button>
+      <input type="range" min={0} max={100} value={Math.round(volume * 100)} aria-label="Sound effects volume" onChange={e => setVolume(Number(e.target.value) / 100)} />
+    </span>
+  );
 }
 
 function StageHeader({ view }: { view: GameView }) {

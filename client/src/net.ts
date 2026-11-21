@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client';
 import { useSyncExternalStore } from 'react';
 import type { GameView, InfoCard, Announcement } from '../../shared/types';
+import { dawnBell, deathToll } from './sound';
 
 export const socket = io(import.meta.env.VITE_SERVER_URL ?? '/', { transports: ['websocket', 'polling'] });
 
@@ -81,10 +82,12 @@ socket.on('announcement', (_a: Announcement) => { /* already part of state */ })
 socket.on('chat', (m: ChatMsg) => set({ chat: [...store.chat.slice(-100), m] }));
 socket.on('infoCard', (card: InfoCard) => set({ infoPopup: card }));
 socket.on('transition', ({ to }: { to: 'night' | 'day' | 'ended' }) => {
+  if (to === 'day') dawnBell();
   set({ transition: to, chat: to === 'night' ? [] : store.chat });
   setTimeout(() => set({ transition: null }), 2600);
 });
 socket.on('death', ({ playerId }: { playerId: string }) => {
+  deathToll();
   set({ deathFlash: playerId });
   setTimeout(() => set({ deathFlash: null }), 2200);
 });

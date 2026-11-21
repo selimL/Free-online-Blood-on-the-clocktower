@@ -108,6 +108,7 @@ export interface Settings {
   timers: Timers;
   houseRules: HouseRules;
   region: string | null;     // null = auto
+  openBuildings: number[];   // building indices (0-7) the Storyteller opened; [] = automatic
 }
 
 export const defaultSettings = (): Settings => ({
@@ -118,6 +119,7 @@ export const defaultSettings = (): Settings => ({
   djinnRules: '',
   script: [],
   scriptName: null,
+  openBuildings: [],
   publicList: { visible: true, hidden: [], showHiddenCount: true },
   timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {

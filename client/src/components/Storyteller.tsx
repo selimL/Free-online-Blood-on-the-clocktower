@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { GameView, StorytellerSelf, Settings, HouseRules, Timers } from '../../../shared/types';
 import { HOUSE_RULE_INFO, MIN_PLAYERS, NUMERIC_HOUSE_RULES } from '../../../shared/types';
 import {
-  CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, parseScript, type CharacterType,
+  CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, parseScript, ROOM_NAMES, ROOM_ICONS, type CharacterType,
 } from '../../../shared/characters';
 import { act } from '../net';
 import { Modal, TYPE_LABEL } from './Overlays';
@@ -362,6 +362,10 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         })}
       </section>
       <section>
+        <h3>Buildings (side rooms)</h3>
+        <OpenBuildings view={view} settings={settings} />
+      </section>
+      <section>
         <h3>Public character list</h3>
         <label className="toggle"><input type="checkbox" checked={settings.publicList.visible} onChange={e => save({ publicList: { ...settings.publicList, visible: e.target.checked } })} /> Players can see the characters in play</label>
         {settings.publicList.visible && <label className="toggle"><input type="checkbox" checked={settings.publicList.showHiddenCount} onChange={e => save({ publicList: { ...settings.publicList, showHiddenCount: e.target.checked } })} /> Show the exact number of hidden characters (“+ 2 hidden” vs “+ some hidden”)</label>}
@@ -421,6 +425,34 @@ function ScriptImport({ settings }: { settings: Settings }) {
         <button className="btn small primary" onClick={load}>Load script</button>
       </>}
       {msg && <p className="muted small">{msg}</p>}
+    </div>
+  );
+}
+
+function OpenBuildings({ view, settings }: { view: GameView; settings: Settings }) {
+  const open = new Set(view.rooms.filter(r => r.kind === 'private').map(r => Number(r.id.slice(1))));
+  const chosen = settings.openBuildings;
+  const minimum = Math.max(3, Math.ceil(view.players.length / 2));
+  const save = (list: number[]) => act('st:settings', { settings: { openBuildings: list } });
+  const toggle = (i: number) => {
+    const base = chosen.length ? chosen : [...open];
+    void save(base.includes(i) ? base.filter(x => x !== i) : [...base, i]);
+  };
+  return (
+    <div>
+      <p className="muted small">
+        Choose which buildings are open. The rules need at least <b>{minimum}</b> for {view.players.length} players; if you pick fewer, the first unchosen buildings are opened to make up the number.
+        {chosen.length === 0 && ' Currently automatic.'} Players inside a building you close are sent back to the Town Square.
+      </p>
+      <div className="char-grid">
+        {ROOM_NAMES.map((name, i) => (
+          <label key={name} className={`char-pick ${open.has(i) ? 'on' : ''}`}>
+            <span><input type="checkbox" checked={open.has(i)} onChange={() => toggle(i)} /> {ROOM_ICONS[i]} {name.replace(/^The /, '')}</span>
+            {open.has(i) && chosen.length > 0 && !chosen.includes(i) && <span className="hide-toggle">auto</span>}
+          </label>
+        ))}
+      </div>
+      {chosen.length > 0 && <button className="btn small ghost" onClick={() => save([])}>Back to automatic</button>}
     </div>
   );
 }

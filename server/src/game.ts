@@ -167,9 +167,24 @@ export class Game {
   private requireST(phase?: Phase[]) { if (phase && !phase.includes(this.phase)) fail(`Not allowed during ${this.phase}`); }
 
   // ------------------------------------------------------------ rooms
+  /** Minimum number of side rooms: half the players, rounded up, and never fewer than 3. */
   get roomCount() { return Math.max(3, Math.ceil(this.players.length / 2)); }
   get roomCapacity() { return this.settings.houseRules.roomCapOverride ?? Math.max(1, Math.floor(this.players.length / 2)); }
-  privateRoomIds() { return Array.from({ length: this.roomCount }, (_, i) => `r${i}`); }
+  /** Open side rooms. Room `rN` is always building N (Tavern, Chapel, …), whichever buildings are open. */
+  privateRoomIds() {
+    const chosen = [...new Set(this.settings.openBuildings)].filter(i => i >= 0 && i < ROOM_NAMES.length).sort((a, b) => a - b);
+    // top up with the first unchosen buildings so there are always at least `roomCount` rooms
+    for (let i = 0; chosen.length < this.roomCount && i < ROOM_NAMES.length; i++) if (!chosen.includes(i)) chosen.push(i);
+    return chosen.sort((a, b) => a - b).map(i => `r${i}`);
+  }
+  /** After the open buildings change (or players leave), send anyone in a closed room back to the square. */
+  evictFromClosedRooms() {
+    const open = new Set([SQUARE, STUDY, ...this.privateRoomIds()]);
+    for (const p of this.players) if (p.location && !p.location.startsWith('night:') && !open.has(p.location)) {
+      this.movePlayer(p, SQUARE);
+      this.emit([p.id], 'alert', { text: 'That building has been closed. You are back in the Town Square.', kind: 'info' });
+    }
+  }
 
   rooms(): RoomView[] {
     const occ = (id: string) => [
@@ -178,9 +193,9 @@ export class Game {
     ];
     return [
       { id: SQUARE, name: 'Town Square', icon: '🕯️', kind: 'square' as const, capacity: null, occupants: occ(SQUARE) },
-      ...this.privateRoomIds().map((id, i) => ({
-        id, name: ROOM_NAMES[i % ROOM_NAMES.length], icon: ROOM_ICONS[i % ROOM_ICONS.length],
-        kind: 'private' as const, capacity: this.roomCapacity, occupants: occ(id),
+      ...this.privateRoomIds().map(id => Number(id.slice(1))).map(i => ({
+        id: `r${i}`, name: ROOM_NAMES[i], icon: ROOM_ICONS[i],
+        kind: 'private' as const, capacity: this.roomCapacity, occupants: occ(`r${i}`),
       })),
       { id: STUDY, name: "Storyteller's Study", icon: '📜', kind: 'study' as const, capacity: null, occupants: occ(STUDY) },
     ];
@@ -347,8 +362,7 @@ export class Game {
     this.addLog(`${p.name} was kicked.`);
     this.announce(`${p.name} has left the town.`);
     // Rooms may have shrunk.
-    const ids = new Set([SQUARE, STUDY, ...this.privateRoomIds()]);
-    for (const o of this.players) if (o.location && !ids.has(o.location)) this.movePlayer(o, SQUARE);
+    this.evictFromClosedRooms();
     this.changed();
   }
   moveSeat(id: string, toSeat: number) {
@@ -402,6 +416,10 @@ export class Game {
     }
     if (s.houseRules.beginnerMode) for (const f of ['toymaker', 'angel', 'buddhist']) if (!s.fabled.includes(f)) s.fabled.push(f);
     if (patch.region !== undefined) s.region = typeof patch.region === 'string' ? patch.region : null;
+    if (Array.isArray(patch.openBuildings)) {
+      s.openBuildings = [...new Set(patch.openBuildings.map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < ROOM_NAMES.length))];
+      this.evictFromClosedRooms();
+    }
     this.changed();
   }
 

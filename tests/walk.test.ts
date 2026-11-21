@@ -57,3 +57,20 @@ describe('walking', () => {
     expect(g.storyteller.pos).toEqual({ x: -3, z: 4, ry: 0.5 });
   });
 });
+
+describe('open buildings', () => {
+  it('the Storyteller can open specific buildings; the minimum is always met; occupants of closed rooms are moved out', () => {
+    const { g } = setup();                       // 7 players → at least 4 side rooms
+    expect(g.privateRoomIds()).toEqual(['r0', 'r1', 'r2', 'r3']);
+    g.updateSettings({ openBuildings: [5, 6, 7, 1] });
+    expect(g.privateRoomIds()).toEqual(['r1', 'r5', 'r6', 'r7']);
+    expect(g.rooms().find(r => r.id === 'r5')!.name).toBe('The Blacksmith');
+    g.updateSettings({ openBuildings: [7] });    // too few: topped up with the first unchosen buildings
+    expect(g.privateRoomIds()).toEqual(['r0', 'r1', 'r2', 'r7']);
+    const p = g.players[0];
+    g.movePlayer(p, 'r7');
+    g.updateSettings({ openBuildings: [0, 1, 2, 3, 4] });
+    expect(p.location).toBe('square');
+    expect(g.privateRoomIds()).toHaveLength(5);  // more than the minimum is fine
+  });
+});

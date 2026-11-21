@@ -838,10 +838,9 @@ export default function TownScene(props: Props) {
 
   // building labels: name + occupancy from the live room list
   useEffect(() => {
-    const privateRooms = rooms.filter(r => r.kind === 'private');
     labelsRef.current.forEach((el, i) => {
       if (!el) return;
-      const r = privateRooms[i];
+      const r = rooms.find(x => x.id === `r${i}`); // room rN is always building N
       const name = ROOM_NAMES[i].replace(/^The /, '');
       const count = r ? r.occupants.filter(o => o !== 'st').length : 0;
       el.className = `town3d-label ${r ? '' : 'closed'}`;

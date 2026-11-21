@@ -490,3 +490,8 @@ textarea.notes { width: 100%; min-height: 180px; }
 .stage:has(.room3d) { overflow: hidden; }
 .room3d-spacer { width: min(100%, 560px); aspect-ratio: 1 / 1; max-height: 64vh; pointer-events: none; }
 .room-preview { height: 100vh; display: flex; } .room-preview .stage { flex: 1; position: relative; }
+
+/* sound effects volume */
+.volume { display: inline-flex; align-items: center; gap: .2rem; }
+.volume input[type=range] { width: 80px; accent-color: var(--candle); background: transparent; border: none; padding: 0; }
+@media (max-width: 860px) { .volume input[type=range] { width: 60px; } }
