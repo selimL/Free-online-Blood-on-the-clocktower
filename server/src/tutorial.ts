@@ -106,6 +106,29 @@ export function tutorialNext(g: Game, playerId: string) {
   }
 }
 
+/** "Skip ahead": do the current step for the player (or hurry the automatic part along). */
+export function tutorialSkip(g: Game, playerId: string) {
+  const T = g.tutorial;
+  if (!T || T.humanId !== playerId || T.done) return;
+  if (T.tip.next) return tutorialNext(g, playerId);
+  const me = human(g), ada = byName(g, 'Ada');
+  switch (T.step) {
+    case 'nominations':
+      if (!g.nomination || g.nomination.done) {
+        const target = g.nominatedToday.has(ada.id) ? g.players.find(p => p.alive && p.id !== me.id && !g.nominatedToday.has(p.id)) : ada;
+        if (target && !g.nominatorsToday.has(me.id)) g.nominate(me.id, target.id);
+      }
+      break;
+    case 'voting':
+      // count every remaining hand now (the player's own hand as it is)
+      while (g.nomination && !g.nomination.done && g.stage === 'voting') g.lockCurrentVote();
+      g.changed();
+      break;
+    default:
+      T.stepAt = 0; // the next automatic action happens straight away
+  }
+}
+
 /** Runs a few times a second: bot chat, bot votes, and the automatic parts of the script. */
 export function tutorialTick(g: Game, now = Date.now()) {
   const T = g.tutorial;

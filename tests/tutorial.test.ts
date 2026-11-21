@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Game } from '../server/src/game';
 import { addBot, botTick } from '../server/src/bots';
-import { startTutorial, tutorialNext, tutorialTick } from '../server/src/tutorial';
+import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from '../server/src/tutorial';
 import { playerView } from '../server/src/views';
 
 afterEach(() => vi.useRealTimers());
@@ -60,6 +60,13 @@ describe('practice game', () => {
     run(40_000);
     expect(g.phase).toBe('ended');
     expect(g.winner).toBe('evil');
+  });
+  it('can be skipped all the way through with "Skip ahead"', () => {
+    const { g, me, run } = practice();
+    for (let i = 0; i < 40 && !g.tutorial!.done; i++) { tutorialSkip(g, me.id); run(500); }
+    expect(g.tutorial!.done).toBe(true);
+    expect(g.phase).toBe('ended');
+    expect(g.winner).toBe('good');                    // skipping nominates Ada and good wins
   });
   it('only the learner can press Next', () => {
     const { g } = practice();

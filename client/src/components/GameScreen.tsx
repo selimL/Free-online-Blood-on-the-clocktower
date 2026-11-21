@@ -495,13 +495,27 @@ function QuestionsBanner({ view }: { view: GameView }) {
 
 function TutorialTip({ tip }: { tip: { title: string; text: string; next: string | null; done: boolean } }) {
   const [hidden, setHidden] = useState(false);
+  const quit = async () => {
+    if (!tip.done && !confirm('End the practice game? You can start a new one from the lobby at any time.')) return;
+    const code = getStore().session?.code;
+    await act('tutorial:quit');
+    if (code) forgetSession(code);
+    set({ session: null, view: null });
+    history.pushState(null, '', '/');
+    dispatchEvent(new PopStateEvent('popstate'));
+  };
   useEffect(() => setHidden(false), [tip.title, tip.text]);
   if (hidden) return <button className="btn small tutorial-reopen" onClick={() => setHidden(false)}>🎓 Show the Guide</button>;
   return (
     <div className="tutorial-tip parchment" role="status" aria-live="polite">
       <div className="tt-head"><b>🎓 {tip.title}</b><button className="icon-btn" aria-label="Hide the Guide" onClick={() => setHidden(true)}>✕</button></div>
       <p>{tip.text}</p>
-      {tip.next && <div className="row end"><button className="btn primary small" onClick={() => act('tutorial:next')}>{tip.next}</button></div>}
+      <div className="row end">
+        {!tip.done && <button className="btn ghost small" onClick={quit} title="Leave now; the practice game is deleted">End practice</button>}
+        {tip.done && <button className="btn small" onClick={quit}>Back to the lobby</button>}
+        {!tip.done && !tip.next && <button className="btn small" onClick={() => act('tutorial:skip')} title="Do this step for me">Skip ahead ⏭</button>}
+        {tip.next && <button className="btn primary small" onClick={() => act('tutorial:next')}>{tip.next}</button>}
+      </div>
     </div>
   );
 }

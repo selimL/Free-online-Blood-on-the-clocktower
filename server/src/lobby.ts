@@ -4,7 +4,7 @@ import { playerView, storytellerView, spectatorView, lobbyEntry } from './views'
 import type { VoiceManager } from './voice';
 import { encode, decode, type GameStore } from './persist';
 import { addBot, botTick } from './bots';
-import { startTutorial, tutorialNext, tutorialTick } from './tutorial';
+import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from './tutorial';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
@@ -234,6 +234,13 @@ export class Lobby {
       fail('Storytellers use the Grimoire.');
     }
     if (id.startsWith('spec:')) return this.spectatorAction(socket, g, id, type, d);
+    if (type === 'tutorial:quit') {
+      // end practice: the practice game is simply thrown away
+      if (!g.tutorial || g.tutorial.humanId !== id) fail('This is not your practice game.');
+      this.leave(socket);
+      this.removeGame(g);
+      return;
+    }
     const p = g.player(id);
     if (g.paused && !['profile', 'rtt', 'claim'].includes(type)) fail('The game is paused.');
     return this.playerAction(g, p, type, d);
@@ -264,6 +271,7 @@ export class Lobby {
       }
       case 'claim': return g.setClaim(p, String(d.claim ?? ''));
       case 'tutorial:next': return tutorialNext(g, p.id);
+      case 'tutorial:skip': return tutorialSkip(g, p.id);
       case 'mvp': return g.voteMvp(p.id, String(d.candidateId ?? ''));
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'emote': return g.emote(p.id, d.kind);
@@ -365,13 +373,17 @@ export class Lobby {
       const idle = now - g.lastActivity;
       const waitingForStart = !!g.scheduledFor && g.phase === 'lobby' && now < g.scheduledFor + 3 * 3600_000;
       if ((!live && idle > 2 * 3600_000 && !waitingForStart) || (g.phase === 'ended' && idle > 3600_000)) {
-        this.games.delete(g.id);
-        this.sockets.delete(g.id);
-        this.voice.dropGame(g);
-        this.dirty.delete(g.id);
-        void this.store?.remove(g.id).catch(e => console.warn('[save] could not remove game:', e.message));
+        this.removeGame(g);
       }
     }
+  }
+  private removeGame(g: Game) {
+    this.games.delete(g.id);
+    this.sockets.delete(g.id);
+    this.voice.dropGame(g);
+    this.dirty.delete(g.id);
+    this.undo.delete(g.id);
+    void this.store?.remove(g.id).catch(e => console.warn('[save] could not remove game:', e.message));
   }
 
   // ------------------------------------------------------------ saving & restoring games
