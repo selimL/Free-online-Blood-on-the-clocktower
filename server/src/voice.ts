@@ -70,7 +70,7 @@ export class VoiceManager {
     if (!this.enabled) return;
     const region = this.regionFor(g)!;
     const api = this.apis.get(region.name)!;
-    const ids = ['st', ...g.players.map(p => p.id)];
+    const ids = ['st', ...g.players.map(p => p.id), ...g.spectators.map(s => s.id)];
     await Promise.all(ids.map(async id => {
       const target = g.voiceTarget(id);
       const k = this.key(g, id);

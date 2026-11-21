@@ -514,3 +514,7 @@ textarea.notes { width: 100%; min-height: 180px; }
 .nh-step h3 { margin: .4rem 0 .1rem; color: var(--candle); }
 .nh-card { margin-top: .4rem; display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
 .nh-card .row { width: 100%; }
+
+/* spectators */
+.spectator-bar { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.watchers { font-size: .8rem; color: var(--muted); border: 1px solid #4a4252; border-radius: 999px; padding: .05rem .5rem; }

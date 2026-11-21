@@ -36,7 +36,7 @@ export function Lobby() {
                 <tr key={g.id}>
                   <td>{g.name}</td><td>{g.players}/{g.max}</td><td>{g.edition}</td>
                   <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span></td>
-                  <td><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join as Traveller'}</button></td>
+                  <td className="row"><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join / Watch'}</button></td>
                 </tr>
               ))}
             </tbody>

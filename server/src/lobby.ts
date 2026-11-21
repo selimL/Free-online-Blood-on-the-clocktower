@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import { Game, GameError, cleanText, sanitizeAvatar, type Player } from './game';
-import { playerView, storytellerView, lobbyEntry } from './views';
+import { playerView, storytellerView, spectatorView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
 import { encode, decode, type GameStore } from './persist';
 
@@ -53,7 +53,9 @@ export class Lobby {
   broadcast(g: Game) {
     for (const s of this.sockets.get(g.id) ?? []) {
       const id = (s.data.binding as Binding).id;
-      const view = id === 'st' ? storytellerView(g) : (() => { const p = g.maybePlayer(id); return p ? playerView(g, p) : null; })();
+      const view = id === 'st' ? storytellerView(g)
+        : id.startsWith('spec:') ? (() => { const sp = g.spectators.find(x => x.id === id); return sp ? spectatorView(g, sp) : null; })()
+        : (() => { const p = g.maybePlayer(id); return p ? playerView(g, p) : null; })();
       if (!view) continue;
       view.voice.enabled = this.voice.enabled;
       if (id === 'st' && view.self.isStoryteller) view.self.availableRegions = this.voice.regions.map(r => r.name);
@@ -83,6 +85,13 @@ export class Lobby {
     const g = this.byCode(code);
     return { game: lobbyEntry(g), travellersOnly: g.started };
   }
+  /** Watch a game without a seat. */
+  spectate(socket: Socket, d: any) {
+    const g = this.byCode(String(d.code ?? ''));
+    const sp = g.addSpectator(d.name, d.avatar);
+    this.bind(socket, g, sp.id);
+    return { gameId: g.id, code: g.code, token: sp.token, id: sp.id };
+  }
   join(socket: Socket, d: any) {
     const g = this.byCode(String(d.code ?? ''));
     const p = g.join(d.name, d.avatar);
@@ -99,6 +108,13 @@ export class Lobby {
       if (g.paused && g.pausedBySTDisconnect) { g.pausedBySTDisconnect = false; g.setPaused(false); }
       g.changed();
       return { gameId: g.id, code: g.code, id: 'st' };
+    }
+    const sp = g.spectators.find(x => x.token === token);
+    if (sp) {
+      this.bind(socket, g, sp.id);
+      sp.connected = true;
+      g.changed();
+      return { gameId: g.id, code: g.code, id: sp.id };
     }
     const p = g.players.find(x => x.token === token) ?? fail('Seat not found.');
     this.bind(socket, g, p.id);
@@ -121,6 +137,9 @@ export class Lobby {
     if (id === 'st') {
       g.storyteller.connected = false;
       if (g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
+    } else if (id.startsWith('spec:')) {
+      const sp = g.spectators.find(x => x.id === id);
+      if (sp) sp.connected = false;
     } else {
       const p = g.maybePlayer(id);
       if (p) p.connected = false;
@@ -154,9 +173,23 @@ export class Lobby {
       if (type === 'walk') return g.walk('st', d.x, d.z, d.ry);
       fail('Storytellers use the Grimoire.');
     }
+    if (id.startsWith('spec:')) return this.spectatorAction(socket, g, id, type, d);
     const p = g.player(id);
     if (g.paused && !['profile', 'rtt', 'claim'].includes(type)) fail('The game is paused.');
     return this.playerAction(g, p, type, d);
+  }
+
+  /** Spectators can only stop watching, or take a seat (a normal seat before the game, a Traveller seat during it). */
+  private spectatorAction(socket: Socket, g: Game, id: string, type: string, d: any) {
+    const sp = g.spectators.find(x => x.id === id) ?? fail('You are not watching this game.');
+    if (type === 'takeSeat') {
+      const p = g.join(d.name ?? sp!.name, d.avatar ?? sp!.avatar); // fails if full or Travellers are not allowed
+      g.removeSpectator(sp!.id);
+      this.bind(socket, g, p.id);
+      return { gameId: g.id, code: g.code, token: p.token, id: p.id };
+    }
+    if (type === 'rtt') return;
+    fail('Spectators can only watch.');
   }
 
   private playerAction(g: Game, p: Player, type: string, d: any) {

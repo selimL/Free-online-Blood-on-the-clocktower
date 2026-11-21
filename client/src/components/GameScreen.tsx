@@ -3,7 +3,7 @@ import type { GameView, Avatar } from '../../../shared/types';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
-import { act, useStore, rpc, set, forgetSession, getStore } from '../net';
+import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions } from '../voice';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
@@ -38,6 +38,7 @@ export function GameScreen({ view }: { view: GameView }) {
   const art = roomArt(view);
   const show3D = use3D && !failed3D && !art && !asleep;
   const show3DRoom = use3D && !failed3D && !!art && !asleep;
+  const spectating = !view.self.isStoryteller && !!view.self.spectator;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // where I just came from (to step out of that building's door in the 3D town)
   const myLoc = view.self.isStoryteller ? view.storyteller.location : me?.location ?? null;
@@ -160,16 +161,17 @@ export function GameScreen({ view }: { view: GameView }) {
       </main>
       <footer className="bottom-bar">
         <div className="bl">
-          {!isST && view.phase !== 'lobby' && <>
+          {spectating && <SpectatorBar view={view} />}
+          {!isST && !spectating && view.phase !== 'lobby' && <>
             <button className="btn" onClick={() => setModal('claim')} disabled={view.phase !== 'day'}>🎭 Claim Ability</button>
             <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>
             {view.houseRules.allowCharacterReveal && <button className="btn ghost" onClick={() => setModal('reveal')}>🂠 Show character</button>}
           </>}
-          {!isST && view.phase === 'lobby' && <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>}
+          {!isST && !spectating && view.phase === 'lobby' && <button className="btn ghost" onClick={() => setModal('label')}>🏷 Set claimed character</button>}
         </div>
         <div className="bc">{isST && <StorytellerControls view={view} />}</div>
         <div className="br">
-          {!isST && <>
+          {!isST && !spectating && <>
             <button className="btn" onClick={() => setModal('character')} title="Shortcut: P">📜 Character <kbd>P</kbd></button>
             <UseAbilityButton view={view} setConfirm={setConfirm} />
           </>}
@@ -225,8 +227,9 @@ function TopBar({ view, openList, openInvite, openRules, openCustomise, openStor
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
         {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
+        {view.spectators.length > 0 && <span className="watchers" title={view.spectators.map(s => s.name).join(', ')}>👁 {view.spectators.length} watching</span>}
         <VolumeControl />
-        <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>
+        {(view.self.isStoryteller || !view.self.spectator) && <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>}
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         {view.characterList ? <button className="btn small" onClick={openList}>📖 Characters in Play</button> : null}
         <button className="btn small ghost" onClick={leave}>Leave</button>
@@ -279,6 +282,24 @@ function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void })
   );
 }
 
+function SpectatorBar({ view }: { view: GameView }) {
+  const seats = view.players.length;
+  const canSit = view.phase === 'lobby' ? seats < 10 : view.phase !== 'ended' && view.houseRules.allowTravellers && seats < 10;
+  const takeSeat = async () => {
+    let name = '', avatar: unknown;
+    try { name = localStorage.getItem('botc:name') ?? ''; avatar = JSON.parse(localStorage.getItem('botc:avatar') ?? 'null'); } catch { /* ignore */ }
+    const me = view.spectators.find(s => s.id === view.self.id);
+    const r = await act('takeSeat', { name: name || me?.name, avatar: avatar ?? undefined });
+    if (r.ok) { const s = { gameId: r.gameId, code: r.code, token: r.token, id: r.id }; saveSession(s); set({ session: s }); }
+  };
+  return (
+    <span className="spectator-bar">
+      👁 <b>You are watching.</b> <span className="muted small">Public information only · you can listen to the Town Square</span>
+      {canSit && <button className="btn small primary" onClick={takeSeat}>{view.phase === 'lobby' ? 'Take a seat' : 'Join as a Traveller'}</button>}
+    </span>
+  );
+}
+
 function VolumeControl() {
   const volume = useVolume();
   const [last, setLast] = useState(0.6);
@@ -293,7 +314,8 @@ function VolumeControl() {
 
 function StageHeader({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
-  const loc = isST ? view.storyteller.location : view.players.find(p => p.id === view.self.id)?.location;
+  const watching = !view.self.isStoryteller && !!view.self.spectator;
+  const loc = isST ? view.storyteller.location : watching ? 'square' : view.players.find(p => p.id === view.self.id)?.location;
   const room = view.rooms.find(r => r.id === loc);
   const me = !isST ? view.players.find(p => p.id === view.self.id) : null;
   if (view.phase === 'night') return <div className={`stage-header night`}>🌙 Night {view.night}{isST && loc ? ` · with ${view.players.find(p => `night:${p.id}` === loc)?.name}` : ''}</div>;
@@ -495,6 +517,7 @@ function PersonalNotes({ view }: { view: GameView }) {
 }
 
 export function Chat({ view }: { view: GameView }) {
+  const spectator = !view.self.isStoryteller && !!view.self.spectator;
   const chat = useStore(s => s.chat);
   const [text, setText] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
@@ -513,7 +536,7 @@ export function Chat({ view }: { view: GameView }) {
         <div ref={endRef} />
       </div>
       <form className="row" onSubmit={e => { e.preventDefault(); void send(); }}>
-        <input value={text} maxLength={300} onChange={e => setText(e.target.value)} placeholder="Say something to the room…" aria-label="Chat message" />
+        <input value={text} maxLength={300} onChange={e => setText(e.target.value)} placeholder={spectator ? 'Spectators can read the Town Square but not type' : 'Say something to the room…'} disabled={spectator} aria-label="Chat message" />
         <button className="btn small">Send</button>
       </form>
     </div>

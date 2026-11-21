@@ -23,9 +23,9 @@ function JoinForm({ code }: { code: string }) {
   useEffect(() => {
     rpc('game:lookup', { code }).then(r => { if (r.ok) { setInfo(r.game); setTraveller(r.travellersOnly); } else setErr(r.error ?? 'Not found'); });
   }, [code]);
-  const join = async () => {
+  const join = async (watch = false) => {
     try { localStorage.setItem('botc:name', name); localStorage.setItem('botc:avatar', JSON.stringify(avatar)); } catch { /* ignore */ }
-    const r = await rpc('game:join', { code, name, avatar });
+    const r = await rpc(watch ? 'game:spectate' : 'game:join', { code, name, avatar });
     if (!r.ok) return pushAlert(r.error ?? 'Could not join', 'error');
     const s = { gameId: r.gameId, code: r.code, token: r.token, id: r.id };
     saveSession(s);
@@ -40,7 +40,7 @@ function JoinForm({ code }: { code: string }) {
       {traveller && <p className="warn">This game is already in progress. You will join as a <b>Traveller</b> if the Storyteller allows it.</p>}
       <label className="field">Your name<input value={name} maxLength={24} onChange={e => setName(e.target.value)} placeholder="e.g. Mortimer" autoFocus /></label>
       <AvatarCreator value={avatar} onChange={setAvatar} />
-      <div className="row end"><a className="btn ghost" href="/">Cancel</a><button className="btn primary" disabled={!name.trim()} onClick={join}>Enter the town</button></div>
+      <div className="row end"><a className="btn ghost" href="/">Cancel</a><button className="btn" disabled={!name.trim()} onClick={() => join(true)} title="Watch without a seat: you see only public information and can listen to the Town Square">👁 Just watch</button><button className="btn primary" disabled={!name.trim()} onClick={() => join()}>Enter the town</button></div>
     </div>
   );
 }

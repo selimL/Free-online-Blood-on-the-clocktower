@@ -71,6 +71,9 @@ export interface Storyteller { id: 'st'; token: string; name: string; avatar: Av
 /** Cosmetic position in the 3D Town Square. Never affects rules: rooms are still decided by `location`. */
 export interface WalkPos { x: number; z: number; ry: number }
 export const WALK_RADIUS = 22;
+/** Watches without a seat; ids are prefixed 'spec:' so they never collide with players or the Storyteller. */
+export interface Spectator { id: string; token: string; name: string; avatar: Avatar; connected: boolean }
+export const MAX_SPECTATORS = 20;
 
 export type Emit = (audience: string[] | 'all', event: string, payload: unknown) => void;
 
@@ -103,6 +106,7 @@ export class Game {
   visibility: 'public' | 'private';
   storyteller: Storyteller;
   players: Player[] = [];
+  spectators: Spectator[] = [];
   banned = new Set<string>();
   settings: Settings = defaultSettings();
   phase: Phase = 'lobby';
@@ -169,6 +173,8 @@ export class Game {
     }
     g.storyteller.connected = false;
     for (const p of g.players) p.connected = false;
+    for (const s of g.spectators ?? []) s.connected = false;
+    g.spectators ??= [];
     if (g.started && g.phase !== 'ended' && !g.paused) {
       g.paused = true;
       g.pausedAt = typeof data.savedAt === 'number' ? data.savedAt : Date.now(); // timers resume where they stopped
@@ -330,6 +336,11 @@ export class Game {
     return this.settings.houseRules.autoMuteDuringSpeeches && (this.stage === 'accusation' || this.stage === 'defense' || this.stage === 'speedround') && id !== this.speakerId;
   }
   voiceTarget(id: string): { room: string | null; publish: boolean; subscribe: boolean } {
+    if (id.startsWith('spec:')) {
+      // spectators listen to the Town Square by day; they never speak, and hear nothing at night
+      if (!this.spectators.some(s => s.id === id) || this.phase === 'night') return { room: null, publish: false, subscribe: false };
+      return { room: SQUARE, publish: false, subscribe: true };
+    }
     if (id === 'st') {
       return { room: this.storyteller.location, publish: true, subscribe: true };
     }
@@ -344,11 +355,12 @@ export class Game {
     return { room: p.location, publish: !p.muted && !this.speechMuted(p.id), subscribe: true };
   }
   sendChat(fromId: string, text: string) {
+    if (fromId.startsWith('spec:')) fail('Spectators can only watch and listen.');
     const t = cleanText(text, 300);
     if (!t) return;
     const me = this.voiceTarget(fromId);
     if (!me.room || !me.publish) fail(fromId !== 'st' && this.maybePlayer(fromId)?.muted ? 'You are muted by the Storyteller.' : 'Nobody can hear you right now.');
-    const audience = ['st', ...this.players.map(p => p.id)].filter(id => {
+    const audience = ['st', ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
       const v = this.voiceTarget(id);
       return v.room === me.room && v.subscribe;
     });
@@ -375,6 +387,19 @@ export class Game {
     if (traveller) this.announce(`${p.name} has arrived as a Traveller.`);
     this.changed();
     return p;
+  }
+  addSpectator(name: string, avatar: Partial<Avatar> | undefined): Spectator {
+    if (!this.settings.houseRules.allowSpectators) fail('The Storyteller is not allowing spectators in this game.');
+    if (this.spectators.length >= MAX_SPECTATORS) fail('Too many spectators already.');
+    const s: Spectator = { id: `spec:${nanoid(8)}`, token: nanoid(24), name: cleanText(name, 24) || 'Spectator', avatar: sanitizeAvatar(avatar), connected: true };
+    this.spectators.push(s);
+    this.addLog(`${s.name} is watching.`);
+    this.changed();
+    return s;
+  }
+  removeSpectator(id: string) {
+    this.spectators = this.spectators.filter(s => s.id !== id);
+    this.changed();
   }
   setProfile(p: Player, name: string | undefined, avatar: Partial<Avatar> | undefined) {
     if (name !== undefined) p.name = cleanText(name, 24) || p.name;

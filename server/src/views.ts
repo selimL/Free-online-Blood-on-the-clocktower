@@ -5,7 +5,7 @@ import type {
   GameView, PublicPlayer, SelfView, StorytellerSelf, EvilTeamView, NominationView, AbilityEventView, LobbyEntry,
 } from '../../shared/types';
 import { MAX_PLAYERS } from '../../shared/types';
-import type { Game, Player } from './game';
+import type { Game, Player, Spectator } from './game';
 
 export function evilInfoGiven(g: Game) {
   return g.residents.length >= 7 || g.settings.houseRules.evilInfoSmallGames;
@@ -99,9 +99,9 @@ function tableRules(g: Game): string[] {
   return out;
 }
 
-function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Omit<GameView, 'self'> {
+function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asStoryteller = viewer === null): Omit<GameView, 'self'> {
   const night = g.phase === 'night';
-  const isST = viewer === null;
+  const isST = asStoryteller;
   return {
     id: g.id, code: g.code, name: g.name, visibility: g.visibility, phase: g.phase, stage: g.stage,
     day: g.day, night: g.night, paused: g.paused,
@@ -128,6 +128,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Om
     voice: { enabled: false, region: g.region },
     speakerId: g.speakerId,
     tableRules: tableRules(g),
+    spectators: g.spectators.map(s => ({ id: s.id, name: s.name, connected: s.connected })),
     story: g.phase === 'ended' ? {
       log: g.log.slice(-400),
       votes: g.voteHistory,
@@ -137,6 +138,18 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null): Om
     voteHistory: g.settings.houseRules.openVoteRecord
       ? g.voteHistory.map(v => ({ ...v, yes: g.settings.houseRules.anonymousVotes ? [] : v.yes })) : null,
   };
+}
+
+/** What a spectator sees: only public information, like a player with no character. */
+export function spectatorView(g: Game, s: Spectator): GameView {
+  const self: SelfView = {
+    id: s.id, isStoryteller: false, spectator: true, characterId: null, alignment: null, evilTeam: null, notes: [],
+    awake: false, questionAnswered: true, abilityAvailable: false, claimsUsed: {}, nominatedToday: false,
+    privateMsUsedToday: 0, revealedTo: [],
+  };
+  const view = { ...baseView(g, null, null, false), self } as GameView;
+  if (g.phase === 'night') view.announcements = view.announcements.filter(a => a.ts <= g.lastNightStart);
+  return view;
 }
 
 export function playerView(g: Game, p: Player): GameView {

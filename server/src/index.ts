@@ -58,6 +58,7 @@ io.on('connection', (socket: Socket) => {
   socket.on('game:create', guard(d => lobby.create(socket, d)));
   socket.on('game:lookup', guard(d => lobby.lookup(String(d.code ?? ''))));
   socket.on('game:join', guard(d => lobby.join(socket, d)));
+  socket.on('game:spectate', guard(d => lobby.spectate(socket, d)));
   socket.on('game:rejoin', guard(d => lobby.rejoin(socket, d)));
   socket.on('game:leave', guard(() => lobby.leave(socket)));
   socket.on('action', guard(d => lobby.action(socket, d)));

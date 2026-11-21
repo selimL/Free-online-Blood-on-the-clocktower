@@ -54,6 +54,7 @@ export interface HouseRules {
   abilityDeclarationLimit: number | null;
   succorForEvil: boolean;
   holySpirit: boolean;
+  allowSpectators: boolean;
 }
 
 /** House rules that hold a number (null = off) rather than a boolean. */
@@ -87,6 +88,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   travellersCantBeChanged: { label: 'Travellers can\'t be changed', help: 'Character-changing abilities (Pit-Hag, Barber, Snake Charmer…) can\'t change or swap Travellers; the Grimoire blocks it.', source: 'Community house rule (TPI-endorsed)' },
   abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
   succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
+  allowSpectators: { label: 'Allow spectators', help: 'People can watch the game without a seat. They see only public information, can hear the Town Square, and cannot speak or type.', source: 'Online convention' },
   holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
@@ -128,7 +130,7 @@ export const defaultSettings = (): Settings => ({
     autoMuteDuringSpeeches: false, evilInfoSmallGames: false, announceCauseOfDeath: false, revealOnDeath: false,
     maxWhispersPerDay: null, roomCapOverride: null, speedRound: false, openVoteRecord: false, grimoireRevealAtEnd: false,
     beginnerMode: false, noOaths: false, noScreenshots: false, travellersCantBeChanged: false, abilityDeclarationLimit: null,
-    succorForEvil: false, holySpirit: false,
+    succorForEvil: false, holySpirit: false, allowSpectators: true,
   },
   region: null,
 });
@@ -220,6 +222,8 @@ export interface SelfView {
   nominatedToday: boolean;
   privateMsUsedToday: number;
   revealedTo: { fromId: string; characterId: string }[];
+  /** Watching only: no seat, no character, no voice or chat of their own. */
+  spectator?: boolean;
 }
 
 export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
@@ -253,6 +257,7 @@ export interface GameView {
   voice: { enabled: boolean; region: string | null };
   speakerId: string | null;   // current accuser/accused / speed-round speaker
   canWalk: boolean;           // free walking allowed in the 3D Town Square right now
+  spectators: { id: string; name: string; connected: boolean }[];
   tableRules: string[];
   voteHistory: VoteRecord[] | null;
   /** The whole story, revealed to everyone once the game has ended (null before then). */
