@@ -6,6 +6,7 @@ import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_A
 import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '../net';
 import { useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
 import { sendEmote } from '../emotes';
+import { sunPosition } from '../daylight';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
 import { setNightAmbience, setHeartbeat, setVolume, useVolume } from '../sound';
@@ -39,6 +40,12 @@ export function GameScreen({ view }: { view: GameView }) {
   const art = roomArt(view);
   const show3D = use3D && !failed3D && !art && !asleep;
   const show3DRoom = use3D && !failed3D && !!art && !asleep;
+  // asleep: an empty moonlit town with a slowly circling camera (no figures, nothing secret)
+  const showSleep3D = use3D && !failed3D && asleep;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const sun = useMemo(() => () => sunPosition(viewRef.current), []);
+  const sleepStoryteller = useMemo(() => ({ name: '', avatar: view.storyteller.avatar, location: null, pos: null }), [view.storyteller.avatar]);
   const spectating = !view.self.isStoryteller && !!view.self.spectator;
   const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // where I just came from (to step out of that building's door in the 3D town)
@@ -130,7 +137,7 @@ export function GameScreen({ view }: { view: GameView }) {
       <TopBar view={view} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
-        <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D ? 'has-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
+        <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D || showSleep3D ? 'has-3d' : ''} ${showSleep3D ? 'sleep-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
           {art && !show3DRoom && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
           {show3DRoom && art && (
             <Suspense fallback={null}>
@@ -140,12 +147,20 @@ export function GameScreen({ view }: { view: GameView }) {
           )}
           {show3D && (
             <Suspense fallback={null}>
-              <TownScene anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
+              <TownScene key="town" anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
                 night={night} rooms={view.rooms} players={view.players} storyteller={view.storyteller} awakeIds={awakeIds}
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)}
                 myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={walkMode} onFigureClick={onSeatClick}
                 onEnterRoom={room => { void act('move', { room }); }} arrivedFrom={arrivedFromRef.current}
-                nomination={view.nomination} voting={view.stage === 'voting'} />
+                nomination={view.nomination} voting={view.stage === 'voting'} sun={sun} />
+            </Suspense>
+          )}
+          {showSleep3D && (
+            <Suspense fallback={null}>
+              <TownScene key="sleep" sleepView anchor={circleRef} container={stageRef} seatRadiusFrac={0.4}
+                night rooms={[]} players={[]} storyteller={sleepStoryteller} awakeIds={[]}
+                reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} myId="" canWalk={false}
+                onFigureClick={() => {}} onEnterRoom={() => {}} arrivedFrom={null} nomination={null} voting={false} sun={sun} />
             </Suspense>
           )}
           <StageHeader view={view} />

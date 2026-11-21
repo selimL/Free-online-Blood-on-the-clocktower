@@ -558,3 +558,11 @@ textarea.notes { width: 100%; min-height: 180px; }
 .joystick-knob { width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3e6c8, #b99b62); box-shadow: 0 3px 10px rgba(0, 0, 0, .6); pointer-events: none; }
 @media (max-width: 860px) { .stage > .walk-help { bottom: 150px; } }
 .st-mini.three span.emote-bubble { font: inherit; font-size: 1.7rem; background: rgba(233, 220, 192, .95); padding: .2rem .35rem; border-radius: 14px; top: -46px; }
+
+/* ---------------- asleep: the empty moonlit town circles slowly behind a small card */
+.stage.sleep-3d { overflow: hidden; }
+.stage.sleep-3d .night-sleep { margin: auto auto 2.5rem; align-self: end; max-width: 30rem; padding: 1rem 1.5rem; border-radius: var(--radius);
+  background: rgba(7, 6, 11, .55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border: 1px solid rgba(223, 230, 245, .15); }
+.stage.sleep-3d .night-sleep .moon { display: none; }
+.stage.sleep-3d .night-sleep h2 { margin: 0 0 .3rem; }
+.stage.sleep-3d .night-sleep p { margin: 0; }

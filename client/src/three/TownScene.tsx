@@ -42,6 +42,10 @@ interface Props {
   /** The nomination being voted on (hands go up on the figures; the clock hand points at the voter). */
   nomination: NominationView | null;
   voting: boolean;
+  /** Sun position: 0 sunrise … 1 sunset, null at night (read every frame). */
+  sun: () => number | null;
+  /** Asleep at night: an empty, moonlit town seen from a camera slowly circling the clocktower. */
+  sleepView?: boolean;
 }
 
 const WALK_SPEED = 5.2;      // world units per second
@@ -547,8 +551,11 @@ export default function TownScene(props: Props) {
     }
 
     // moon, stars
-    const moon = mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicMaterial({ color: '#e8eefc' }), -40, 55, -95, scene);
+    const moon = mesh(new THREE.SphereGeometry(4, 24, 16), new THREE.MeshBasicMaterial({ color: '#e8eefc', transparent: true, fog: false }), -40, 55, -95, scene);
     moon.castShadow = false;
+    const sunMat = new THREE.MeshBasicMaterial({ color: '#ffd27a', transparent: true, fog: false });
+    const sunDisc = mesh(new THREE.SphereGeometry(6, 24, 16), sunMat, 0, 0, -150, scene);
+    sunDisc.castShadow = false;
     const starGeo = new THREE.BufferGeometry();
     const stars = new Float32Array(900);
     for (let i = 0; i < 300; i++) {
@@ -556,7 +563,8 @@ export default function TownScene(props: Props) {
       stars.set([Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r], i * 3);
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: '#ffffff', size: 0.8, sizeAttenuation: true, fog: false })));
+    const starMat = new THREE.PointsMaterial({ color: '#ffffff', size: 0.8, sizeAttenuation: true, fog: false, transparent: true });
+    scene.add(new THREE.Points(starGeo, starMat));
 
     // lights
     const hemi = new THREE.HemisphereLight('#6f7fb8', '#1a1410', 0.9);
@@ -573,8 +581,21 @@ export default function TownScene(props: Props) {
 
     // sizing + camera alignment with the HTML seat circle
     let yaw = 0;
+    const sleeping = !!props.sleepView;
+    if (sleeping) labelRenderer.domElement.style.display = 'none'; // no labels, nothing to click
     const align = () => {
       const stage = container.current, a = anchor.current;
+      if (stage && sleeping) {
+        const W = stage.clientWidth, H = stage.clientHeight;
+        mount.style.height = `${H}px`;
+        renderer.setSize(W, H, false);
+        renderer.domElement.style.width = `${W}px`;
+        renderer.domElement.style.height = `${H}px`;
+        camera.aspect = W / H;
+        camera.clearViewOffset();
+        camera.updateProjectionMatrix();
+        return;
+      }
       if (!stage || !a) return;
       const W = stage.clientWidth;
       const H = Math.max(stage.clientHeight, stage.scrollHeight);
@@ -593,6 +614,13 @@ export default function TownScene(props: Props) {
       camera.updateProjectionMatrix();
     };
     const placeCamera = () => {
+      if (sleeping) {
+        // slow orbit around the clocktower, a little lower and wider than the day view
+        const d = 50, el = (30 * Math.PI) / 180;
+        camera.position.set(Math.sin(yaw) * d * Math.cos(el), 4 + d * Math.sin(el), Math.cos(yaw) * d * Math.cos(el));
+        camera.lookAt(0, 3, 0);
+        return;
+      }
       const d = camera.userData.dist ?? 60;
       camera.position.set(Math.sin(yaw) * d * Math.cos(PITCH), d * Math.sin(PITCH), Math.cos(yaw) * d * Math.cos(PITCH));
       camera.lookAt(0, 0, 0);
@@ -748,8 +776,15 @@ export default function TownScene(props: Props) {
 
     // day/night blend
     let nightMix = stateRef.current.night ? 1 : 0;
-    const dayFog = new THREE.Color('#1c2034'), nightFog = new THREE.Color('#07070f');
-    const daySky = new THREE.Color('#1a1d33'), nightSky = new THREE.Color('#05050c');
+    const nightFog = new THREE.Color('#07070f'), nightSky = new THREE.Color('#05050c');
+    // daylight palette: low sun (dawn/dusk) → high sun (noon). Overcast and muted: it is still a gothic town.
+    const C = (h: string) => new THREE.Color(h);
+    const skyC = { low: C('#7a3f45'), high: C('#7d8fae') }, fogC = { low: C('#4a2c36'), high: C('#6c7a94') };
+    const sunCol = { low: C('#ff7a3a'), high: C('#fff0d8') }, moonCol = C('#b9c6ff');
+    const hemiDay = C('#c4cfe8'), hemiNight = C('#6f7fb8');
+    const nightPos = new THREE.Vector3(-30, 45, -25), sunPos = new THREE.Vector3();
+    const tmp = new THREE.Color(), tmp2 = new THREE.Color();
+    let sunSm = live.current.props.sun() ?? 0.5;
 
     const clock = new THREE.Clock();
     let raf = 0;
@@ -761,15 +796,35 @@ export default function TownScene(props: Props) {
       if (t - last < 1 / 30) return; // ~30 fps is plenty for an ambient backdrop and saves battery
       last = t;
       const s = stateRef.current;
-      nightMix += ((s.night ? 1 : 0) - nightMix) * 0.03;
-      hemi.intensity = THREE.MathUtils.lerp(1.7, 0.6, nightMix);
-      moonLight.intensity = THREE.MathUtils.lerp(1.8, 1.1, nightMix);
-      warm.intensity = THREE.MathUtils.lerp(22, 38, nightMix) * (0.92 + Math.sin(t * 7) * 0.05);
-      (scene.fog as THREE.FogExp2).color.copy(dayFog).lerp(nightFog, nightMix);
-      sky.copy(daySky).lerp(nightSky, nightMix);
-      k.warmGlow instanceof THREE.MeshStandardMaterial && (k.warmGlow.emissiveIntensity = THREE.MathUtils.lerp(1.2, 2.2, nightMix));
+      // ---- sun and moon
+      const sunP = live.current.props.sun();
+      const isNight = s.night || sunP === null;
+      // fades in real seconds (not frames), so slow computers change light at the same pace
+      const fdt = Math.min(0.5, Math.max(0, t - prevT));
+      nightMix += ((isNight ? 1 : 0) - nightMix) * (1 - Math.exp(-fdt / 1.2));
+      if (sunP !== null) sunSm += (sunP - sunSm) * (1 - Math.exp(-fdt / 0.8));
+      const d = Math.sin(Math.PI * Math.min(1, Math.max(0, sunSm))); // 0 at the horizon, 1 at noon
+      const L = THREE.MathUtils.lerp;
+      const a = Math.PI * sunSm;                                      // rises in the east (right), sets in the west
+      sunPos.set(Math.cos(a) * 60, 6 + Math.sin(a) * 52, -28);
+      moonLight.position.copy(sunPos).lerp(nightPos, nightMix);
+      moonLight.color.copy(tmp.copy(sunCol.low).lerp(sunCol.high, d)).lerp(moonCol, nightMix);
+      moonLight.intensity = L(0.7 + 2.0 * d, 1.1, nightMix);
+      hemi.color.copy(hemiDay).lerp(hemiNight, nightMix);
+      hemi.intensity = L(L(1.3, 2.3, d), 0.6, nightMix);
+      warm.intensity = L(L(14, 5, d), 38, nightMix) * (0.92 + Math.sin(t * 7) * 0.05);
+      (scene.fog as THREE.FogExp2).color.copy(tmp.copy(fogC.low).lerp(fogC.high, d)).lerp(nightFog, nightMix);
+      sky.copy(tmp2.copy(skyC.low).lerp(skyC.high, d)).lerp(nightSky, nightMix);
+      k.warmGlow instanceof THREE.MeshStandardMaterial && (k.warmGlow.emissiveIntensity = L(L(1.5, 0.7, d), 2.2, nightMix));
+      sunDisc.position.copy(sunPos).normalize().multiplyScalar(150);
+      sunMat.color.copy(sunCol.low).lerp(sunCol.high, d);
+      sunMat.opacity = 1 - nightMix;
+      sunDisc.visible = nightMix < 0.98 && sunDisc.position.y > -4;
+      (moon.material as THREE.MeshBasicMaterial).opacity = nightMix;
+      starMat.opacity = nightMix;
+      if (sleeping) { if (!s.reducedMotion) yaw = t * 0.035; }
+      else yaw = 0; // kept still so figures stay exactly under their seats
       if (!s.reducedMotion) {
-        yaw = 0; // kept still so figures stay exactly under their seats
         for (const fn of anims) fn(t);
       } else {
         anims[0]?.(t); // the clocktower keeps real time even with reduced motion
