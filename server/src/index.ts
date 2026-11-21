@@ -7,6 +7,7 @@ import { Server, type Socket } from 'socket.io';
 import { Lobby } from './lobby';
 import { VoiceManager, loadRegions } from './voice';
 import { GameError } from './game';
+import { createStore } from './persist';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,7 +25,7 @@ const http = createServer(app);
 const io = new Server(http, { cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? true } });
 
 const voice = new VoiceManager(loadRegions(), (gameId, id, event, payload) => lobby.sendTo(gameId, [id], event, payload));
-const lobby = new Lobby(io, voice);
+const lobby = new Lobby(io, voice, createStore(process.env, path.resolve(__dirname, '../../.data')));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, games: lobby.games.size, voice: voice.enabled }));
 // Region list for client-side RTT probing (URLs only, never secrets).
@@ -75,4 +76,10 @@ http.on('error', (e: NodeJS.ErrnoException) => {
   throw e;
 });
 
+// Save everything when the host stops the server (updates, the free plan going to sleep, Ctrl + C).
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(sig, () => { lobby.flush().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 4000); });
+}
+
+await lobby.restore();
 http.listen(PORT, () => console.log(`BotC server on :${PORT} (voice ${voice.enabled ? `enabled: ${voice.regions.map(r => r.name).join(', ')}` : 'disabled — set LIVEKIT_* env'})`));

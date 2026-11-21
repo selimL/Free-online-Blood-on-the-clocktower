@@ -57,13 +57,15 @@ describe('Butler votes are checked against the master', () => {
     const butler = byChar(g, 'butler'), master = byChar(g, 'chef');
     g.toggleWake(butler.id); g.nightChoose(butler, [master.id]);
     g.beginDay(); g.tick(Date.now() + 10_000); g.setStage('nominations');
-    const [a, b] = g.players.filter(p => p !== butler && p !== master);
+    // keep the Virgin out of these nominations: her ability would (correctly) end the nomination early
+    const others = g.players.filter(p => p !== butler && p !== master && p.characterId !== 'virgin');
+    const [a, b] = others;
     g.nominate(a.id, b.id); g.startDefense(); g.startVote();
     g.setHand(butler, true);
     runVote(g);
     expect(g.voteHistory.at(-1)!.yes).not.toContain(butler.id);
 
-    const [c, d] = g.players.filter(p => ![butler, master, a, b].includes(p));
+    const [c, d] = others.filter(p => ![a, b].includes(p));
     g.nominate(c.id, d.id); g.startDefense(); g.startVote();
     g.setHand(butler, true); g.setHand(master, true);
     runVote(g);

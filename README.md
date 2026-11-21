@@ -88,6 +88,19 @@ The server serves the built client from `dist/` and the WebSocket API on the sam
 | `CORS_ORIGIN` | Comma-separated allowed origins if the client is hosted elsewhere |
 | `VITE_SERVER_URL` | (client build) URL of the game server, if it isn't the same origin |
 
+## Saving games (surviving restarts)
+
+Games are saved every couple of seconds and restored when the server starts again. After a restart they come back **paused**, and resume when the Storyteller reconnects. Players reconnect into the same seats.
+
+- **On your own computer:** saved automatically in a `.data/` folder. Nothing to set up.
+- **On Render's free plan,** the disk is wiped on every restart, so use a free **Upstash Redis** database:
+  1. Create a free account at <https://upstash.com>, then create a **Redis** database.
+  2. Copy its **REST URL** and **REST token** (under *REST API*).
+  3. In Render, open your service, then **Environment**. Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, then save and deploy.
+  4. The log then shows `[save] games are saved to: Upstash Redis`.
+
+Saved games expire 12 hours after their last change.
+
 ## Tests
 
 ```bash

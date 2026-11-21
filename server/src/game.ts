@@ -63,7 +63,9 @@ export interface AbilityEvent {
   stageEndsAt: number; prevStage: DayStage | null; prevTimerRemaining: number | null;
 }
 
-interface Timer { label: string; endsAt: number | null; remainingMs: number | null; onExpire: (() => void) | null }
+/** What happens when a timer runs out. A plain name (not a function) so games can be saved and restored. */
+export type TimerKind = 'question' | 'discussion' | 'private' | 'nominations' | 'speaker' | 'accusation' | 'defense';
+interface Timer { label: string; endsAt: number | null; remainingMs: number | null; kind: TimerKind | null }
 
 export interface Storyteller { id: 'st'; token: string; name: string; avatar: Avatar; connected: boolean; location: string | null; pos: WalkPos | null }
 /** Cosmetic position in the 3D Town Square. Never affects rules: rooms are still decided by `location`. */
@@ -146,6 +148,33 @@ export class Game {
     this.name = cleanText(opts.name, 40) || 'Untitled Game';
     this.visibility = opts.visibility === 'private' ? 'private' : 'public';
     this.storyteller = { id: 'st', token: nanoid(24), name: cleanText(opts.stName, 24) || 'Storyteller', avatar: sanitizeAvatar(opts.stAvatar), connected: false, location: SQUARE, pos: null };
+  }
+
+  // ------------------------------------------------------------ saving & restoring (see persist.ts)
+  /** Plain data for saving. Functions (onChange, emit) are skipped; Sets are tagged so they can be rebuilt. */
+  toJSON(): Record<string, unknown> {
+    const out: Record<string, unknown> = { savedAt: Date.now() };
+    for (const [k, v] of Object.entries(this)) {
+      if (typeof v === 'function') continue;
+      out[k] = v instanceof Set ? { __set: [...v] } : v;
+    }
+    return out;
+  }
+  /** Rebuild a saved game. Everyone is offline after a restart, so a running game waits, paused, for the Storyteller. */
+  static fromJSON(data: Record<string, any>): Game {
+    const g = new Game({ name: data.name, visibility: data.visibility, stName: data.storyteller?.name ?? 'Storyteller' });
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'savedAt') continue;
+      (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
+    }
+    g.storyteller.connected = false;
+    for (const p of g.players) p.connected = false;
+    if (g.started && g.phase !== 'ended' && !g.paused) {
+      g.paused = true;
+      g.pausedAt = typeof data.savedAt === 'number' ? data.savedAt : Date.now(); // timers resume where they stopped
+      g.pausedBySTDisconnect = true;
+    }
+    return g;
   }
 
   // ------------------------------------------------------------ helpers
@@ -492,7 +521,7 @@ export class Game {
     if (next) {
       this.startStudy(next);
       const t = this.settings.timers.question;
-      this.setTimer('Private question', t, () => this.nextQuestion());
+      this.setTimer('Private question', t, 'question');
     } else {
       this.clearTimer();
     }
@@ -524,10 +553,22 @@ export class Game {
   }
 
   // ------------------------------------------------------------ timers
-  setTimer(label: string, seconds: number | null, onExpire: (() => void) | null) {
-    this.timer = { label, endsAt: seconds === null ? null : Date.now() + seconds * 1000, remainingMs: null, onExpire };
+  setTimer(label: string, seconds: number | null, kind: TimerKind | null) {
+    this.timer = { label, endsAt: seconds === null ? null : Date.now() + seconds * 1000, remainingMs: null, kind };
   }
   clearTimer() { this.timer = null; }
+  /** Runs the next step when a timer of this kind runs out. */
+  onTimer(kind: TimerKind) {
+    switch (kind) {
+      case 'question': return this.nextQuestion();
+      case 'discussion': return this.setStage('private');
+      case 'private': return this.setStage('nominations');
+      case 'nominations': return this.setStage('closed');
+      case 'speaker': return this.nextSpeaker();
+      case 'accusation': return this.startDefense();
+      case 'defense': return this.startVote();
+    }
+  }
   addTime(seconds: number) {
     if (this.timer?.endsAt) this.timer.endsAt += seconds * 1000;
     else if (this.timer?.remainingMs !== null && this.timer?.remainingMs !== undefined) this.timer.remainingMs += seconds * 1000;
@@ -537,7 +578,7 @@ export class Game {
     const t = this.timer;
     if (!t) return;
     this.timer = null;
-    t.onExpire?.();
+    if (t.kind) this.onTimer(t.kind);
     this.changed();
   }
 
@@ -581,7 +622,7 @@ export class Game {
     }
     if (this.timer?.endsAt && now >= this.timer.endsAt) {
       if (this.settings.houseRules.timersAutoAdvance || this.timer.label === 'Private question') this.expireTimer();
-      else { this.timer.endsAt = now; this.timer.onExpire = null; }
+      else { this.timer.endsAt = now; this.timer.kind = null; }
       dirty = true;
     }
     if (this.nomination && !this.nomination.done && this.stage === 'voting' && now >= this.nomination.deadline) {
@@ -691,18 +732,18 @@ export class Game {
     switch (stage) {
       case 'discussion':
         this.forceAllTo(SQUARE, 'Everyone is gathering in the Town Square…');
-        this.setTimer('Discussion', t.discussion, () => this.setStage('private'));
+        this.setTimer('Discussion', t.discussion, 'discussion');
         break;
       case 'private':
         this.announce('The side rooms are open for private conversations.', 'phase');
-        this.setTimer('Private conversations', t.privateRooms, () => this.setStage('nominations'));
+        this.setTimer('Private conversations', t.privateRooms, 'private');
         break;
       case 'nominations':
         this.clearPositions();
         if (!this.settings.houseRules.privateRoomsDuringNominations) this.forceAllTo(SQUARE, 'Everyone is gathering for nominations…');
         this.nomination = this.nomination?.done ? this.nomination : null;
         this.announce('Nominations are open.', 'phase');
-        this.setTimer('Nominations', t.nominations, () => this.setStage('closed'));
+        this.setTimer('Nominations', t.nominations, 'nominations');
         break;
       case 'speedround': {
         this.clearPositions();
@@ -726,7 +767,7 @@ export class Game {
     const next = this.speedQueue.shift();
     if (!next) { this.speakerId = null; this.setStage('nominations'); return; }
     this.speakerId = next;
-    this.setTimer(`${this.nameOf(next)} states their claim`, this.settings.timers.speedRound, () => this.nextSpeaker());
+    this.setTimer(`${this.nameOf(next)} states their claim`, this.settings.timers.speedRound, 'speaker');
     this.changed();
   }
   nominate(nominatorId: string, nomineeId: string, exile = false) {
@@ -755,7 +796,7 @@ export class Game {
     if (!exile && this.checkVirgin(nominator, nominee)) { this.changed(); return; }
     this.stage = 'accusation';
     this.speakerId = nominator.id;
-    this.setTimer(`${nominator.name} accuses`, this.settings.timers.accusation, () => this.startDefense());
+    this.setTimer(`${nominator.name} accuses`, this.settings.timers.accusation, 'accusation');
     this.changed();
   }
   /** Virgin: on her first nomination, a Townsfolk nominator is executed immediately. Returns true if that happened. */
@@ -782,7 +823,7 @@ export class Game {
     if (!this.nomination || this.stage !== 'accusation') fail('No accusation in progress.');
     this.stage = 'defense';
     this.speakerId = this.nomination!.nomineeId;
-    this.setTimer(`${this.nameOf(this.speakerId)} defends`, this.settings.timers.defense, () => this.startVote());
+    this.setTimer(`${this.nameOf(this.speakerId)} defends`, this.settings.timers.defense, 'defense');
     this.changed();
   }
   canVote(p: Player, exile: boolean) { return exile || p.alive || !p.ghostVoteUsed; }
@@ -870,7 +911,7 @@ export class Game {
     this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: n.order.filter(id => n.locked[id]), votes, needed: n.needed, result });
     this.announce(result, 'vote');
     this.stage = 'nominations';
-    this.setTimer('Nominations', this.settings.timers.nominations, () => this.setStage('closed'));
+    this.setTimer('Nominations', this.settings.timers.nominations, 'nominations');
   }
   endDay() {
     this.requireST(['day']);
@@ -1056,9 +1097,9 @@ export class Game {
     this.stage = a.prevStage;
     const t = this.settings.timers;
     const secs = a.prevTimerRemaining !== null ? Math.ceil(a.prevTimerRemaining / 1000) : null;
-    if (this.stage === 'discussion') this.setTimer('Discussion', secs ?? t.discussion, () => this.setStage('private'));
-    else if (this.stage === 'private') this.setTimer('Private conversations', secs ?? t.privateRooms, () => this.setStage('nominations'));
-    else if (this.stage === 'nominations') this.setTimer('Nominations', secs ?? t.nominations, () => this.setStage('closed'));
+    if (this.stage === 'discussion') this.setTimer('Discussion', secs ?? t.discussion, 'discussion');
+    else if (this.stage === 'private') this.setTimer('Private conversations', secs ?? t.privateRooms, 'private');
+    else if (this.stage === 'nominations') this.setTimer('Nominations', secs ?? t.nominations, 'nominations');
   }
   takePrivateRequest(eventId: string) {
     const r = this.privateRequests.find(x => x.eventId === eventId) ?? fail('No such request.');

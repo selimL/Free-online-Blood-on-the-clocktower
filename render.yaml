@@ -18,3 +18,8 @@ services:
         sync: false
       - key: LIVEKIT_API_SECRET
         sync: false
+      # free Upstash Redis database so games survive restarts and sleep (see README)
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { Game, GameError, cleanText, sanitizeAvatar, type Player } from './game';
 import { playerView, storytellerView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
+import { encode, decode, type GameStore } from './persist';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
@@ -12,7 +13,10 @@ export class Lobby {
   private sockets = new Map<string, Set<Socket>>(); // gameId → sockets
   private pending = new Set<string>();
 
-  constructor(private io: Server, private voice: VoiceManager) {
+  private dirty = new Set<string>();
+
+  constructor(private io: Server, private voice: VoiceManager, private store?: GameStore) {
+    setInterval(() => void this.flush(), 2000);
     setInterval(() => { for (const g of this.games.values()) g.tick(); }, 250);
     setInterval(() => this.cleanup(), 60_000);
   }
@@ -34,6 +38,7 @@ export class Lobby {
   private wire(g: Game) {
     g.emit = (audience, event, payload) => this.sendTo(g.id, audience, event, payload);
     g.onChange = () => {
+      this.dirty.add(g.id);
       if (this.pending.has(g.id)) return;
       this.pending.add(g.id);
       setImmediate(() => { this.pending.delete(g.id); this.broadcast(g); });
@@ -240,7 +245,40 @@ export class Lobby {
         this.games.delete(g.id);
         this.sockets.delete(g.id);
         this.voice.dropGame(g);
+        this.dirty.delete(g.id);
+        void this.store?.remove(g.id).catch(e => console.warn('[save] could not remove game:', e.message));
       }
     }
+  }
+
+  // ------------------------------------------------------------ saving & restoring games
+  /** Load saved games at start-up (they come back paused until the Storyteller reconnects). */
+  async restore() {
+    if (!this.store) return;
+    try {
+      const saved = await this.store.loadAll();
+      for (const json of saved) {
+        try {
+          const g = Game.fromJSON(decode(json));
+          this.games.set(g.id, g);
+          this.wire(g);
+        } catch (e) { console.warn('[save] skipped a damaged saved game:', (e as Error).message); }
+      }
+      console.log(`[save] games are saved to: ${this.store.kind}${saved.length ? ` (restored ${saved.length})` : ''}`);
+    } catch (e) {
+      console.warn(`[save] could not load saved games from ${this.store.kind}:`, (e as Error).message);
+    }
+  }
+  /** Save every game that changed since the last save. */
+  async flush() {
+    if (!this.store || !this.dirty.size) return;
+    const ids = [...this.dirty];
+    this.dirty.clear();
+    await Promise.all(ids.map(async id => {
+      const g = this.games.get(id);
+      if (!g) return;
+      try { await this.store!.save(id, encode(g.toJSON())); }
+      catch (e) { this.dirty.add(id); console.warn('[save] could not save game:', (e as Error).message); }
+    }));
   }
 }

@@ -4,3 +4,4 @@ dist
 *.log
 ngrok-domain.txt
 ngrok.exe
+.data
