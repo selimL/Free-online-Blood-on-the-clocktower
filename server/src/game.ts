@@ -621,7 +621,10 @@ export class Game {
   // ------------------------------------------------------------ word listening (Storyteller only, with consent)
   // Speech is turned into text in the speaker's browser and checked here for what a character needs
   // (a secret word, a claim, a long word). The sentence is then thrown away: only detections are kept.
+  /** Answers are locked once the game has started (from the deal onwards). */
+  consentLocked() { return this.started && this.transcriptRequired(); }
   setTranscriptConsent(p: Player, allow: boolean) {
+    if (this.consentLocked() && p.transcriptConsent !== null && p.transcriptConsent !== undefined) fail('Your answer is locked: it cannot be changed after the game has started.');
     p.transcriptConsent = !!allow;
     if (!allow) { // withdrawing also deletes what was kept about them
       this.wordLog = this.wordLog.filter(e => e.playerId !== p.id);
@@ -762,11 +765,13 @@ export class Game {
   }
 
   // ------------------------------------------------------------ lobby
-  join(name: string, avatar: Partial<Avatar> | undefined, opts: { bot?: boolean } = {}): Player {
+  join(name: string, avatar: Partial<Avatar> | undefined, opts: { bot?: boolean; listeningConsent?: boolean } = {}): Player {
     if (this.phase === 'ended') fail('This game has ended.');
     if (this.players.length >= MAX_PLAYERS) fail(`The game is full (${MAX_PLAYERS} players).`);
     const traveller = this.started;
     if (traveller && !this.settings.houseRules.allowTravellers) fail('This game is in progress and is not accepting Travellers.');
+    // a running game with a word character: Travellers must agree to listening before they can join
+    if (traveller && !opts.bot && this.transcriptRequired() && !opts.listeningConsent) fail('This game listens for secret words, so you must agree to that before you can join.');
     const p: Player = {
       id: nanoid(10), token: nanoid(24), name: cleanText(name, 24) || `Player ${this.players.length + 1}`,
       seat: this.players.length, avatar: sanitizeAvatar(avatar), connected: true,
@@ -776,6 +781,7 @@ export class Game {
       privateMsToday: 0, revealed: false, revealedTo: [], rtt: {}, whispersToday: 0, butlerMaster: null, pos: null,
     };
     if (opts.bot) { p.bot = true; p.connected = true; }
+    if (traveller && opts.listeningConsent && this.transcriptRequired()) p.transcriptConsent = true;
     this.players.push(p);
     if (this.phase !== 'night') this.movePlayer(p, SQUARE, { silentAlert: !!opts.bot });
     if (opts.bot) p.joining = false;

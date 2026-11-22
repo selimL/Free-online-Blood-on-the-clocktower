@@ -142,7 +142,7 @@ export class Lobby {
   }
   lookup(code: string) {
     const g = this.byCode(code);
-    return { game: lobbyEntry(g), travellersOnly: g.started };
+    return { game: lobbyEntry(g), travellersOnly: g.started, needsListening: g.started && g.transcriptRequired() };
   }
   /** Watch a game without a seat. */
   spectate(socket: Socket, d: any) {
@@ -153,7 +153,7 @@ export class Lobby {
   }
   join(socket: Socket, d: any) {
     const g = this.byCode(String(d.code ?? ''));
-    const p = g.join(d.name, d.avatar);
+    const p = g.join(d.name, d.avatar, { listeningConsent: !!d.listeningConsent });
     this.bind(socket, g, p.id);
     return { gameId: g.id, code: g.code, token: p.token, id: p.id };
   }
@@ -254,7 +254,7 @@ export class Lobby {
   private spectatorAction(socket: Socket, g: Game, id: string, type: string, d: any) {
     const sp = g.spectators.find(x => x.id === id) ?? fail('You are not watching this game.');
     if (type === 'takeSeat') {
-      const p = g.join(d.name ?? sp!.name, d.avatar ?? sp!.avatar); // fails if full or Travellers are not allowed
+      const p = g.join(d.name ?? sp!.name, d.avatar ?? sp!.avatar, { listeningConsent: !!d.listeningConsent }); // fails if full, Travellers not allowed, or no consent
       g.removeSpectator(sp!.id);
       this.bind(socket, g, p.id);
       return { gameId: g.id, code: g.code, token: p.token, id: p.id };

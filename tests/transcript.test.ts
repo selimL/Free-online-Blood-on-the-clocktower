@@ -47,6 +47,42 @@ describe('consent before the game starts', () => {
   });
 });
 
+describe('Travellers and locked answers', () => {
+  function started() {
+    const g = new Game({ name: 'L', visibility: 'public', stName: 'ST' });
+    g.emit = () => {};
+    for (let i = 0; i < 7; i++) g.join(`P${i}`, undefined);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'mezepheles', 'imp'] });
+    for (const p of g.players) g.setTranscriptConsent(p, true);
+    g.deal(); g.reveal();
+    return g;
+  }
+  it('a Traveller cannot join a listening game without agreeing', () => {
+    const g = started();
+    expect(() => g.join('Late', undefined)).toThrow(/must agree/);
+    const t = g.join('Late', undefined, { listeningConsent: true });
+    expect(t.traveller).toBe(true);
+    expect(t.transcriptConsent).toBe(true);
+  });
+  it('answers are locked once the game has started', () => {
+    const g = started();
+    expect(g.consentLocked()).toBe(true);
+    expect(() => g.setTranscriptConsent(g.players[0], false)).toThrow(/locked/);
+    expect(g.players[0].transcriptConsent).toBe(true);
+    const v = playerView(g, g.players[0]).self;
+    expect(!v.isStoryteller && v.consentLocked).toBe(true);
+  });
+  it('in the lobby answers can still be changed', () => {
+    const g = new Game({ name: 'L', visibility: 'public', stName: 'ST' });
+    g.emit = () => {};
+    for (let i = 0; i < 7; i++) g.join(`P${i}`, undefined);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'mezepheles', 'imp'] });
+    g.setTranscriptConsent(g.players[0], false);
+    g.setTranscriptConsent(g.players[0], true);
+    expect(g.players[0].transcriptConsent).toBe(true);
+  });
+});
+
 describe('word listening', () => {
   it('runs only when a word character is visible (never reveals a hidden one)', () => {
     expect(game(['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'poisoner', 'imp']).g.transcriptActive()).toBe(false);
@@ -74,11 +110,11 @@ describe('word listening', () => {
     expect(sv.isStoryteller && sv.wordLog).toHaveLength(1);
     expect(JSON.stringify(playerView(g, by('empath')))).not.toContain('pumpkin');
   });
-  it('needs consent and audible speech; withdrawing deletes what was recorded', () => {
+  it('needs consent and audible speech; answers cannot be withdrawn mid-game', () => {
     const { g, by } = game();
     g.setSecretWord('mezepheles', 'pumpkin');
     const [chef, emp] = [by('chef'), by('empath')];
-    g.setTranscriptConsent(emp, false);
+    emp.transcriptConsent = false; // e.g. a Traveller's answer from before the change: not listened to
     g.checkSpeech(emp.id, 'pumpkin');
     expect(g.wordLog).toHaveLength(0);
     chef.muted = true;
@@ -87,9 +123,8 @@ describe('word listening', () => {
     chef.muted = false;
     g.checkSpeech(chef.id, 'pumpkin');
     expect(g.wordLog).toHaveLength(1);
-    g.setTranscriptConsent(chef, false);
-    expect(g.wordLog).toHaveLength(0);
-    expect(g.wordHits).toHaveLength(0);
+    expect(() => g.setTranscriptConsent(chef, false)).toThrow(/locked/); // can't withdraw mid-game
+    expect(g.wordLog).toHaveLength(1);
   });
   it('counts the Yaggababble phrase and marks a Goblin claim', () => {
     const { g, by } = game(['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'goblin', 'yaggababble']);

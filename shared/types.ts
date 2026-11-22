@@ -90,7 +90,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
   succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
   allowSpectators: { label: 'Allow spectators', help: 'People can watch the game without a seat. They see only public information, can hear the Town Square, and cannot speak or type.', source: 'Online convention' },
-  voiceTranscript: { label: 'Listen for word characters (Storyteller only)', help: 'Only switches on when a character that depends on what people say is on the public list, the script or the Loric (Mezepheles, Yaggababble, Goblin, God of Ug). For players who agree, speech is turned into English text in their own browser (Chrome/Edge, via Google\'s speech service) and checked only for what those characters need. Nothing else is kept: just who said the word, when, where and who was listening. Everyone is asked first and can withdraw at any time.', source: 'Online table option' },
+  voiceTranscript: { label: 'Listen for word characters (Storyteller only)', help: 'Only switches on when a character that depends on what people say is on the public list, the script or the Loric (Mezepheles, Yaggababble, Goblin, God of Ug). For players who agree, speech is turned into English text in their own browser (Chrome/Edge, via Google\'s speech service) and checked only for what those characters need. Nothing else is kept: just who said the word, when, where and who was listening. Everyone must agree before the game starts (Travellers before they join), and answers are locked once it has started.', source: 'Online table option' },
   holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
@@ -251,6 +251,8 @@ export interface SelfView {
   transcriptActive?: boolean;
   /** A word character is in the setup: everyone must agree before the game can start. */
   transcriptRequired?: boolean;
+  /** Answers can no longer be changed (the game has started). */
+  consentLocked?: boolean;
   transcriptConsent?: boolean | null;
   /** Practice game: the Guide's current tip for this player. */
   tutorial?: { title: string; text: string; next: string | null; done: boolean } | null;

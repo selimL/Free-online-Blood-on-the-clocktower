@@ -104,7 +104,7 @@ function tableRules(g: Game): string[] {
   if (h.maxWhispersPerDay) out.push(`Each player may visit side rooms at most ${h.maxWhispersPerDay} times per day.`);
   if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
   if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
-  if (g.transcriptActive()) out.push('Word listening: for players who agreed, speech is checked for the secret words and claims some characters need. Only detections are kept (who, when, where), never what was said, and only the Storyteller sees them. You can withdraw in ⚙ Voice settings.');
+  if (g.transcriptActive()) out.push('Word listening: for players who agreed, speech is checked for the secret words and claims some characters need. Only detections are kept (who, when, where), never what was said, and only the Storyteller sees them. Everyone agreed before the game started; answers are locked.');
   if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
   // timer lengths, so everyone knows how long each part of the day lasts
   const t = g.settings.timers;
@@ -168,7 +168,7 @@ export function spectatorView(g: Game, s: Spectator): GameView {
   const self: SelfView = {
     id: s.id, isStoryteller: false, spectator: true, characterId: null, alignment: null, evilTeam: null, notes: [],
     awake: false, questionAnswered: true, abilityAvailable: false, claimsUsed: {}, nominatedToday: false,
-    privateMsUsedToday: 0, revealedTo: [],
+    privateMsUsedToday: 0, revealedTo: [], transcriptRequired: g.transcriptRequired(),
   };
   const view = { ...baseView(g, null, null, false), self } as GameView;
   if (g.phase === 'night') view.announcements = view.announcements.filter(a => a.ts <= g.lastNightStart);
@@ -195,6 +195,7 @@ export function playerView(g: Game, p: Player): GameView {
     transcriptConsent: p.transcriptConsent ?? null,
     transcriptActive: g.transcriptActive(),
     transcriptRequired: g.transcriptRequired(),
+    consentLocked: g.consentLocked(),
     tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
   // Tor: your character and alignment stay hidden until you die

@@ -18,15 +18,17 @@ const codeFromPath = () => {
 function JoinForm({ code }: { code: string }) {
   const [info, setInfo] = useState<{ name: string; players: number; max: number; edition: string; status: string; scheduledFor: number | null } | null>(null);
   const [traveller, setTraveller] = useState(false);
+  const [needsListening, setNeedsListening] = useState(false);
+  const [agree, setAgree] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState(() => localStorage.getItem('botc:name') ?? '');
   const [avatar, setAvatar] = useState<Avatar>(() => { try { return JSON.parse(localStorage.getItem('botc:avatar') ?? '') } catch { return defaultAvatar(); } });
   useEffect(() => {
-    rpc('game:lookup', { code }).then(r => { if (r.ok) { setInfo(r.game); setTraveller(r.travellersOnly); } else setErr(r.error ?? 'Not found'); });
+    rpc('game:lookup', { code }).then(r => { if (r.ok) { setInfo(r.game); setTraveller(r.travellersOnly); setNeedsListening(!!r.needsListening); } else setErr(r.error ?? 'Not found'); });
   }, [code]);
   const join = async (watch = false) => {
     try { localStorage.setItem('botc:name', name); localStorage.setItem('botc:avatar', JSON.stringify(avatar)); } catch { /* ignore */ }
-    const r = await rpc(watch ? 'game:spectate' : 'game:join', { code, name, avatar });
+    const r = await rpc(watch ? 'game:spectate' : 'game:join', { code, name, avatar, listeningConsent: agree });
     if (!r.ok) return pushAlert(r.error ?? 'Could not join', 'error');
     const s = { gameId: r.gameId, code: r.code, token: r.token, id: r.id };
     saveSession(s);
@@ -40,9 +42,13 @@ function JoinForm({ code }: { code: string }) {
       <p className="muted">{info.edition} · {info.players}/{info.max} players · {info.status}</p>
       {info.scheduledFor && info.status === 'waiting' && <p><Countdown at={info.scheduledFor} /> <button className="btn small ghost" onClick={() => downloadIcs(info.name, info.scheduledFor!, location.href)}>📅 Add to calendar</button></p>}
       {traveller && <p className="warn">This game is already in progress. You will join as a <b>Traveller</b> if the Storyteller allows it.</p>}
+      {needsListening && <div className="consent-box">
+        <p>🗣 <b>This game listens for secret words.</b> A character in it depends on what people say out loud. While your microphone is live, your browser turns your speech into English text (via its speech service, Google in Chrome and Edge); the game checks it only for those words and throws it away. If you say one, only the Storyteller sees who said it, when, where and who was there. <b>You can't change this after joining.</b></p>
+        <label className="toggle"><input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} /> I agree (needed to join as a Traveller; watching doesn't need it)</label>
+      </div>}
       <label className="field">Your name<input value={name} maxLength={24} onChange={e => setName(e.target.value)} placeholder="e.g. Mortimer" autoFocus /></label>
       <AvatarCreator value={avatar} onChange={setAvatar} />
-      <div className="row end"><a className="btn ghost" href="/">Cancel</a><button className="btn" disabled={!name.trim()} onClick={() => join(true)} title="Watch without a seat: you see only public information and can listen to the Town Square">👁 Just watch</button><button className="btn primary" disabled={!name.trim()} onClick={() => join()}>Enter the town</button></div>
+      <div className="row end"><a className="btn ghost" href="/">Cancel</a><button className="btn" disabled={!name.trim()} onClick={() => join(true)} title="Watch without a seat: you see only public information and can listen to the Town Square">👁 Just watch</button><button className="btn primary" disabled={!name.trim() || (needsListening && !agree)} onClick={() => join()}>Enter the town</button></div>
     </div>
   );
 }

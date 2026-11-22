@@ -369,7 +369,9 @@ function SpectatorBar({ view }: { view: GameView }) {
     let name = '', avatar: unknown;
     try { name = localStorage.getItem('botc:name') ?? ''; avatar = JSON.parse(localStorage.getItem('botc:avatar') ?? 'null'); } catch { /* ignore */ }
     const me = view.spectators.find(s => s.id === view.self.id);
-    const r = await act('takeSeat', { name: name || me?.name, avatar: avatar ?? undefined });
+    const needs = view.phase !== 'lobby' && !!view.self.transcriptRequired;
+    if (needs && !confirm('This game listens for secret words: while your microphone is live, your speech is turned into English text and checked only for those words (only detections are kept, for the Storyteller). You can\'t change this after joining.\n\nDo you agree?')) return;
+    const r = await act('takeSeat', { name: name || me?.name, avatar: avatar ?? undefined, listeningConsent: needs });
     if (r.ok) { const s = { gameId: r.gameId, code: r.code, token: r.token, id: r.id }; saveSession(s); set({ session: s }); }
   };
   return (
@@ -454,9 +456,9 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
           );
         })}
       </ul>
-      {!view.self.isStoryteller && view.self.transcriptActive && !view.self.spectator && <>
-        <label className="toggle"><input type="checkbox" checked={!!view.self.transcriptConsent} onChange={e => act('transcriptConsent', { allow: e.target.checked })} />
-          🗣 Allow listening for secret words (only detections are kept, Storyteller only). Turning it off also deletes anything recorded about you.</label>
+      {!view.self.isStoryteller && (view.self.transcriptActive || view.self.transcriptRequired) && !view.self.spectator && <>
+        <label className="toggle"><input type="checkbox" checked={!!view.self.transcriptConsent} disabled={!!view.self.consentLocked} onChange={e => act('transcriptConsent', { allow: e.target.checked })} />
+          🗣 Listening for secret words (only detections are kept, Storyteller only).{view.self.consentLocked ? ' Locked: it can\'t be changed after the game has started.' : ''}</label>
       </>}
       <p className="muted small">These settings only change what <i>you</i> hear and are saved in this browser. Nobody else is told.</p>
     </Modal>

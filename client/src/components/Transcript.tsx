@@ -27,7 +27,7 @@ export function TranscriptConsent({ view }: { view: GameView }) {
         <li>The game checks it <b>only</b> for those words, then throws it away. <b>What you say is never kept.</b></li>
         <li>If you say one of them, the Storyteller sees who said it, when, in which room and who was there. <b>Only the Storyteller</b> sees this.</li>
         <li>To do this, your browser sends your speech to its speech service (Google, in Chrome and Edge).</li>
-        <li>You can withdraw at any time in ⚙ Voice settings (that also deletes anything recorded about you).</li>
+        <li><b>Your answer is locked once the game starts.</b> Until then you can change it in ⚙ Voice settings.</li>
       </ul>
       {!supported && <p className="warn small">Your browser can't turn speech into text (use Chrome or Edge), so nothing will be checked even if you agree.</p>}
       <div className="row end">
