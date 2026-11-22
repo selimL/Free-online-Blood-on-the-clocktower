@@ -3,6 +3,7 @@ import { rpc, saveSession, set, pushAlert } from '../net';
 import type { LobbyEntry, Avatar } from '../../../shared/types';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
+import { AccountButton } from './AccountDialog';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts, fromShareParam, saveScript, newScriptId, type SavedScript } from '../scripts';
 import { act } from '../net';
@@ -41,6 +42,7 @@ export function Lobby() {
     <div className="lobby-page">
     <div className="lobby">
       <header className="lobby-hero">
+        <div className="account-corner"><AccountButton /></div>
         <div>
           <h1>Clocktower Nights</h1>
           <p className="subtitle">An unofficial, voice-first fan table for <i>Blood on the Clocktower</i>, for private play among friends.</p>

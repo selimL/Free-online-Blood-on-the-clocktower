@@ -1,6 +1,7 @@
 // "My scripts": custom character lists saved in this browser, exported in the community
 // script-tool JSON format, and shared as links.
 import { parseScript } from '../../shared/characters';
+import { localChanged } from './syncBus';
 
 export interface SavedScript { id: string; name: string; author: string; ids: string[]; updated: number }
 const KEY = 'botc:scripts';
@@ -12,9 +13,11 @@ export function saveScript(s: SavedScript) {
   const list = loadScripts().filter(x => x.id !== s.id);
   list.unshift({ ...s, updated: Date.now() });
   try { localStorage.setItem(KEY, JSON.stringify(list.slice(0, 50))); } catch { /* full */ }
+  localChanged();
 }
 export function deleteScript(id: string) {
   try { localStorage.setItem(KEY, JSON.stringify(loadScripts().filter(x => x.id !== id))); } catch { /* ignore */ }
+  localChanged();
 }
 
 /** The JSON format used by the community script tool: a _meta entry, then character ids. */

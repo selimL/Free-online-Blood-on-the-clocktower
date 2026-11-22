@@ -1,0 +1,72 @@
+// Accounts (name + password; Google and email links are off without keys) and the admin API.
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import express from 'express';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type { AddressInfo } from 'node:net';
+import { FileKV } from '../server/src/persist';
+import { Accounts } from '../server/src/accounts';
+import { adminRoutes } from '../server/src/admin';
+import { Game } from '../server/src/game';
+
+let base = '';
+let server: ReturnType<express.Express['listen']>;
+const closed: string[] = [];
+const g = new Game({ name: 'Running', visibility: 'public', stName: 'ST' });
+beforeAll(async () => {
+  const app = express();
+  app.use(express.json());
+  const accounts = new Accounts(new FileKV(fs.mkdtempSync(path.join(os.tmpdir(), 'botc-acct-'))), {});
+  accounts.routes(app);
+  const lobby = { games: new Map([[g.id, g]]), onlineCount: () => 2, closeGame: (id: string) => { closed.push(id); return true; } };
+  adminRoutes(app, lobby as never, accounts, { ADMIN_PASSWORD: 'letmein-admin' });
+  await new Promise<void>(r => { server = app.listen(0, () => r()); });
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+afterAll(() => server?.close());
+const call = async (p: string, method = 'GET', body?: unknown, token?: string) => {
+  const r = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  return { status: r.status, ...(await r.json()) };
+};
+
+describe('accounts', () => {
+  it('register, sign in, keep data, sign out', async () => {
+    expect(await call('/api/auth/config')).toMatchObject({ google: false, email: false });
+    expect((await call('/api/auth/register', 'POST', { username: 'ab', password: 'longenough' })).error).toMatch(/3–20/);
+    expect((await call('/api/auth/register', 'POST', { username: 'mortimer', password: 'short' })).error).toMatch(/8 characters/);
+    const reg = await call('/api/auth/register', 'POST', { username: 'Mortimer', password: 'correct horse', displayName: 'Mort' });
+    expect(reg.ok).toBe(true);
+    expect((await call('/api/auth/register', 'POST', { username: 'mortimer', password: 'another one' })).status).toBe(409);
+    expect((await call('/api/auth/login', 'POST', { username: 'mortimer', password: 'wrong password' })).status).toBe(401);
+    const log = await call('/api/auth/login', 'POST', { username: 'mortimer', password: 'correct horse' });
+    expect(log.ok).toBe(true);
+    const put = await call('/api/account', 'PUT', { history: [{ gameId: 'g1', endedAt: 1 }], scripts: [{ id: 's1', updated: 1 }], displayName: 'Mortimer' }, log.token);
+    expect(put.account).toMatchObject({ displayName: 'Mortimer', history: [{ gameId: 'g1' }], scripts: [{ id: 's1' }] });
+    expect(JSON.stringify(put)).not.toContain('scrypt'); // the password hash never leaves the server
+    await call('/api/auth/logout', 'POST', undefined, log.token);
+    expect((await call('/api/account', 'GET', undefined, log.token)).status).toBe(401);
+  });
+  it('Google and email logins are off until their keys are set', async () => {
+    expect((await call('/api/auth/email', 'POST', { email: 'a@b.cd' })).status).toBe(404);
+    const r = await fetch(base + '/api/auth/google', { redirect: 'manual' });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('admin', () => {
+  it('needs the password; lists games and accounts; closes games; resets passwords', async () => {
+    expect((await call('/api/admin/games')).status).toBe(401);
+    expect((await call('/api/admin/login', 'POST', { password: 'nope' })).status).toBe(401);
+    const { token } = await call('/api/admin/login', 'POST', { password: 'letmein-admin' });
+    const games = await call('/api/admin/games', 'GET', undefined, token);
+    expect(games.games[0]).toMatchObject({ name: 'Running', online: 2 });
+    await call(`/api/admin/games/${g.id}/close`, 'POST', { reason: 'bye' }, token);
+    expect(closed).toEqual([g.id]);
+    const accts = await call('/api/admin/accounts', 'GET', undefined, token);
+    const m = accts.accounts.find((a: { username: string }) => a.username === 'mortimer');
+    expect(m).toBeTruthy();
+    expect((await call(`/api/admin/accounts/${m.id}/password`, 'POST', { password: 'brand new pw' }, token)).ok).toBe(true);
+    expect((await call('/api/auth/login', 'POST', { username: 'mortimer', password: 'brand new pw' })).ok).toBe(true);
+  });
+});

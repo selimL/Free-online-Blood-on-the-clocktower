@@ -113,6 +113,21 @@ Games are saved every couple of seconds and restored when the server starts agai
 
 Saved games expire 12 hours after their last change.
 
+## Accounts and the admin page
+
+Accounts are optional: players can always play without one. Signing in keeps a player's name, figure, finished games and saved scripts on the server. Accounts are stored with the saved games (Upstash Redis on the hosted site, otherwise the local `.data` folder), so on Render's free plan **set up Upstash first**, or accounts are lost when the site restarts.
+
+Set these in the server's environment (Render → your service → Environment). Each is optional:
+
+| Setting | Turns on |
+|---|---|
+| `ADMIN_PASSWORD` | The admin page at `/admin`: running games (close them), accounts (reset passwords, delete) |
+| `PUBLIC_URL` | The site's address, e.g. `https://clocktower-nights.onrender.com` (used in Google and email links) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Sign in with Google" (a Google Cloud OAuth client; redirect URI `<PUBLIC_URL>/api/auth/google/callback`) |
+| `RESEND_API_KEY`, `MAIL_FROM` | "Email me a login link" through [resend.com](https://resend.com) (`MAIL_FROM` like `Clocktower Nights <login@yourdomain>`) |
+
+Name + password accounts work with no settings at all. Passwords are stored hashed (scrypt).
+
 ## Tests
 
 ```bash

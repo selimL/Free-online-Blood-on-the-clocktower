@@ -7,7 +7,9 @@ import { Server, type Socket } from 'socket.io';
 import { Lobby } from './lobby';
 import { VoiceManager, loadRegions } from './voice';
 import { GameError } from './game';
-import { createStore } from './persist';
+import { createStore, createKV } from './persist';
+import { Accounts } from './accounts';
+import { adminRoutes } from './admin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,11 +23,17 @@ try {
 const PORT = Number(process.env.PORT ?? 3001);
 
 const app = express();
+app.set('trust proxy', 1); // behind Render's proxy: real https URLs and client addresses
+app.use(express.json({ limit: '512kb' }));
 const http = createServer(app);
 const io = new Server(http, { cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? true } });
 
 const voice = new VoiceManager(loadRegions(), (gameId, id, event, payload) => lobby.sendTo(gameId, [id], event, payload));
 const lobby = new Lobby(io, voice, createStore(process.env, path.resolve(__dirname, '../../.data')));
+
+const accounts = new Accounts(createKV(process.env, path.resolve(__dirname, '../../.data')));
+accounts.routes(app);
+adminRoutes(app, lobby, accounts);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, games: lobby.games.size, voice: voice.enabled }));
 // Region list for client-side RTT probing (URLs only, never secrets).

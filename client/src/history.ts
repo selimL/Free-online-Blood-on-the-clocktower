@@ -1,5 +1,6 @@
 // "My games": a record of finished games, kept in this browser only.
 import type { GameView } from '../../shared/types';
+import { localChanged } from './syncBus';
 
 export interface HistoryEntry {
   gameId: string; name: string; endedAt: number; players: number; script: string;
@@ -38,6 +39,7 @@ export function recordGame(view: GameView) {
   const old = list.find(x => x.gameId === entry.gameId);
   if (old) entry.endedAt = old.endedAt;
   try { localStorage.setItem(KEY, JSON.stringify([entry, ...list.filter(x => x.gameId !== entry.gameId)].slice(0, 200))); } catch { /* full */ }
+  localChanged();
 }
 
 export function stats(list: HistoryEntry[]) {

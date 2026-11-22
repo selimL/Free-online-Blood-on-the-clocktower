@@ -8,6 +8,10 @@ import { defaultAvatar, type Avatar } from '../../shared/types';
 import { Alerts } from './components/Overlays';
 import { RoomPreview } from './components/RoomPreview';
 import { Countdown, downloadIcs } from './components/Schedule';
+import { AdminPage } from './components/AdminPage';
+import { initAccount } from './account';
+
+void initAccount().then(err => { if (err) pushAlert(err, 'error'); });
 import './styles.css';
 
 const codeFromPath = () => {
@@ -94,7 +98,8 @@ function App() {
 
   let body;
   const previewRoom = new URLSearchParams(location.search).get('preview-room');
-  if (previewRoom) body = <RoomPreview art={previewRoom} />;
+  if (location.pathname === '/admin') body = <AdminPage />;
+  else if (previewRoom) body = <RoomPreview art={previewRoom} />;
   else if (kicked) body = <div className="center-card parchment"><h2>Removed</h2><p>{kicked}</p><a className="btn" href="/">Back to the lobby</a></div>;
   else if (session && view) body = <GameScreen view={view} />;
   else if (session) body = <div className="center-card parchment"><p>Entering the town…</p></div>;

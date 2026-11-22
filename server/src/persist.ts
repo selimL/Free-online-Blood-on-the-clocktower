@@ -64,3 +64,49 @@ export function createStore(env = process.env, dataDir = '.data'): GameStore {
   if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) return new UpstashStore(env.UPSTASH_REDIS_REST_URL, env.UPSTASH_REDIS_REST_TOKEN);
   return new FileStore(dataDir);
 }
+
+// ---------------------------------------------------------------- a small key-value store (accounts)
+/** Plain key-value storage, kept until deleted (or until `ttlSeconds`). */
+export interface KV {
+  readonly kind: string;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ttlSeconds?: number): Promise<void>;
+  del(key: string): Promise<void>;
+}
+
+export class FileKV implements KV {
+  readonly kind = 'local folder';
+  constructor(private dir: string) { fs.mkdirSync(dir, { recursive: true }); }
+  private file(key: string) { return path.join(this.dir, `${Buffer.from(key).toString('base64url')}.json`); }
+  async get(key: string) {
+    try {
+      const { v, exp } = JSON.parse(fs.readFileSync(this.file(key), 'utf8')) as { v: string; exp: number | null };
+      if (exp && Date.now() > exp) { fs.rmSync(this.file(key), { force: true }); return null; }
+      return v;
+    } catch { return null; }
+  }
+  async set(key: string, value: string, ttlSeconds?: number) {
+    const tmp = this.file(key) + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ v: value, exp: ttlSeconds ? Date.now() + ttlSeconds * 1000 : null }));
+    fs.renameSync(tmp, this.file(key));
+  }
+  async del(key: string) { fs.rmSync(this.file(key), { force: true }); }
+}
+
+export class UpstashKV implements KV {
+  readonly kind = 'Upstash Redis';
+  constructor(private url: string, private token: string) {}
+  private async cmd(args: (string | number)[]) {
+    const res = await fetch(this.url, { method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+    if (!res.ok) throw new Error(`Upstash ${res.status}: ${await res.text()}`);
+    return (await res.json() as { result: unknown }).result;
+  }
+  async get(key: string) { return (await this.cmd(['GET', `botc:kv:${key}`])) as string | null; }
+  async set(key: string, value: string, ttlSeconds?: number) { await this.cmd(ttlSeconds ? ['SET', `botc:kv:${key}`, value, 'EX', ttlSeconds] : ['SET', `botc:kv:${key}`, value]); }
+  async del(key: string) { await this.cmd(['DEL', `botc:kv:${key}`]); }
+}
+
+export function createKV(env = process.env, dataDir = '.data'): KV {
+  if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) return new UpstashKV(env.UPSTASH_REDIS_REST_URL, env.UPSTASH_REDIS_REST_TOKEN);
+  return new FileKV(path.join(dataDir, 'kv'));
+}

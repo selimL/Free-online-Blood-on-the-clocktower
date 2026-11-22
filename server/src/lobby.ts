@@ -422,6 +422,16 @@ export class Lobby {
       }
     }
   }
+  /** How many people are connected to a game right now. */
+  onlineCount(gameId: string) { return this.sockets.get(gameId)?.size ?? 0; }
+  /** Admin: close a game, telling everyone in it why. */
+  closeGame(gameId: string, reason: string) {
+    const g = this.games.get(gameId);
+    if (!g) return false;
+    for (const s of [...(this.sockets.get(g.id) ?? [])]) { s.emit('kicked', { reason }); s.data.binding = undefined; }
+    this.removeGame(g);
+    return true;
+  }
   private removeGame(g: Game) {
     this.games.delete(g.id);
     this.sockets.delete(g.id);

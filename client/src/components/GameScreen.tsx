@@ -8,6 +8,7 @@ import { setGhosts, useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk,
 import { sendEmote } from '../emotes';
 import { sunPosition } from '../daylight';
 import { recordGame } from '../history';
+import { localChanged } from '../syncBus';
 import { Countdown, downloadIcs, toLocalInput, fromLocalInput } from './Schedule';
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
@@ -750,6 +751,7 @@ function CustomiseDialog({ view, onClose }: { view: GameView; onClose: () => voi
     const r = await act('profile', { name, avatar });
     if (r.ok) {
       try { localStorage.setItem('botc:avatar', JSON.stringify(avatar)); if (!view.self.isStoryteller) localStorage.setItem('botc:name', name); } catch { /* ignore */ }
+      localChanged();
       onClose();
     }
   };
