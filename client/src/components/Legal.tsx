@@ -2,7 +2,7 @@
 // actually does; keep them in step with the server when features change.
 
 /** The site owner's contact line. Fill this in yourself (an email address or a Discord name). */
-export const CONTACT = '[Add your contact here, e.g. an email address or Discord name]';
+export const CONTACT = 'selimleventguvenilir@gmail.com';
 const UPDATED = '22 November 2026';
 
 function Page({ title, children }: { title: string; children: React.ReactNode }) {
