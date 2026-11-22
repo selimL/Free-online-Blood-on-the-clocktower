@@ -1,5 +1,9 @@
 # Clocktower Nights: online Blood on the Clocktower (private, non-commercial)
 
+## ▶ Play now: **<https://clocktower-nights.onrender.com/>**
+
+No download needed: open the link in a browser, create a game, and send the invite link to your friends. (On the free host the site sleeps when nobody is using it, so the first visit can take up to a minute to wake up.)
+
 A browser-based, real-time, voice-first table for *Blood on the Clocktower*. It has a lobby, isolated game rooms, a Town Square and side rooms (whispers) with a server-enforced 3-second join delay, a Storyteller Grimoire, night waking, nominations with sequential voting, real and bluffed day abilities, and a gothic theme.
 
 > Blood on the Clocktower is © The Pandemonium Institute. This is an unofficial fan project for **private play among friends**. See [`docs/DESIGN.md` §5](docs/DESIGN.md#5-rights-and-public-release) for what would need permission before any public release.
@@ -7,6 +11,14 @@ A browser-based, real-time, voice-first table for *Blood on the Clocktower*. It 
 - **Design, assumptions, build plan and house-rule research:** [`docs/DESIGN.md`](docs/DESIGN.md)
 - **Rule changes made to match the supplied rules reference PDF:** [`docs/DESIGN.md` §1.C](docs/DESIGN.md#c-changes-made-to-match-the-rules-reference-pdf)
 - **Character data (all 3 editions plus Travellers and Fabled):** [`shared/characters.ts`](shared/characters.ts). The ability descriptions are paraphrased summaries, not the official wording. Check them against <https://wiki.bloodontheclocktower.com>, which was unreachable from the build environment.
+
+## Features
+
+- **Town:** lobby with public and private games, invite links, spectators; a 3D Town Square (or a 2D view) with eight buildings you can walk into, 3D interiors, customisable 3D figures, gestures, weather, a day/night cycle that follows the timers, death scenes, music and sound.
+- **Voice:** per-room voice (LiveKit), push-to-talk, per-person volume, room text chat, private whispers to the Storyteller.
+- **Game:** server-enforced rules and hidden information, night waking, nominations with a 3D clock hand and raised hands, real and bluffed day abilities, Travellers, Fabled, house rules, MVP vote and an end-of-game story.
+- **Storyteller tools:** Grimoire, night helper with pre-worked-out information, reminder suggestions, kill warnings, undo, script builder (save, export, share), bots to fill seats, saved games that survive restarts, scheduled games with a countdown and calendar file.
+- **Learning:** a guided practice game (skippable), the Almanac with tips for every character, private notes on other players, and a personal game history with stats.
 
 ## Quick start (local, text chat only)
 
@@ -156,7 +168,6 @@ During the day, the Storyteller can click any avatar to mute or unmute that play
 
 ## Known limitations (see the Phase 2/3 plan in DESIGN.md)
 
-- State is in memory: restarting the server ends running games. Redis persistence is planned for Phase 3.
-- Voice was implemented against the LiveKit SDK and unit-tested with a mocked server API. It was **not** tested end-to-end against a running LiveKit server, because the build sandbox couldn't download one.
+- Games are saved every few seconds (to Upstash Redis on the hosted site when it is configured, otherwise to a local `.data` folder) and come back paused after a restart.
 - Per-character automation is deliberately light, as at a real table. The Virgin and Butler are checked automatically and Klutz/Moonchild have public flows; most other triggered abilities and Traveller vote modifiers (Bureaucrat, Thief, Voudon) are handled by the Storyteller through the Grimoire.
-- No user accounts. Identity is per seat token.
+- No user accounts. Identity is per seat token, and *My games* history is stored in each browser.
