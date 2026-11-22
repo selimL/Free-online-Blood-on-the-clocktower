@@ -4,6 +4,7 @@ import type { LobbyEntry, Avatar } from '../../../shared/types';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
+import { LegalLinks } from './Legal';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts, fromShareParam, saveScript, newScriptId, type SavedScript } from '../scripts';
 import { act } from '../net';
@@ -87,7 +88,7 @@ export function Lobby() {
       {practice && <PracticeDialog onClose={() => setPractice(false)} />}
       {builder && <ScriptBuilder initial={builder} onClose={() => setBuilder(null)} />}
       {showHistory && <HistoryDialog onClose={() => setShowHistory(false)} />}
-      <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play.</footer>
+      <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play. <LegalLinks /></footer>
     </div>
     </div>
   );

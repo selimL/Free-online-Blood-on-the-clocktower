@@ -55,6 +55,7 @@ function AccountDialog({ onClose }: { onClose: () => void }) {
           {mode === 'login' && <p className="muted small">Forgot your password? Ask whoever runs this site: they can reset it on the admin page.</p>}
         </>}
         {msg && <p className={`small ${/Check/.test(msg) ? '' : 'warn'}`}>{msg}</p>}
+        <p className="small muted legal-note">By signing in you agree to the <a href="/terms">Terms</a>. See what is stored in the <a href="/privacy">Privacy Policy</a>.</p>
       </div>
     </div>
   );

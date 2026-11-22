@@ -9,6 +9,7 @@ import { Alerts } from './components/Overlays';
 import { RoomPreview } from './components/RoomPreview';
 import { Countdown, downloadIcs } from './components/Schedule';
 import { AdminPage } from './components/AdminPage';
+import { PrivacyPage, TermsPage, LegalLinks } from './components/Legal';
 import { initAccount } from './account';
 
 void initAccount().then(err => { if (err) pushAlert(err, 'error'); });
@@ -53,6 +54,7 @@ function JoinForm({ code }: { code: string }) {
       <label className="field">Your name<input value={name} maxLength={24} onChange={e => setName(e.target.value)} placeholder="e.g. Mortimer" autoFocus /></label>
       <AvatarCreator value={avatar} onChange={setAvatar} />
       <div className="row end"><a className="btn ghost" href="/">Cancel</a><button className="btn" disabled={!name.trim()} onClick={() => join(true)} title="Watch without a seat: you see only public information and can listen to the Town Square">👁 Just watch</button><button className="btn primary" disabled={!name.trim() || (needsListening && !agree)} onClick={() => join()}>Enter the town</button></div>
+      <p className="small muted legal-note">By joining you agree to the <a href="/terms">Terms</a>. See how your data is used in the <a href="/privacy">Privacy Policy</a>.</p>
     </div>
   );
 }
@@ -99,6 +101,8 @@ function App() {
   let body;
   const previewRoom = new URLSearchParams(location.search).get('preview-room');
   if (location.pathname === '/admin') body = <AdminPage />;
+  else if (location.pathname === '/privacy') body = <PrivacyPage />;
+  else if (location.pathname === '/terms') body = <TermsPage />;
   else if (previewRoom) body = <RoomPreview art={previewRoom} />;
   else if (kicked) body = <div className="center-card parchment"><h2>Removed</h2><p>{kicked}</p><a className="btn" href="/">Back to the lobby</a></div>;
   else if (session && view) body = <GameScreen view={view} />;

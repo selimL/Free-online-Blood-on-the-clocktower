@@ -734,3 +734,17 @@ textarea.notes { width: 100%; min-height: 180px; }
 .token-disc.painted { width: 76px; height: 76px; padding: 0; overflow: hidden; background: #120f17; }
 .token-disc.painted img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; transform: scale(1.12); }
 .token.small .token-disc.painted { width: 44px; height: 44px; }
+
+/* ---------------- privacy & terms */
+.legal-page { min-height: 100vh; padding: 2rem 16px; background: radial-gradient(ellipse at top, #1d1824, var(--night-0)); }
+.legal-card { max-width: 760px; margin: 0 auto; padding: 1.6rem 2rem; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--ink); line-height: 1.55; }
+.legal-card h1 { margin: .6rem 0 .1rem; font-family: 'Cinzel', serif; color: var(--blood); }
+.legal-card h2 { margin: 1.4rem 0 .4rem; font-family: 'Cinzel', serif; font-size: 1.2rem; color: #5a1212; border-bottom: 1px solid rgba(74, 58, 42, .3); padding-bottom: .15rem; }
+.legal-card h3 { margin: .8rem 0 .2rem; font-size: 1rem; }
+.legal-card ul { padding-left: 1.2rem; display: grid; gap: .3rem; }
+.legal-card a { color: var(--blood); }
+.legal-back { float: right; color: var(--ink) !important; }
+.terms-list { font-size: 1.05rem; }
+.legal-links a, .legal-note a { color: inherit; text-decoration: underline; }
+footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
+@media (max-width: 600px) { .legal-card { padding: 1.1rem 1rem; } .legal-back { float: none; display: inline-block; margin-bottom: .4rem; } }
