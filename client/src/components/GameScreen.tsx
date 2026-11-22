@@ -25,7 +25,7 @@ import { StorytellerPanel, StorytellerControls } from './Storyteller';
 import { Almanac } from './Almanac';
 import { PromptForPlayer } from './GroupActions';
 import { TranscriptConsent } from './Transcript';
-import { useTranscriber, transcriptionSupported, useSpeechLang, setSpeechLang } from '../transcriber';
+import { useTranscriber, transcriptionSupported } from '../transcriber';
 import { pushAlert } from '../net';
 import { WhisperThread, useUnread } from './Whispers';
 
@@ -286,7 +286,7 @@ function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules,
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
         {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
-        {!view.self.isStoryteller && view.self.transcriptActive && view.self.transcriptConsent && <span className="voice-status transcribed" title={transcriptionSupported() ? 'What you say is transcribed for the Storyteller only. Change this in ⚙ Voice settings.' : 'You agreed, but this browser cannot transcribe: nothing is written down.'}>📝 {transcriptionSupported() ? 'transcribed' : 'not supported'}</span>}
+        {!view.self.isStoryteller && view.self.transcriptActive && view.self.transcriptConsent && <span className="voice-status transcribed" title={transcriptionSupported() ? 'Your speech is checked for secret words; only detections are kept, for the Storyteller. Change this in ⚙ Voice settings.' : 'You agreed, but this browser cannot turn speech into text: nothing is checked.'}>🗣 {transcriptionSupported() ? 'listening for words' : 'not supported'}</span>}
         {view.spectators.length > 0 && <span className="watchers" title={view.spectators.map(s => s.name).join(', ')}>👁 {view.spectators.length} watching</span>}
         <VolumeControl />
         {(view.self.isStoryteller || !view.self.spectator) && <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>}
@@ -418,7 +418,6 @@ function GestureMenu() {
 
 function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void }) {
   const voice = useVoice();
-  const speechLang = useSpeechLang();
   const [mics, setMics] = useState<{ deviceId: string; label: string }[]>([]);
   useEffect(() => { void listMics().then(setMics); }, []);
   const nameOf = (identity: string, fallback: string) => identity === 'st' ? `${view.storyteller.name} (Storyteller)` : view.players.find(p => p.id === identity)?.name ?? fallback;
@@ -457,9 +456,7 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
       </ul>
       {!view.self.isStoryteller && view.self.transcriptActive && !view.self.spectator && <>
         <label className="toggle"><input type="checkbox" checked={!!view.self.transcriptConsent} onChange={e => act('transcriptConsent', { allow: e.target.checked })} />
-          📝 Allow the voice transcript (Storyteller only). Turning it off also deletes what was kept. / Döküme izin ver.</label>
-        <label className="field">Transcript language / Döküm dili
-          <select value={speechLang} onChange={e => setSpeechLang(e.target.value as 'en-US' | 'tr-TR')}><option value="en-US">English</option><option value="tr-TR">Türkçe</option></select></label>
+          🗣 Allow listening for secret words (only detections are kept, Storyteller only). Turning it off also deletes anything recorded about you.</label>
       </>}
       <p className="muted small">These settings only change what <i>you</i> hear and are saved in this browser. Nobody else is told.</p>
     </Modal>

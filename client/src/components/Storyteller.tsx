@@ -84,7 +84,7 @@ export function StorytellerPanel({ view }: { view: GameView }) {
       <PendingAbility view={view} />
       <PrivateRequests view={view} />
       <div className="tabs" role="tablist">
-        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['whispers', `✉ Whispers${unread ? ` (${unread})` : ''}`], ...(view.houseRules.voiceTranscript ? [['transcript', '📝 Transcript'] as const] : []), ['notes', 'Notes & log']] as const).map(([t, l]) =>
+        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['whispers', `✉ Whispers${unread ? ` (${unread})` : ''}`], ...(view.houseRules.voiceTranscript ? [['transcript', '🗣 Word log'] as const] : []), ['notes', 'Notes & log']] as const).map(([t, l]) =>
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{l}</button>)}
       </div>
       {tab === 'grim' && <Grimoire view={view} />}

@@ -90,7 +90,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
   succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
   allowSpectators: { label: 'Allow spectators', help: 'People can watch the game without a seat. They see only public information, can hear the Town Square, and cannot speak or type.', source: 'Online convention' },
-  voiceTranscript: { label: 'Voice transcript for word characters (Storyteller only)', help: 'Only switches on when a character that depends on what people say is on the public list or the script (Mezepheles, Yaggababble, Goblin, God of Ug). Players who agree have their speech turned into text in their own browser (Chrome/Edge, via Google\'s speech service), English by default or Turkish; only the Storyteller can read it, and secret words are detected automatically. Everyone is asked first and can withdraw at any time.', source: 'Online table option' },
+  voiceTranscript: { label: 'Listen for word characters (Storyteller only)', help: 'Only switches on when a character that depends on what people say is on the public list, the script or the Loric (Mezepheles, Yaggababble, Goblin, God of Ug). For players who agree, speech is turned into English text in their own browser (Chrome/Edge, via Google\'s speech service) and checked only for what those characters need. Nothing else is kept: just who said the word, when, where and who was listening. Everyone is asked first and can withdraw at any time.', source: 'Online table option' },
   holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
@@ -262,7 +262,8 @@ export interface WordHit { id: string; kind: 'mezepheles' | 'ug'; playerId: stri
 /** Characters whose ability depends on what players say out loud (the voice transcript only runs with one of these). */
 export const VOICE_CHARACTERS = ['mezepheles', 'yaggababble', 'goblin', 'godofug'];
 
-export interface TranscriptLine { id: string; playerId: string; room: string; text: string; ts: number; when: string }
+/** One detection: who said it, where, to whom, when. The sentence itself is never kept. */
+export interface WordEvent { id: string; kind: 'mezepheles' | 'yaggababble' | 'goblin' | 'ug'; playerId: string; room: string; withIds: string[]; detail: string; ts: number; when: string }
 
 export interface PromptView { id: string; kind: 'livedie' | 'rps' | 'point'; title: string; playerIds: string[]; options: string[]; answers: Record<string, string>; public: boolean; endsAt: number | null; result: string | null; applied: boolean }
 
@@ -331,6 +332,8 @@ export interface GrimoireSeat {
   awake: boolean;
   wantsQuestion: boolean | null;
   abilityUses: Record<string, number>;
+  /** Word listening: did this player agree? (null = not asked yet) */
+  transcriptConsent?: boolean | null;
 }
 
 export interface PendingAbility {
@@ -369,7 +372,9 @@ export interface StorytellerSelf {
   yaggababbleCount: number;
   /** The voice transcript is running in this game right now. */
   transcriptActive: boolean;
-  /** Possible secret-word hits from the transcript, waiting for the Storyteller. */
+  /** Word listening: everything detected so far. */
+  wordLog: WordEvent[];
+  /** Detections waiting for the Storyteller to confirm. */
   wordHits: WordHit[];
   /** Characters in play with special win conditions. */
   winRules: string[];

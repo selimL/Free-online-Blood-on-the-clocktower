@@ -6,14 +6,13 @@ import {
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type TranscriptLine, type WordHit, VOICE_CHARACTERS, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
+  type RoomView, type PendingAbility, type WordEvent, type WordHit, VOICE_CHARACTERS, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
 } from '../../shared/types';
 
-/** Rough syllable count: vowel groups (Turkish: every vowel is a syllable; English: minus a silent final e). */
-export function syllables(word: string, lang: 'en' | 'tr'): number {
-  const w = word.toLowerCase();
+/** Rough English syllable count: vowel groups, minus a silent final e. */
+export function syllables(word: string): number {
+  const w = word.toLowerCase().replace(/[^a-z]/g, '');
   if (!w) return 0;
-  if (lang === 'tr') return Math.max(1, (w.match(/[aeıioöuü]/g) ?? []).length);
   let n = (w.match(/[aeiouy]+/g) ?? []).length;
   if (n > 1 && /[^l]e$/.test(w)) n--;
   return Math.max(1, n);
@@ -192,9 +191,9 @@ export class Game {
   tutorial: TutorialState | null = null;
   /** Planned start time (ms) shared with the invite link; null = no schedule. */
   scheduledFor: number | null = null;
-  /** Voice transcript, readable only by the Storyteller (players who agreed only). */
-  transcript: TranscriptLine[] = [];
-  /** Transcript lines that may contain a secret word or an Ug-hat slip, for the Storyteller to confirm. */
+  /** Detections from word listening (who said what, when, where, with whom), for the Storyteller only. */
+  wordLog: WordEvent[] = [];
+  /** Detections that need the Storyteller to confirm (Mezepheles word, Ug-hat slip). */
   wordHits: WordHit[] = [];
   /** Set by the server wiring: save the game without broadcasting a new state. */
   markDirty: () => void = () => {};
@@ -247,6 +246,7 @@ export class Game {
     for (const p of g.players) p.connected = !!p.bot;
     for (const s of g.spectators ?? []) s.connected = false;
     g.spectators ??= [];
+    delete (g as unknown as Record<string, unknown>).transcript; // older saves kept full sentences: drop them
     if (g.started && g.phase !== 'ended' && !g.paused && !g.tutorial) {
       g.paused = true;
       g.pausedAt = typeof data.savedAt === 'number' ? data.savedAt : Date.now(); // timers resume where they stopped
@@ -264,7 +264,7 @@ export class Game {
     if (ids(data.players ?? []) !== ids(this.players)) fail('Someone joined or left since then, so this can no longer be undone.');
     const keep = {
       connected: new Map(this.players.map(p => [p.id, { connected: p.connected, offlineSince: p.offlineSince, offlineNoticed: p.offlineNoticed, rtt: p.rtt, transcriptConsent: p.transcriptConsent }])),
-      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, transcript: this.transcript, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
+      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, wordLog: this.wordLog, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
     };
     for (const [k, v] of Object.entries(data)) {
       if (k === 'savedAt' || k === 'id' || k === 'code' || k === 'createdAt') continue;
@@ -272,7 +272,7 @@ export class Game {
     }
     for (const p of this.players) Object.assign(p, keep.connected.get(p.id));
     this.storyteller.connected = keep.st;
-    Object.assign(this, { transcript: keep.transcript, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
+    Object.assign(this, { wordLog: keep.wordLog, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
     if (!this.paused) {
       if (this.timer?.endsAt) this.timer.endsAt += ageMs;
       if (this.nomination && Number.isFinite(this.nomination.deadline)) this.nomination.deadline += ageMs;
@@ -618,15 +618,19 @@ export class Game {
     this.changed();
   }
 
-  // ------------------------------------------------------------ voice transcript (Storyteller only, with consent)
+  // ------------------------------------------------------------ word listening (Storyteller only, with consent)
+  // Speech is turned into text in the speaker's browser and checked here for what a character needs
+  // (a secret word, a claim, a long word). The sentence is then thrown away: only detections are kept.
   setTranscriptConsent(p: Player, allow: boolean) {
     p.transcriptConsent = !!allow;
-    if (!allow) this.transcript = this.transcript.filter(l => l.playerId !== p.id); // withdrawing also deletes what was kept
-    this.emit(['st'], 'transcript:reset', { playerId: allow ? null : p.id });
+    if (!allow) { // withdrawing also deletes what was kept about them
+      this.wordLog = this.wordLog.filter(e => e.playerId !== p.id);
+      this.wordHits = this.wordHits.filter(h => h.playerId !== p.id);
+    }
     this.changed();
   }
   /**
-   * The transcript runs only when a character that depends on speech is in the game, judged from what
+   * Listening runs only when a character that depends on speech is in the game, judged from what
    * players can already see (the public list, the script, Fabled/Loric), so it never gives away a hidden character.
    */
   transcriptActive(): boolean {
@@ -636,50 +640,66 @@ export class Game {
     const seen = new Set([...visible, ...this.settings.script, ...this.settings.fabled]);
     return VOICE_CHARACTERS.some(id => seen.has(id));
   }
-  addTranscript(pid: string, text: unknown, lang?: unknown) {
+  /** Check one spoken sentence; nothing of it is stored unless it triggers a character. */
+  checkSpeech(pid: string, text: unknown) {
     if (!this.transcriptActive()) return;
     const p = this.maybePlayer(pid);
     if (!p || p.bot || p.transcriptConsent !== true) return;
     const v = this.voiceTarget(pid);
     if (!v.room || !v.publish) return; // only what others could actually hear
     const t = cleanText(text, 500);
-    if (!t) return;
-    const line: TranscriptLine = { id: nanoid(8), playerId: p.id, room: v.room, text: t, ts: Date.now(), when: this.when() };
-    this.transcript.push(line);
-    if (this.transcript.length > 3000) this.transcript.shift();
-    this.emit(['st'], 'transcript', line);
-    this.detectWords(p, t, lang === 'tr-TR' ? 'tr' : 'en');
-    this.markDirty();
+    if (t) this.detectWords(p, t, v.room);
   }
-  /** Look for the secret words, a Goblin claim and Ug-hat slips in a transcript line. */
-  private detectWords(p: Player, text: string, lang: 'en' | 'tr') {
-    const norm = (s: string) => s.toLocaleLowerCase(lang === 'tr' ? 'tr-TR' : 'en-US').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  /** Who else was in the room to hear it. */
+  private listeners(pid: string, room: string) {
+    return [...this.players.filter(o => o.id !== pid && o.location === room && !o.joining).map(o => o.id), ...(this.storyteller.location === room ? ['st'] : [])];
+  }
+  private logWord(kind: WordEvent['kind'], p: Player, room: string, detail: string) {
+    const e: WordEvent = { id: nanoid(8), kind, playerId: p.id, room, withIds: this.listeners(p.id, room), detail, ts: Date.now(), when: this.when() };
+    this.wordLog.push(e);
+    if (this.wordLog.length > 300) this.wordLog.shift();
+    return e;
+  }
+  private detectWords(p: Player, text: string, room: string) {
+    const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
     const said = norm(text);
-    const count = (phrase: string) => { const ph = norm(phrase); if (!ph) return 0; return (` ${said} `.split(` ${ph} `).length - 1); };
-    const hit = (kind: WordHit['kind'], msg: string) => {
-      this.wordHits.push({ id: nanoid(8), kind, playerId: p.id, text, ts: Date.now() });
-      if (this.wordHits.length > 30) this.wordHits.shift();
-      this.emit(['st'], 'alert', { text: msg, kind: 'ability' });
-      this.changed();
-    };
+    const count = (phrase: string) => { const ph = norm(phrase); return ph ? ` ${said} `.split(` ${ph} `).length - 1 : 0; };
+    let changed = false;
     const mez = this.holder('mezepheles');
-    if (mez && this.secretWords.mezepheles && p.id !== mez.id && !mez.reminders.includes('No ability') && count(this.secretWords.mezepheles))
-      hit('mezepheles', `🗣 ${p.name} may have said the Mezepheles' word. Confirm it under Special rules.`);
+    if (mez && this.secretWords.mezepheles && p.id !== mez.id && !mez.reminders.includes('No ability') && count(this.secretWords.mezepheles)) {
+      const e = this.logWord('mezepheles', p, room, `said “${this.secretWords.mezepheles}”`);
+      this.wordHits.push({ id: e.id, kind: 'mezepheles', playerId: p.id, text: `said “${this.secretWords.mezepheles}”`, ts: e.ts });
+      this.emit(['st'], 'alert', { text: `🗣 ${p.name} said the Mezepheles' word. Confirm it under Special rules.`, kind: 'ability' });
+      changed = true;
+    }
     const yag = this.holder('yaggababble');
     if (yag && yag.id === p.id && this.secretWords.yaggababble && this.phase === 'day') {
       const n = count(this.secretWords.yaggababble);
-      if (n) { this.yaggababbleCount += n; this.emit(['st'], 'alert', { text: `🗣 The Yaggababble said the phrase (${this.yaggababbleCount} today).`, kind: 'ability' }); this.changed(); }
+      if (n) {
+        this.yaggababbleCount += n;
+        this.logWord('yaggababble', p, room, `said the phrase ${n === 1 ? 'once' : `${n} times`} (${this.yaggababbleCount} today)`);
+        this.emit(['st'], 'alert', { text: `🗣 The Yaggababble said the phrase (${this.yaggababbleCount} today).`, kind: 'ability' });
+        changed = true;
+      }
     }
     const nom = this.nomination;
-    if (p.characterId === 'goblin' && nom && !nom.done && nom.nomineeId === p.id && count(lang === 'tr' ? 'goblin' : 'goblin') && !p.reminders.includes('Claimed')) {
+    if (p.characterId === 'goblin' && nom && !nom.done && nom.nomineeId === p.id && count('goblin') && !p.reminders.includes('Claimed')) {
       p.reminders.push('Claimed');
+      this.logWord('goblin', p, room, 'claimed to be the Goblin while nominated');
       this.emit(['st'], 'alert', { text: `🗣 ${p.name} claimed to be the Goblin while nominated (marked "Claimed").`, kind: 'ability' });
-      this.changed();
+      changed = true;
     }
     if (this.ugHat === p.id && this.settings.fabled.includes('godofug')) {
-      const long = said.split(' ').filter(w => syllables(w, lang) > 1);
-      if (long.length) hit('ug', `🎩 ${p.name} (Ug hat) may have used a long word: “${long.slice(0, 3).join(', ')}”.`);
+      const long = [...new Set(said.split(' ').filter(w => syllables(w) > 1))];
+      if (long.length) {
+        const e = this.logWord('ug', p, room, `used: ${long.slice(0, 4).join(', ')}`);
+        this.wordHits.push({ id: e.id, kind: 'ug', playerId: p.id, text: e.detail, ts: e.ts });
+        this.emit(['st'], 'alert', { text: `🎩 ${p.name} (Ug hat) may have used a long word: ${long.slice(0, 3).join(', ')}.`, kind: 'ability' });
+        changed = true;
+      }
     }
+    if (this.wordHits.length > 30) this.wordHits.splice(0, this.wordHits.length - 30);
+    if (changed) this.changed();
   }
   dismissWordHit(id: string) { this.wordHits = this.wordHits.filter(h => h.id !== id); this.changed(); }
 
