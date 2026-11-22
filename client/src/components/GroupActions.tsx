@@ -58,7 +58,7 @@ export function SpecialRules({ view }: { view: GameView }) {
   const togglePick = (id: string) => setPicked(l => (l.includes(id) ? l.filter(x => x !== id) : [...l, id]));
   const need = mode === 'rps' ? 2 : 3;
   const ugOn = self.settings.fabled.includes('godofug');
-  const nothing = !self.winRules.length && !view.prompts.length && !has('psychopath') && !has('alhadikhia') && !has('boomdandy') && !has('mezepheles') && !has('yaggababble') && !ugOn;
+  const nothing = !self.winRules.length && !self.wordHits.length && !view.prompts.length && !has('psychopath') && !has('alhadikhia') && !has('boomdandy') && !has('mezepheles') && !has('yaggababble') && !ugOn;
   if (nothing || view.phase === 'lobby') return null;
   const start = () => {
     if (mode === 'boom') void act('st:boomdandy', { survivors: picked });
@@ -103,6 +103,16 @@ export function SpecialRules({ view }: { view: GameView }) {
           </div>
         );
       })}
+      {self.wordHits.map(h => (
+        <div key={h.id} className="prompt-status word-hit">
+          <b>{h.kind === 'mezepheles' ? '🗣 Mezepheles word?' : '🎩 Ug-hat slip?'}</b> {name(h.playerId)}: “{h.text}”
+          <div className="row">
+            {h.kind === 'mezepheles' && <button className="btn small danger" onClick={() => { void act('st:mezephelesSaid', { playerId: h.playerId }); void act('st:dismissWordHit', { id: h.id }); }}>Confirm: {name(h.playerId)} said it</button>}
+            {h.kind === 'ug' && <select value="" onChange={e => { if (e.target.value) { void act('st:ugHat', { playerId: e.target.value }); void act('st:dismissWordHit', { id: h.id }); } }} aria-label="Pass the hat"><option value="">Pass the hat to…</option>{view.players.filter(p => p.id !== h.playerId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
+            <button className="btn small ghost" onClick={() => act('st:dismissWordHit', { id: h.id })}>Not really</button>
+          </div>
+        </div>
+      ))}
       {view.prompts.map(pr => (
         <div key={pr.id} className={`prompt-status ${pr.result ? 'done' : ''}`}>
           <b>{pr.kind === 'rps' ? '✊ Rock-paper-scissors' : pr.kind === 'livedie' ? '🕯 Live or die' : '👉 Pointing'}</b>: {pr.playerIds.map(id => `${name(id)}${pr.answers[id] ? ` → ${pr.answers[id]}` : ' …'}`).join(' · ')}

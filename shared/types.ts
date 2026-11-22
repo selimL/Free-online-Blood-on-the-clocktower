@@ -90,7 +90,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
   succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
   allowSpectators: { label: 'Allow spectators', help: 'People can watch the game without a seat. They see only public information, can hear the Town Square, and cannot speak or type.', source: 'Online convention' },
-  voiceTranscript: { label: 'Voice transcript (Storyteller only)', help: 'Players who agree have what they say turned into text in their own browser (Chrome/Edge; it uses Google\'s speech service) and kept in a transcript only the Storyteller can read. Everyone is asked first and can say no or withdraw at any time.', source: 'Online table option' },
+  voiceTranscript: { label: 'Voice transcript for word characters (Storyteller only)', help: 'Only switches on when a character that depends on what people say is on the public list or the script (Mezepheles, Yaggababble, Goblin, God of Ug). Players who agree have their speech turned into text in their own browser (Chrome/Edge, via Google\'s speech service), English by default or Turkish; only the Storyteller can read it, and secret words are detected automatically. Everyone is asked first and can withdraw at any time.', source: 'Online table option' },
   holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
@@ -149,7 +149,7 @@ export const defaultSettings = (): Settings => ({
     autoMuteDuringSpeeches: false, evilInfoSmallGames: false, announceCauseOfDeath: false, revealOnDeath: false,
     maxWhispersPerDay: null, roomCapOverride: null, speedRound: false, openVoteRecord: false, grimoireRevealAtEnd: false,
     beginnerMode: false, noOaths: false, noScreenshots: false, travellersCantBeChanged: false, abilityDeclarationLimit: null,
-    succorForEvil: false, holySpirit: false, allowSpectators: true, voiceTranscript: false,
+    succorForEvil: false, holySpirit: false, allowSpectators: true, voiceTranscript: true,
   },
   region: null,
 });
@@ -248,6 +248,7 @@ export interface SelfView {
   /** Watching only: no seat, no character, no voice or chat of their own. */
   spectator?: boolean;
   /** Voice transcript: whether this player agreed (null = not asked yet). */
+  transcriptActive?: boolean;
   transcriptConsent?: boolean | null;
   /** Practice game: the Guide's current tip for this player. */
   tutorial?: { title: string; text: string; next: string | null; done: boolean } | null;
@@ -255,6 +256,11 @@ export interface SelfView {
 
 export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
 export interface WalkPos { x: number; z: number; ry: number }
+
+export interface WordHit { id: string; kind: 'mezepheles' | 'ug'; playerId: string; text: string; ts: number }
+
+/** Characters whose ability depends on what players say out loud (the voice transcript only runs with one of these). */
+export const VOICE_CHARACTERS = ['mezepheles', 'yaggababble', 'goblin', 'godofug'];
 
 export interface TranscriptLine { id: string; playerId: string; room: string; text: string; ts: number; when: string }
 
@@ -361,6 +367,10 @@ export interface StorytellerSelf {
   /** Mezepheles / Yaggababble secret words and today's count. */
   secretWords: { mezepheles: string; yaggababble: string };
   yaggababbleCount: number;
+  /** The voice transcript is running in this game right now. */
+  transcriptActive: boolean;
+  /** Possible secret-word hits from the transcript, waiting for the Storyteller. */
+  wordHits: WordHit[];
   /** Characters in play with special win conditions. */
   winRules: string[];
   /** Who was executed on the most recent day (Undertaker). */

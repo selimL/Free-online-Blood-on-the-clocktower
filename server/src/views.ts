@@ -104,7 +104,7 @@ function tableRules(g: Game): string[] {
   if (h.maxWhispersPerDay) out.push(`Each player may visit side rooms at most ${h.maxWhispersPerDay} times per day.`);
   if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
   if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
-  if (h.voiceTranscript) out.push('Voice transcript: the Storyteller keeps a written transcript of what players who agreed say (only the Storyteller can read it). You can say no or withdraw in ⚙ Voice settings.');
+  if (g.transcriptActive()) out.push('Voice transcript: the Storyteller keeps a written transcript of what players who agreed say (only the Storyteller can read it). You can say no or withdraw in ⚙ Voice settings.');
   if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
   // timer lengths, so everyone knows how long each part of the day lasts
   const t = g.settings.timers;
@@ -193,6 +193,7 @@ export function playerView(g: Game, p: Player): GameView {
     privateMsUsedToday: p.privateMsToday,
     revealedTo: p.revealedTo,
     transcriptConsent: p.transcriptConsent ?? null,
+    transcriptActive: g.transcriptActive(),
     tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
   // Tor: your character and alignment stay hidden until you die
@@ -232,7 +233,7 @@ export function storytellerView(g: Game): GameView {
     demonBluffs: g.demonBluffs, lunaticBluffs: g.lunaticBluffs, pendingDawnDeaths: g.pendingDawnDeaths,
     pendingAbility: g.pendingAbility, privateRequests: g.privateRequests, notes: g.stNotes, log: g.log.slice(-200),
     regionsRtt: Object.fromEntries(g.players.map(p => [p.id, p.rtt])),
-    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId, secretWords: g.secretWords ?? { mezepheles: '', yaggababble: '' }, yaggababbleCount: g.yaggababbleCount ?? 0, winRules: g.specialWinRules(),
+    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId, secretWords: g.secretWords ?? { mezepheles: '', yaggababble: '' }, yaggababbleCount: g.yaggababbleCount ?? 0, winRules: g.specialWinRules(), wordHits: g.wordHits ?? [], transcriptActive: g.transcriptActive(),
   };
   return { ...baseView(g, null, null), self } as GameView;
 }

@@ -6,8 +6,18 @@ import {
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type TranscriptLine, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
+  type RoomView, type PendingAbility, type TranscriptLine, type WordHit, VOICE_CHARACTERS, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
 } from '../../shared/types';
+
+/** Rough syllable count: vowel groups (Turkish: every vowel is a syllable; English: minus a silent final e). */
+export function syllables(word: string, lang: 'en' | 'tr'): number {
+  const w = word.toLowerCase();
+  if (!w) return 0;
+  if (lang === 'tr') return Math.max(1, (w.match(/[aeıioöuü]/g) ?? []).length);
+  let n = (w.match(/[aeiouy]+/g) ?? []).length;
+  if (n > 1 && /[^l]e$/.test(w)) n--;
+  return Math.max(1, n);
+}
 
 const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
@@ -184,6 +194,8 @@ export class Game {
   scheduledFor: number | null = null;
   /** Voice transcript, readable only by the Storyteller (players who agreed only). */
   transcript: TranscriptLine[] = [];
+  /** Transcript lines that may contain a secret word or an Ug-hat slip, for the Storyteller to confirm. */
+  wordHits: WordHit[] = [];
   /** Set by the server wiring: save the game without broadcasting a new state. */
   markDirty: () => void = () => {};
   /** Group actions in progress (see GroupPrompt). */
@@ -613,8 +625,19 @@ export class Game {
     this.emit(['st'], 'transcript:reset', { playerId: allow ? null : p.id });
     this.changed();
   }
-  addTranscript(pid: string, text: unknown) {
-    if (!this.settings.houseRules.voiceTranscript) return;
+  /**
+   * The transcript runs only when a character that depends on speech is in the game, judged from what
+   * players can already see (the public list, the script, Fabled/Loric), so it never gives away a hidden character.
+   */
+  transcriptActive(): boolean {
+    if (!this.settings.houseRules.voiceTranscript || !['questions', 'night', 'day'].includes(this.phase)) return false;
+    const pl = this.settings.publicList;
+    const visible = pl.visible ? this.settings.characters.filter(id => !pl.hidden.includes(id)) : [];
+    const seen = new Set([...visible, ...this.settings.script, ...this.settings.fabled]);
+    return VOICE_CHARACTERS.some(id => seen.has(id));
+  }
+  addTranscript(pid: string, text: unknown, lang?: unknown) {
+    if (!this.transcriptActive()) return;
     const p = this.maybePlayer(pid);
     if (!p || p.bot || p.transcriptConsent !== true) return;
     const v = this.voiceTarget(pid);
@@ -625,8 +648,40 @@ export class Game {
     this.transcript.push(line);
     if (this.transcript.length > 3000) this.transcript.shift();
     this.emit(['st'], 'transcript', line);
+    this.detectWords(p, t, lang === 'tr-TR' ? 'tr' : 'en');
     this.markDirty();
   }
+  /** Look for the secret words, a Goblin claim and Ug-hat slips in a transcript line. */
+  private detectWords(p: Player, text: string, lang: 'en' | 'tr') {
+    const norm = (s: string) => s.toLocaleLowerCase(lang === 'tr' ? 'tr-TR' : 'en-US').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const said = norm(text);
+    const count = (phrase: string) => { const ph = norm(phrase); if (!ph) return 0; return (` ${said} `.split(` ${ph} `).length - 1); };
+    const hit = (kind: WordHit['kind'], msg: string) => {
+      this.wordHits.push({ id: nanoid(8), kind, playerId: p.id, text, ts: Date.now() });
+      if (this.wordHits.length > 30) this.wordHits.shift();
+      this.emit(['st'], 'alert', { text: msg, kind: 'ability' });
+      this.changed();
+    };
+    const mez = this.holder('mezepheles');
+    if (mez && this.secretWords.mezepheles && p.id !== mez.id && !mez.reminders.includes('No ability') && count(this.secretWords.mezepheles))
+      hit('mezepheles', `🗣 ${p.name} may have said the Mezepheles' word. Confirm it under Special rules.`);
+    const yag = this.holder('yaggababble');
+    if (yag && yag.id === p.id && this.secretWords.yaggababble && this.phase === 'day') {
+      const n = count(this.secretWords.yaggababble);
+      if (n) { this.yaggababbleCount += n; this.emit(['st'], 'alert', { text: `🗣 The Yaggababble said the phrase (${this.yaggababbleCount} today).`, kind: 'ability' }); this.changed(); }
+    }
+    const nom = this.nomination;
+    if (p.characterId === 'goblin' && nom && !nom.done && nom.nomineeId === p.id && count(lang === 'tr' ? 'goblin' : 'goblin') && !p.reminders.includes('Claimed')) {
+      p.reminders.push('Claimed');
+      this.emit(['st'], 'alert', { text: `🗣 ${p.name} claimed to be the Goblin while nominated (marked "Claimed").`, kind: 'ability' });
+      this.changed();
+    }
+    if (this.ugHat === p.id && this.settings.fabled.includes('godofug')) {
+      const long = said.split(' ').filter(w => syllables(w, lang) > 1);
+      if (long.length) hit('ug', `🎩 ${p.name} (Ug hat) may have used a long word: “${long.slice(0, 3).join(', ')}”.`);
+    }
+  }
+  dismissWordHit(id: string) { this.wordHits = this.wordHits.filter(h => h.id !== id); this.changed(); }
 
   /** A private note between one player and the Storyteller (either direction). */
   whisper(fromId: string, toId: string, text: unknown) {

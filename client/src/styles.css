@@ -688,3 +688,6 @@ textarea.notes { width: 100%; min-height: 180px; }
 .transcript input { flex: 1; min-width: 6rem; }
 .transcript-log { max-height: 55vh; }
 .tr-room { margin: .5rem 0 .15rem; font: 600 .8rem 'Cinzel', serif; color: var(--candle); border-bottom: 1px solid #3b3343; }
+.tr-turkish { margin: .3rem 0 .5rem; }
+.tr-turkish summary { cursor: pointer; font-weight: 600; }
+.prompt-status.word-hit { border-left: 3px solid var(--candle); }
