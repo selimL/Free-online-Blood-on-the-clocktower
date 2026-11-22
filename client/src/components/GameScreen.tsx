@@ -24,6 +24,9 @@ import {
 import { StorytellerPanel, StorytellerControls } from './Storyteller';
 import { Almanac } from './Almanac';
 import { PromptForPlayer } from './GroupActions';
+import { TranscriptConsent } from './Transcript';
+import { useTranscriber, transcriptionSupported } from '../transcriber';
+import { pushAlert } from '../net';
 import { WhisperThread, useUnread } from './Whispers';
 
 type ConfirmState = { title: string; text: React.ReactNode; confirm: string; onYes: () => void } | null;
@@ -91,6 +94,11 @@ export function GameScreen({ view }: { view: GameView }) {
   // background music follows the moment; rain is heard outdoors (or asleep in bed)
   const mood = voting ? 'vote' : night ? 'night' : 'day';
   useEffect(() => { setMusic(mood); }, [mood]);
+  // voice transcript: only with consent, the house rule on, and a live microphone
+  const vstate = useVoice();
+  const transcribing = !isST && !spectating && !!view.houseRules.voiceTranscript && !view.self.isStoryteller && view.self.transcriptConsent === true
+    && !!vstate.connectedRoom && vstate.canPublish && vstate.micOn && (!vstate.pushToTalk || vstate.talking);
+  useTranscriber(transcribing, () => pushAlert('Speech-to-text was blocked by the browser, so nothing is being transcribed.', 'error'));
   const outdoors = asleep || night || myLoc === 'square' || spectating;
   useEffect(() => { setRain(!outdoors ? 0 : view.weather === 'storm' ? 2 : view.weather === 'rain' ? 1 : 0); }, [view.weather, outdoors]);
   useEffect(() => () => { setNightAmbience(false); setHeartbeat(false); setMusic('off'); setRain(0); }, []);
@@ -238,6 +246,7 @@ export function GameScreen({ view }: { view: GameView }) {
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
       <QuestionPrompt view={view} />
       <PromptForPlayer view={view} />
+      <TranscriptConsent view={view} />
       <InfoPopup view={view} />
       <TransitionOverlay />
       {view.paused && <div className="paused-banner">⏸ The game is paused{!view.storyteller.connected ? ' — waiting for the Storyteller to reconnect' : ''}.</div>}
@@ -277,6 +286,7 @@ function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules,
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
         {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
+        {!view.self.isStoryteller && view.houseRules.voiceTranscript && view.self.transcriptConsent && <span className="voice-status transcribed" title={transcriptionSupported() ? 'What you say is transcribed for the Storyteller only. Change this in ⚙ Voice settings.' : 'You agreed, but this browser cannot transcribe: nothing is written down.'}>📝 {transcriptionSupported() ? 'transcribed' : 'not supported'}</span>}
         {view.spectators.length > 0 && <span className="watchers" title={view.spectators.map(s => s.name).join(', ')}>👁 {view.spectators.length} watching</span>}
         <VolumeControl />
         {(view.self.isStoryteller || !view.self.spectator) && <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>}
@@ -444,6 +454,10 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
           );
         })}
       </ul>
+      {!view.self.isStoryteller && view.houseRules.voiceTranscript && !view.self.spectator && (
+        <label className="toggle"><input type="checkbox" checked={!!view.self.transcriptConsent} onChange={e => act('transcriptConsent', { allow: e.target.checked })} />
+          📝 Allow the voice transcript (Storyteller only). Turning it off also deletes what was kept.</label>
+      )}
       <p className="muted small">These settings only change what <i>you</i> hear and are saved in this browser. Nobody else is told.</p>
     </Modal>
   );

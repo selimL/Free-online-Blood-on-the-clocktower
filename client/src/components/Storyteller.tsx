@@ -1,3 +1,4 @@
+import { TranscriptReader } from './Transcript';
 import { SpecialRules } from './GroupActions';
 import { WEATHERS } from '../../../shared/types';
 import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
@@ -73,7 +74,7 @@ export function StorytellerControls({ view }: { view: GameView }) {
 
 export function StorytellerPanel({ view }: { view: GameView }) {
   const self = st(view);
-  const [tab, setTab] = useState<'grim' | 'setup' | 'night' | 'chat' | 'whispers' | 'notes'>(view.phase === 'lobby' ? 'setup' : 'grim');
+  const [tab, setTab] = useState<'grim' | 'setup' | 'night' | 'chat' | 'whispers' | 'transcript' | 'notes'>(view.phase === 'lobby' ? 'setup' : 'grim');
   const unread = Object.values(useUnread()).reduce((a, b) => a + b, 0);
   useEffect(() => { if (view.phase === 'night') setTab('night'); else if (tab === 'night') setTab('grim'); }, [view.phase]);
   return (
@@ -83,7 +84,7 @@ export function StorytellerPanel({ view }: { view: GameView }) {
       <PendingAbility view={view} />
       <PrivateRequests view={view} />
       <div className="tabs" role="tablist">
-        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['whispers', `✉ Whispers${unread ? ` (${unread})` : ''}`], ['notes', 'Notes & log']] as const).map(([t, l]) =>
+        {([['grim', 'Grimoire'], ['setup', 'Setup'], ['night', 'Night order'], ['chat', 'Chat'], ['whispers', `✉ Whispers${unread ? ` (${unread})` : ''}`], ...(view.houseRules.voiceTranscript ? [['transcript', '📝 Transcript'] as const] : []), ['notes', 'Notes & log']] as const).map(([t, l]) =>
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{l}</button>)}
       </div>
       {tab === 'grim' && <Grimoire view={view} />}
@@ -91,6 +92,7 @@ export function StorytellerPanel({ view }: { view: GameView }) {
       {tab === 'night' && <NightOrder view={view} />}
       {tab === 'chat' && <Chat view={view} />}
       {tab === 'whispers' && <WhisperInbox view={view} />}
+      {tab === 'transcript' && <TranscriptReader view={view} />}
       {tab === 'notes' && <NotesLog view={view} />}
     </div>
   );

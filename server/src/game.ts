@@ -6,7 +6,7 @@ import {
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
-  type RoomView, type PendingAbility, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
+  type RoomView, type PendingAbility, type TranscriptLine, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
 } from '../../shared/types';
 
 const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -51,6 +51,7 @@ export interface Player {
   bot?: boolean;                    // a computer-controlled seat (practice games and testing)
   offlineSince?: number | null;     // when the connection dropped (null/undefined = connected)
   offlineNoticed?: number;          // 0 none, 1 everyone told, 2 Storyteller nudged
+  transcriptConsent?: boolean | null; // voice transcript: agreed? (null = not asked yet)
 }
 
 export interface Nomination {
@@ -181,6 +182,10 @@ export class Game {
   tutorial: TutorialState | null = null;
   /** Planned start time (ms) shared with the invite link; null = no schedule. */
   scheduledFor: number | null = null;
+  /** Voice transcript, readable only by the Storyteller (players who agreed only). */
+  transcript: TranscriptLine[] = [];
+  /** Set by the server wiring: save the game without broadcasting a new state. */
+  markDirty: () => void = () => {};
   /** Group actions in progress (see GroupPrompt). */
   prompts: GroupPrompt[] = [];
   /** God of Ug (Loric): who wears the Ug hat; their vote counts twice. */
@@ -246,8 +251,8 @@ export class Game {
     const ids = (list: { id: string }[]) => list.map(p => p.id).sort().join(',');
     if (ids(data.players ?? []) !== ids(this.players)) fail('Someone joined or left since then, so this can no longer be undone.');
     const keep = {
-      connected: new Map(this.players.map(p => [p.id, { connected: p.connected, offlineSince: p.offlineSince, offlineNoticed: p.offlineNoticed, rtt: p.rtt }])),
-      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
+      connected: new Map(this.players.map(p => [p.id, { connected: p.connected, offlineSince: p.offlineSince, offlineNoticed: p.offlineNoticed, rtt: p.rtt, transcriptConsent: p.transcriptConsent }])),
+      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, transcript: this.transcript, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
     };
     for (const [k, v] of Object.entries(data)) {
       if (k === 'savedAt' || k === 'id' || k === 'code' || k === 'createdAt') continue;
@@ -255,7 +260,7 @@ export class Game {
     }
     for (const p of this.players) Object.assign(p, keep.connected.get(p.id));
     this.storyteller.connected = keep.st;
-    Object.assign(this, { spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
+    Object.assign(this, { transcript: keep.transcript, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
     if (!this.paused) {
       if (this.timer?.endsAt) this.timer.endsAt += ageMs;
       if (this.nomination && Number.isFinite(this.nomination.deadline)) this.nomination.deadline += ageMs;
@@ -599,6 +604,28 @@ export class Game {
     this.ugHat = pid && this.maybePlayer(pid) ? pid : null;
     if (this.ugHat) this.announce(`${this.nameOf(this.ugHat)} wears the Ug hat: one-syllable words only, and their vote counts twice.`, 'info');
     this.changed();
+  }
+
+  // ------------------------------------------------------------ voice transcript (Storyteller only, with consent)
+  setTranscriptConsent(p: Player, allow: boolean) {
+    p.transcriptConsent = !!allow;
+    if (!allow) this.transcript = this.transcript.filter(l => l.playerId !== p.id); // withdrawing also deletes what was kept
+    this.emit(['st'], 'transcript:reset', { playerId: allow ? null : p.id });
+    this.changed();
+  }
+  addTranscript(pid: string, text: unknown) {
+    if (!this.settings.houseRules.voiceTranscript) return;
+    const p = this.maybePlayer(pid);
+    if (!p || p.bot || p.transcriptConsent !== true) return;
+    const v = this.voiceTarget(pid);
+    if (!v.room || !v.publish) return; // only what others could actually hear
+    const t = cleanText(text, 500);
+    if (!t) return;
+    const line: TranscriptLine = { id: nanoid(8), playerId: p.id, room: v.room, text: t, ts: Date.now(), when: this.when() };
+    this.transcript.push(line);
+    if (this.transcript.length > 3000) this.transcript.shift();
+    this.emit(['st'], 'transcript', line);
+    this.markDirty();
   }
 
   /** A private note between one player and the Storyteller (either direction). */

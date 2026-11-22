@@ -104,6 +104,7 @@ function tableRules(g: Game): string[] {
   if (h.maxWhispersPerDay) out.push(`Each player may visit side rooms at most ${h.maxWhispersPerDay} times per day.`);
   if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
   if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
+  if (h.voiceTranscript) out.push('Voice transcript: the Storyteller keeps a written transcript of what players who agreed say (only the Storyteller can read it). You can say no or withdraw in ⚙ Voice settings.');
   if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
   // timer lengths, so everyone knows how long each part of the day lasts
   const t = g.settings.timers;
@@ -191,6 +192,7 @@ export function playerView(g: Game, p: Player): GameView {
     nominatedToday: g.nominatorsToday.has(p.id),
     privateMsUsedToday: p.privateMsToday,
     revealedTo: p.revealedTo,
+    transcriptConsent: p.transcriptConsent ?? null,
     tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
   // Tor: your character and alignment stay hidden until you die

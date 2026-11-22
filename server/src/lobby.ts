@@ -79,6 +79,7 @@ export class Lobby {
 
   private wire(g: Game) {
     g.emit = (audience, event, payload) => this.sendTo(g.id, audience, event, payload);
+    g.markDirty = () => { this.dirty.add(g.id); };
     g.onChange = () => {
       this.dirty.add(g.id);
       if (this.pending.has(g.id)) return;
@@ -276,6 +277,8 @@ export class Lobby {
       case 'tutorial:next': return tutorialNext(g, p.id);
       case 'tutorial:skip': return tutorialSkip(g, p.id);
       case 'mvp': return g.voteMvp(p.id, String(d.candidateId ?? ''));
+      case 'transcriptConsent': return g.setTranscriptConsent(p, !!d.allow);
+      case 'say': return g.addTranscript(p.id, d.text);
       case 'prompt': return g.answerPrompt(p.id, String(d.promptId ?? ''), String(d.answer ?? ''));
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'emote': return g.emote(p.id, d.kind);
@@ -332,6 +335,7 @@ export class Lobby {
       }
       case 'st:schedule': return g.setSchedule(d.scheduledFor);
       case 'st:mvp': return g.voteMvp('st', String(d.candidateId ?? ''));
+      case 'st:transcript': return { lines: g.transcript };
       case 'st:prompt': { g.startPrompt(d.kind === 'rps' ? 'rps' : d.kind === 'point' ? 'point' : 'livedie', Array.isArray(d.playerIds) ? d.playerIds.map(String) : []); return; }
       case 'st:applyPrompt': return g.applyPrompt(String(d.promptId ?? ''));
       case 'st:dismissPrompt': return g.dismissPrompt(String(d.promptId ?? ''));

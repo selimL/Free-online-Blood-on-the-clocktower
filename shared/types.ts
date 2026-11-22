@@ -55,6 +55,7 @@ export interface HouseRules {
   succorForEvil: boolean;
   holySpirit: boolean;
   allowSpectators: boolean;
+  voiceTranscript: boolean;
 }
 
 /** House rules that hold a number (null = off) rather than a boolean. */
@@ -89,6 +90,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   abilityDeclarationLimit: { label: 'Ability declaration limit', help: 'Caps how many public ability uses (real or claimed) may happen per day, to save time.', source: 'Community house rule (TPI-endorsed)' },
   succorForEvil: { label: 'Succor for Evil', help: 'The Demon learns every Traveller\'s alignment.', source: 'Community house rule' },
   allowSpectators: { label: 'Allow spectators', help: 'People can watch the game without a seat. They see only public information, can hear the Town Square, and cannot speak or type.', source: 'Online convention' },
+  voiceTranscript: { label: 'Voice transcript (Storyteller only)', help: 'Players who agree have what they say turned into text in their own browser (Chrome/Edge; it uses Google\'s speech service) and kept in a transcript only the Storyteller can read. Everyone is asked first and can say no or withdraw at any time.', source: 'Online table option' },
   holySpirit: { label: 'Holy Spirit ruling', help: 'If a good player kills a good Saint with an ability (e.g. Gunslinger), it counts as an execution and good loses. Shown to players as a table rule.', source: 'Community house rule' },
 };
 
@@ -147,7 +149,7 @@ export const defaultSettings = (): Settings => ({
     autoMuteDuringSpeeches: false, evilInfoSmallGames: false, announceCauseOfDeath: false, revealOnDeath: false,
     maxWhispersPerDay: null, roomCapOverride: null, speedRound: false, openVoteRecord: false, grimoireRevealAtEnd: false,
     beginnerMode: false, noOaths: false, noScreenshots: false, travellersCantBeChanged: false, abilityDeclarationLimit: null,
-    succorForEvil: false, holySpirit: false, allowSpectators: true,
+    succorForEvil: false, holySpirit: false, allowSpectators: true, voiceTranscript: false,
   },
   region: null,
 });
@@ -245,12 +247,16 @@ export interface SelfView {
   revealedTo: { fromId: string; characterId: string }[];
   /** Watching only: no seat, no character, no voice or chat of their own. */
   spectator?: boolean;
+  /** Voice transcript: whether this player agreed (null = not asked yet). */
+  transcriptConsent?: boolean | null;
   /** Practice game: the Guide's current tip for this player. */
   tutorial?: { title: string; text: string; next: string | null; done: boolean } | null;
 }
 
 export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
 export interface WalkPos { x: number; z: number; ry: number }
+
+export interface TranscriptLine { id: string; playerId: string; room: string; text: string; ts: number; when: string }
 
 export interface PromptView { id: string; kind: 'livedie' | 'rps' | 'point'; title: string; playerIds: string[]; options: string[]; answers: Record<string, string>; public: boolean; endsAt: number | null; result: string | null; applied: boolean }
 

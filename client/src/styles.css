@@ -681,3 +681,10 @@ textarea.notes { width: 100%; min-height: 180px; }
 .countdown-big.small { font-size: 1.2rem; }
 .pointing { position: fixed; top: 4.5rem; left: 50%; transform: translateX(-50%); z-index: 60; padding: .5rem .9rem; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--ink); }
 .badge.ughat { top: -6px; left: 50%; transform: translateX(-50%); font-size: .95rem; background: transparent; border: 0; }
+
+/* ---------------- voice transcript */
+.voice-status.transcribed { color: #ffcf6b; border-color: #8a6a2a; }
+.transcript { display: flex; flex-direction: column; gap: .4rem; min-height: 0; flex: 1; }
+.transcript input { flex: 1; min-width: 6rem; }
+.transcript-log { max-height: 55vh; }
+.tr-room { margin: .5rem 0 .15rem; font: 600 .8rem 'Cinzel', serif; color: var(--candle); border-bottom: 1px solid #3b3343; }
