@@ -29,6 +29,10 @@ export const TYPE_TIPS: Record<CharacterType, string[]> = {
   fabled: [
     'Fabled are not players: the Storyteller adds them to adjust the game. Everyone knows which Fabled are in play.',
   ],
+  loric: [
+    'Loric are not players: like Fabled, the Storyteller adds them and everyone knows they are in play, but they change how the whole game works.',
+    'Read the Loric carefully before the game starts: it can change speaking, voting or what you know about yourself.',
+  ],
 };
 
 export const ALMANAC: Record<string, AlmanacEntry> = {

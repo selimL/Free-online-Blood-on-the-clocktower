@@ -202,3 +202,12 @@ Blood on the Clocktower, its character names, ability text and night order are Â
 - any official token artwork. None is included, because avatars and icons are drawn procedurally.
 
 The Pandemonium Institute also publishes its own official online platform. A public release should take that into account.
+
+## Experimental characters and Loric
+
+Added from the supplied *Experimental Characters Reference*: 30 Townsfolk, 11 Outsiders, 15 Minions, 10 Demons and 3 Travellers (edition `exp`, used on custom scripts), plus the 11 Loric as a new Storyteller-side type (`loric`, chosen with the Fabled; Bootlegger, Gardener and Storm Catcher moved from Fabled to Loric). Deus ex Fiasco and Ferryman were already present as Fabled.
+
+- Abilities are paraphrased; wording and balance of Experimental characters may still change, so check the wiki.
+- Their places in the night order are approximate (the official order was not available offline).
+- Like most characters, their effects are run by the Storyteller through the Grimoire. Automated: Use/Claim Ability buttons for Alsaahir, Psychopath, Goblin, Gangster (public) and Fisherman, Amnesiac, Wizard (private); a Demon-less bag is allowed with the Summoner or the Atheist; random bags never pick Experimental characters unless they are on the script.
+- Not automated yet (the Storyteller handles them by hand): double votes (Banshee, God of Ug), forced or secret voting (Zealot, Organ Grinder), group actions (Boomdandy, Al-Hadikhia, Psychopath's rock-paper-scissors), special win conditions, and the two Loric that need special support, Knaves (two Storytellers) and Tor (hidden character cards).

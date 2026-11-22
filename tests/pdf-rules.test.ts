@@ -200,9 +200,9 @@ describe('house rules from the PDF', () => {
 
 describe('custom scripts', () => {
   it('parses Script Tool JSON with _meta, objects and other id spellings', () => {
-    const r = parseScript('[{"id":"_meta","name":"Mine"},"washerwoman",{"id":"fortune_teller"},"scarlet_woman","huntsman"]');
+    const r = parseScript('[{"id":"_meta","name":"Mine"},"washerwoman",{"id":"fortune_teller"},"scarlet_woman","huntsman","my_homebrew_guy"]');
     expect(r.name).toBe('Mine');
-    expect(r.ids).toEqual(['washerwoman', 'fortuneteller', 'scarletwoman']);
-    expect(r.unknown).toEqual(['huntsman']);
+    expect(r.ids).toEqual(['washerwoman', 'fortuneteller', 'scarletwoman', 'huntsman']); // Experimental characters are known now
+    expect(r.unknown).toEqual(['my_homebrew_guy']);
   });
 });

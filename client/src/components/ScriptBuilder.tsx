@@ -1,6 +1,6 @@
 // Build a custom script from any edition's characters, save it, export it, and share it.
 import { useMemo, useState } from 'react';
-import { CHARACTERS, CHARACTER_BY_ID, EDITIONS, parseScript } from '../../../shared/characters';
+import { CHARACTERS, CHARACTER_BY_ID, EDITION_NAMES, EDITION_SHORT, parseScript } from '../../../shared/characters';
 import { Modal, TYPE_LABEL } from './Overlays';
 import { pushAlert } from '../net';
 import { saveScript, toScriptJson, shareLink, newScriptId, type SavedScript } from '../scripts';
@@ -65,7 +65,7 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
               <div key={c.id} className="sb-row">
                 <label className={`sb-char ${has.has(c.id) ? 'on' : ''}`}>
                   <input type="checkbox" checked={has.has(c.id)} onChange={() => toggle(c.id)} /> {c.name}
-                  <span className="sb-ed">{c.edition === 'tb' ? 'TB' : c.edition === 'bmr' ? 'BMR' : c.edition === 'snv' ? 'S&V' : ''}</span>
+                  <span className={`sb-ed ${c.edition}`} title={EDITION_NAMES[c.edition]}>{EDITION_SHORT[c.edition]}</span>
                 </label>
                 <button type="button" className={`sb-info ${info === c.id ? 'on' : ''}`} aria-expanded={info === c.id}
                   aria-label={`What does the ${c.name} do?`} title="What does this character do?" onClick={() => setInfo(info === c.id ? null : c.id)}>ⓘ</button>
@@ -87,7 +87,7 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
         <button className="btn" onClick={save} disabled={!ids.length}>💾 Save to My scripts</button>
         {onUse && <button className="btn primary" disabled={problems.length > 0} onClick={() => { saveScript(script); onUse(script); onClose(); }}>Use in this game</button>}
       </div>
-      <p className="muted small">Editions: {Object.values(EDITIONS).join(', ')}. Saved scripts live in this browser.</p>
+      <p className="muted small">Editions: {['tb', 'bmr', 'snv', 'exp'].map(e => `${EDITION_NAMES[e as 'tb']} (${EDITION_SHORT[e as 'tb']})`).join(', ')}. Experimental characters may still change: check the wiki. Saved scripts live in this browser.</p>
     </Modal>
   );
 }

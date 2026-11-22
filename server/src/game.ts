@@ -599,10 +599,10 @@ export class Game {
       Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && !!CHARACTER_BY_ID[id] && filter(CHARACTER_BY_ID[id])) : undefined;
     if (patch.edition && ['tb', 'bmr', 'snv', 'custom'].includes(patch.edition)) s.edition = patch.edition;
     if (patch.characters && !this.started) {
-      const list = known(patch.characters, ch => !['traveller', 'fabled'].includes(ch.type));
+      const list = known(patch.characters, ch => !['traveller', 'fabled', 'loric'].includes(ch.type));
       if (list) s.characters = [...new Set(list)];
     }
-    if (patch.fabled) s.fabled = known(patch.fabled, ch => ch.type === 'fabled') ?? s.fabled;
+    if (patch.fabled) s.fabled = known(patch.fabled, ch => ch.type === 'fabled' || ch.type === 'loric') ?? s.fabled;
     if (patch.bootleggerRules !== undefined) s.bootleggerRules = cleanText(patch.bootleggerRules, 2000);
     if (patch.djinnRules !== undefined) s.djinnRules = cleanText(patch.djinnRules, 2000);
     if (Array.isArray(patch.script) && !this.started) {
@@ -651,7 +651,8 @@ export class Game {
     if (residents.length > MAX_PLAYERS) fail(`At most ${MAX_PLAYERS} players.`);
     const bag = this.settings.characters;
     if (bag.length !== residents.length) fail(`Select exactly ${residents.length} characters (selected ${bag.length}).`);
-    if (!bag.some(id => CHARACTER_BY_ID[id].type === 'demon')) fail('The bag needs a Demon.');
+    // a Demon is needed, except with the Summoner (who makes one on night 3) or the Atheist (no evil at all)
+    if (!bag.some(id => CHARACTER_BY_ID[id].type === 'demon') && !bag.includes('summoner') && !bag.includes('atheist')) fail('The bag needs a Demon.');
     const editions = new Set(bag.map(id => CHARACTER_BY_ID[id].edition));
     const pool = (type: Character['type']) => CHARACTERS.filter(ch => ch.type === type && editions.has(ch.edition) && !bag.includes(ch.id));
     const shuffled = shuffle(bag);

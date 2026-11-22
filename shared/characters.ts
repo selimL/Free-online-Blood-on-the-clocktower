@@ -1,12 +1,12 @@
-// Character data for the three official editions plus Travellers and Fabled.
+// Character data for the three official editions, the Experimental characters, Travellers, Fabled and Loric.
 // Ability descriptions are PARAPHRASED summaries of each character's mechanics,
 // not the official wording. For the exact official text and rulings see
 // https://wiki.bloodontheclocktower.com (not reachable from the build sandbox,
 // so verify mechanics there). Characters © The Pandemonium Institute.
 // Private, non-commercial use only.
 
-export type CharacterType = 'townsfolk' | 'outsider' | 'minion' | 'demon' | 'traveller' | 'fabled';
-export type Edition = 'tb' | 'bmr' | 'snv' | 'fabled';
+export type CharacterType = 'townsfolk' | 'outsider' | 'minion' | 'demon' | 'traveller' | 'fabled' | 'loric';
+export type Edition = 'tb' | 'bmr' | 'snv' | 'exp' | 'fabled';
 export type Alignment = 'good' | 'evil';
 
 export interface Character {
@@ -20,11 +20,15 @@ export interface Character {
   reminders?: string[];
 }
 
-export const EDITIONS: Record<Exclude<Edition, 'fabled'>, string> = {
+/** The three base editions (each a complete script on its own). */
+export const EDITIONS: Record<'tb' | 'bmr' | 'snv', string> = {
   tb: 'Trouble Brewing',
   bmr: 'Bad Moon Rising',
   snv: 'Sects & Violets',
 };
+/** Every group of characters, including Experimental (used on custom scripts) and Fabled/Loric. */
+export const EDITION_NAMES: Record<Edition, string> = { ...EDITIONS, exp: 'Experimental', fabled: 'Fabled & Loric' };
+export const EDITION_SHORT: Record<Edition, string> = { tb: 'TB', bmr: 'BMR', snv: 'S&V', exp: 'EXP', fabled: '' };
 
 const c = (
   edition: Edition, type: CharacterType, id: string, name: string, ability: string,
@@ -138,11 +142,92 @@ export const CHARACTERS: Character[] = [
   c('fabled', 'fabled', 'sentinel', 'Sentinel', 'There might be one more, or one fewer, Outsider in play than normal.'),
   c('fabled', 'fabled', 'spiritofivory', 'Spirit of Ivory', 'There can be at most one extra evil player.'),
   c('fabled', 'fabled', 'djinn', 'Djinn', 'Announces that jinx rules are in effect and tells every player which ones.'),
-  c('fabled', 'fabled', 'stormcatcher', 'Storm Catcher', 'Name a good character. If it is in play, it can only die by execution, but evil players learn who has it.'),
-  c('fabled', 'fabled', 'bootlegger', 'Bootlegger', 'This script uses homebrew characters or rules.'),
   c('fabled', 'fabled', 'deusexfiasco', 'Deus ex Fiasco', 'At least once per game, the Storyteller makes a deliberate mistake, then corrects it and admits it publicly.'),
   c('fabled', 'fabled', 'ferryman', 'Ferryman', 'On the last day, every dead player gets their vote token back.'),
-  c('fabled', 'fabled', 'gardener', 'Gardener', 'The Storyteller chooses some players\' characters.'),
+  // ---------------- Experimental (official characters beyond the base editions; for custom scripts) ----------------
+  // Paraphrased from the supplied Experimental Characters reference. Wording and balance may still change: check the wiki.
+  c('exp', 'townsfolk', 'acrobat', 'Acrobat', 'Each night except the first, pick a player: if they are, or become, drunk or poisoned tonight, you die.', { reminders: ['Dead'] }),
+  c('exp', 'townsfolk', 'alchemist', 'Alchemist', 'You have the ability of a Minion that is not in play.', { reminders: ['Is the Alchemist'] }),
+  c('exp', 'townsfolk', 'alsaahir', 'Alsaahir', 'Each day, you may publicly guess which players are Minions and which is the Demon. If you are completely right, good wins.'),
+  c('exp', 'townsfolk', 'amnesiac', 'Amnesiac', 'You do not know your own ability. Each day you may privately guess it and learn how close you are.', { reminders: ['?'] }),
+  c('exp', 'townsfolk', 'atheist', 'Atheist', 'The Storyteller may break the game rules. If the Storyteller is executed, good wins. [No evil characters]', { setup: 'No evil characters in play' }),
+  c('exp', 'townsfolk', 'balloonist', 'Balloonist', 'Each night, learn a player of a different character type than the player you learned last night. [+0 or +1 Outsider]', { setup: '+0 or +1 Outsider', reminders: ['Seen Townsfolk', 'Seen Outsider', 'Seen Minion', 'Seen Demon'] }),
+  c('exp', 'townsfolk', 'banshee', 'Banshee', 'If the Demon kills you, everyone learns it. From then on you may nominate twice per day and vote twice per nomination.', { reminders: ['Has ability'] }),
+  c('exp', 'townsfolk', 'bountyhunter', 'Bounty Hunter', 'You start knowing one evil player. If that player dies, you learn another evil player that night. [One Townsfolk is evil]', { setup: 'One Townsfolk is evil', reminders: ['Known', 'Evil'] }),
+  c('exp', 'townsfolk', 'cannibal', 'Cannibal', 'You have the ability of the most recently executed player. If that player was evil, you are poisoned until a good player is executed.', { reminders: ['Poisoned', 'Died today'] }),
+  c('exp', 'townsfolk', 'choirboy', 'Choirboy', 'If the Demon kills the King, you learn which player is the Demon. [+ the King]', { setup: 'The King is in play' }),
+  c('exp', 'townsfolk', 'cultleader', 'Cult Leader', 'Each night, you take on the alignment of one of your living neighbours. If every good player chooses to join your cult, your team wins.'),
+  c('exp', 'townsfolk', 'engineer', 'Engineer', 'Once per game, at night, choose which Minions or which Demon are in play (the evil characters change).', { reminders: ['No ability'] }),
+  c('exp', 'townsfolk', 'farmer', 'Farmer', 'If you die at night, a living good player becomes a Farmer.'),
+  c('exp', 'townsfolk', 'fisherman', 'Fisherman', 'Once per game, during the day, visit the Storyteller for advice to help your team win.', { reminders: ['No ability'] }),
+  c('exp', 'townsfolk', 'general', 'General', 'Each night, learn which team the Storyteller believes is winning: good, evil, or neither.'),
+  c('exp', 'townsfolk', 'highpriestess', 'High Priestess', 'Each night, learn which player the Storyteller believes you should talk to most.'),
+  c('exp', 'townsfolk', 'huntsman', 'Huntsman', 'Once per game, at night, choose a living player: if they are the Damsel, she becomes a Townsfolk not in play. [+ the Damsel]', { setup: 'The Damsel is in play', reminders: ['No ability'] }),
+  c('exp', 'townsfolk', 'king', 'King', 'Each night, if the dead equal or outnumber the living, learn one living character. The Demon knows who you are.'),
+  c('exp', 'townsfolk', 'knight', 'Knight', 'You start knowing two players who are not the Demon.', { reminders: ['Know'] }),
+  c('exp', 'townsfolk', 'lycanthrope', 'Lycanthrope', 'Each night except the first, choose a living player: if they are good, they die and the Demon does not kill tonight. One good player registers as evil.', { reminders: ['Dead', 'Faux paw'] }),
+  c('exp', 'townsfolk', 'magician', 'Magician', 'The Demon thinks you are a Minion. Minions think you are the Demon.'),
+  c('exp', 'townsfolk', 'nightwatchman', 'Nightwatchman', 'Once per game, at night, choose a player: they learn who you are.', { reminders: ['No ability'] }),
+  c('exp', 'townsfolk', 'noble', 'Noble', 'You start knowing three players, exactly one of whom is evil.', { reminders: ['Seen'] }),
+  c('exp', 'townsfolk', 'pixie', 'Pixie', 'You start knowing one Townsfolk in play. If you are "mad" about being that character, you gain its ability when its holder dies.', { reminders: ['Mad', 'Has ability'] }),
+  c('exp', 'townsfolk', 'poppygrower', 'Poppy Grower', 'Minions and the Demon do not learn each other. When you die, they learn each other that night.', { reminders: ['Evil wakes'] }),
+  c('exp', 'townsfolk', 'preacher', 'Preacher', 'Each night, choose a player: a Minion chosen this way learns it, and loses their ability.', { reminders: ['At a sermon'] }),
+  c('exp', 'townsfolk', 'princess', 'Princess', 'On your first day, if you nominated and executed a player, the Demon does not kill that night.', { reminders: ['Safe'] }),
+  c('exp', 'townsfolk', 'shugenja', 'Shugenja', 'You start knowing whether your nearest evil player is clockwise or anticlockwise from you (if equally close, either may be shown).'),
+  c('exp', 'townsfolk', 'steward', 'Steward', 'You start knowing one good player.', { reminders: ['Know'] }),
+  c('exp', 'townsfolk', 'villageidiot', 'Village Idiot', 'Each night, choose a player: learn their alignment. [+0 to +2 extra Village Idiots; one of the extras is drunk]', { setup: '+0 to +2 Village Idiots (one extra is drunk)', reminders: ['Drunk'] }),
+  c('exp', 'outsider', 'damsel', 'Damsel', 'All Minions know a Damsel is in play. If a Minion publicly guesses who you are (once), your team loses.', { reminders: ['Guess used'] }),
+  c('exp', 'outsider', 'golem', 'Golem', 'You may only nominate once per game. When you nominate, if the nominee is not the Demon, they die.', { reminders: ['Can not nominate'] }),
+  c('exp', 'outsider', 'hatter', 'Hatter', 'If you die, the Minions and Demon may choose new Minion and Demon characters to become that night.', { reminders: ['Tea party tonight'] }),
+  c('exp', 'outsider', 'heretic', 'Heretic', 'Whoever wins, loses, and whoever loses, wins, even if you are dead.'),
+  c('exp', 'outsider', 'hermit', 'Hermit', 'You have every Outsider ability. [-0 or -1 Outsider]', { setup: '-0 or -1 Outsider' }),
+  c('exp', 'outsider', 'ogre', 'Ogre', 'On your first night, choose another player: you secretly become their alignment, even if drunk or poisoned.', { reminders: ['Friend'] }),
+  c('exp', 'outsider', 'plaguedoctor', 'Plague Doctor', 'When you die, the Storyteller gains a Minion ability.', { reminders: ['Storyteller ability'] }),
+  c('exp', 'outsider', 'politician', 'Politician', 'If you were the player most responsible for your team losing, you change alignment and win, even if dead.'),
+  c('exp', 'outsider', 'puzzlemaster', 'Puzzlemaster', 'One player is drunk, even if you die. If you guess who (once), you learn the Demon, but a wrong guess gives false information.', { reminders: ['Drunk', 'Guess used'] }),
+  c('exp', 'outsider', 'snitch', 'Snitch', 'Each Minion gets three not-in-play characters as bluffs.'),
+  c('exp', 'outsider', 'zealot', 'Zealot', 'While five or more players are alive, you must vote whenever a vote is held.'),
+  c('exp', 'minion', 'boffin', 'Boffin', 'The Demon (even if drunk or poisoned) has the ability of a good character not in play. You both know which.'),
+  c('exp', 'minion', 'boomdandy', 'Boomdandy', 'If you are executed, all but three players die. After a 10-second countdown, the player most others point at dies.'),
+  c('exp', 'minion', 'fearmonger', 'Fearmonger', 'Each night, choose a player: if you nominate and execute them, their team loses. Everyone learns when you choose a new player.', { reminders: ['Fear'] }),
+  c('exp', 'minion', 'goblin', 'Goblin', 'If you publicly claim to be the Goblin when nominated and are executed that day, evil wins.', { reminders: ['Claimed'] }),
+  c('exp', 'minion', 'harpy', 'Harpy', 'Each night, choose two players: tomorrow the first must be "mad" that the second is evil, or one or both of them might die.', { reminders: ['Mad', '2nd'] }),
+  c('exp', 'minion', 'marionette', 'Marionette', 'You think you are a good character, but you are not. The Demon knows who you are. [You neighbour the Demon]', { setup: 'Sits next to the Demon; told a good character' }),
+  c('exp', 'minion', 'mezepheles', 'Mezepheles', 'You start knowing a secret word. The first good player to say it becomes evil that night.', { reminders: ['Turns evil', 'No ability'] }),
+  c('exp', 'minion', 'organgrinder', 'Organ Grinder', 'Votes are cast with eyes closed and the tally is secret. Each night, you may choose to be drunk until dusk.', { reminders: ['About to die', 'Drunk'] }),
+  c('exp', 'minion', 'psychopath', 'Psychopath', 'Each day, before nominations, you may publicly choose a player: they die. If executed, you only die if you lose at rock-paper-scissors.'),
+  c('exp', 'minion', 'summoner', 'Summoner', 'You get three bluffs. On the 3rd night, choose a player: they become an evil Demon of your choice. [No Demon at the start]', { setup: 'No Demon in play at the start' }),
+  c('exp', 'minion', 'vizier', 'Vizier', 'Everyone knows who you are. You cannot die by day. If good players voted, you may choose to execute immediately.'),
+  c('exp', 'minion', 'widow', 'Widow', 'On your first night, look at the Grimoire and choose a player: they are poisoned. One good player learns a Widow is in play.', { reminders: ['Poisoned', 'Knows'] }),
+  c('exp', 'minion', 'wizard', 'Wizard', 'Once per game, make a wish to the Storyteller. If granted, it might have a price and leave a clue as to its nature.'),
+  c('exp', 'minion', 'wraith', 'Wraith', 'You may choose to open your eyes at night. You wake when other evil players do.'),
+  c('exp', 'minion', 'xaan', 'Xaan', 'On night X, all Townsfolk are poisoned until dusk. [X Outsiders]', { setup: 'X Outsiders in play', reminders: ['Night 1', 'Night 2', 'Night 3', 'X'] }),
+  c('exp', 'demon', 'alhadikhia', 'Al-Hadikhia', 'Each night except the first, you may choose three players (everyone learns who): each secretly decides to live or die, but if all three live, all three die.', { reminders: ['1', '2', '3'] }),
+  c('exp', 'demon', 'kazali', 'Kazali', 'Each night except the first, choose a player: they die. [You choose which players are which Minions. -? to +? Outsiders]', { setup: 'The Kazali chooses the Minions; Outsider count may change', reminders: ['Dead'] }),
+  c('exp', 'demon', 'legion', 'Legion', 'Each night except the first, a player might die. Executions fail if only evil players voted. You register as a Minion too. [Most players are Legion]', { setup: 'Most players are Legion', reminders: ['Dead', 'About to die'] }),
+  c('exp', 'demon', 'leviathan', 'Leviathan', 'If more than one good player is executed, evil wins. All players know you are in play. After day 5, evil wins.', { reminders: ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Good player executed'] }),
+  c('exp', 'demon', 'lilmonsta', "Lil' Monsta", "Each night, Minions choose who babysits Lil' Monsta and \"is the Demon\". Each night except the first, a player might die. [+1 Minion]", { setup: '+1 Minion; no player holds the Demon token', reminders: ['Is the Demon', 'Dead'] }),
+  c('exp', 'demon', 'lleech', 'Lleech', 'Each night except the first, choose a player: they die. You start by choosing an alive player: they are poisoned, and you die only if they die.', { reminders: ['Dead', 'Poisoned'] }),
+  c('exp', 'demon', 'lordoftyphon', 'Lord of Typhon', 'Each night except the first, choose a player: they die. [Evil characters sit in a line, with you in the middle. +1 Minion. -? to +? Outsiders]', { setup: '+1 Minion; evil sit in a line with the Demon in the middle', reminders: ['Dead'] }),
+  c('exp', 'demon', 'ojo', 'Ojo', 'Each night except the first, choose a character: they die. If they are not in play, the Storyteller chooses who dies.', { reminders: ['Dead'] }),
+  c('exp', 'demon', 'riot', 'Riot', 'On day 3, Minions become Riot, and nominees die but must nominate a living player immediately.'),
+  c('exp', 'demon', 'yaggababble', 'Yaggababble', 'You start knowing a secret phrase. For each time you said it publicly today, a player might die.', { reminders: ['Dead'] }),
+  c('exp', 'traveller', 'cacklejack', 'Cacklejack', 'Each day, choose a player: a different player changes character tonight.'),
+  c('exp', 'traveller', 'gangster', 'Gangster', 'Once per day, you may choose to kill an alive neighbour, if your other alive neighbour agrees.'),
+  c('exp', 'traveller', 'gnome', 'Gnome', 'All players start knowing a player of your alignment. You may choose to kill anyone who nominates them.'),
+
+  // ---------------- Loric (public, Storyteller-side rules that change the whole game; like Fabled) ----------------
+  c('fabled', 'loric', 'bigwig', 'Big Wig', 'Each nominee chooses a player (alive or dead): until voting, only that player may speak for them, and might die if they do not argue that the nominee is good.'),
+  c('fabled', 'loric', 'bootlegger', 'Bootlegger', 'This script has homebrew characters or rules.', { setup: 'Custom rules are listed' }),
+  c('fabled', 'loric', 'gardener', 'Gardener', 'The Storyteller assigns one or more players\' characters.', { setup: 'The Storyteller assigns characters' }),
+  c('fabled', 'loric', 'godofug', 'God of Ug', 'The player wearing the "Ug hat" may only use one-syllable words, and their vote counts twice. If they slip, the hat passes on.', { setup: 'The hat is given at the start (it may be refused)' }),
+  c('fabled', 'loric', 'hindu', 'Hindu', 'The first four players to die come back as Travellers of their original alignment, chosen by the Storyteller.'),
+  c('fabled', 'loric', 'knaves', 'Knaves', 'There are two Storytellers: one always gives true character information, the other always false. Players choose whom to ask. Once per game, at dusk, they may swap roles.', { setup: 'Two Storytellers (not supported by this table: run it with one Storyteller playing both voices)' }),
+  c('fabled', 'loric', 'pope', 'Pope', 'Some good characters appear in more than one copy; the Demon may get duplicates as bluffs.', { setup: 'Duplicate tokens' }),
+  c('fabled', 'loric', 'stormcatcher', 'Storm Catcher', 'Name a good character. If it is in play, it can only die by execution, but evil players learn who has it.', { setup: 'A character is named' }),
+  c('fabled', 'loric', 'tor', 'Tor', 'Characters and alignments are hidden from everyone until each player dies. Minions and the Demon do not know each other.', { setup: 'Storyteller deals the tokens (players keep their card hidden: use "Shown as: none" in the Grimoire)' }),
+  c('fabled', 'loric', 'ventriloquist', 'Ventriloquist', 'A nominee who presents as a character they have not claimed before can survive execution that day.'),
+  c('fabled', 'loric', 'zenomancer', 'Zenomancer', 'The Storyteller secretly gives players goals. Achieving one earns one true piece of information, even if drunk or poisoned.', { setup: 'Goals are assigned' }),
 ];
 
 export const CHARACTER_BY_ID: Record<string, Character> = Object.fromEntries(CHARACTERS.map(ch => [ch.id, ch]));
@@ -159,20 +244,23 @@ export const SETUP_COUNTS: Record<number, [number, number, number, number]> = {
 // Night order (combined official order for the three editions, condensed).
 // 'minioninfo' / 'demoninfo' / 'dusk' / 'dawn' are pseudo-entries.
 export const FIRST_NIGHT_ORDER = [
-  'dusk', 'philosopher', 'minioninfo', 'lunatic', 'demoninfo', 'sailor', 'snakecharmer', 'eviltwin',
-  'witch', 'cerenovus', 'godfather', 'devilsadvocate', 'poisoner', 'courtier', 'bureaucrat', 'thief',
-  'barista', 'apprentice', 'pukka', 'grandmother', 'washerwoman', 'librarian', 'investigator', 'chef',
-  'empath', 'fortuneteller', 'butler', 'clockmaker', 'dreamer', 'seamstress', 'mathematician',
-  'chambermaid', 'spy', 'dawn',
+  'dusk', 'wraith', 'lordoftyphon', 'kazali', 'boffin', 'philosopher', 'alchemist', 'poppygrower', 'yaggababble', 'magician',
+  'minioninfo', 'snitch', 'lunatic', 'summoner', 'demoninfo', 'king', 'sailor', 'marionette', 'engineer', 'preacher', 'lilmonsta', 'lleech',
+  'xaan', 'poisoner', 'widow', 'courtier', 'snakecharmer', 'godfather', 'organgrinder', 'devilsadvocate', 'eviltwin', 'witch', 'cerenovus',
+  'fearmonger', 'harpy', 'mezepheles', 'pukka', 'pixie', 'huntsman', 'damsel', 'amnesiac', 'washerwoman', 'librarian', 'investigator',
+  'chef', 'empath', 'fortuneteller', 'butler', 'grandmother', 'clockmaker', 'dreamer', 'seamstress', 'steward', 'knight', 'noble', 'balloonist',
+  'shugenja', 'villageidiot', 'bountyhunter', 'nightwatchman', 'cultleader', 'spy', 'ogre', 'highpriestess', 'general', 'chambermaid',
+  'mathematician', 'bureaucrat', 'thief', 'barista', 'apprentice', 'dawn',
 ];
 export const OTHER_NIGHT_ORDER = [
-  'dusk', 'philosopher', 'barista', 'bonecollector', 'harlot', 'sailor', 'snakecharmer', 'witch',
-  'cerenovus', 'pithag', 'bureaucrat', 'thief', 'poisoner', 'devilsadvocate', 'courtier', 'innkeeper',
-  'monk', 'gambler', 'exorcist', 'scarletwoman', 'lunatic', 'zombuul', 'pukka', 'shabaloth', 'po',
-  'fanggu', 'nodashii', 'vortox', 'vigormortis', 'imp', 'assassin', 'godfather', 'gossip', 'tinker',
-  'moonchild', 'grandmother', 'sweetheart', 'barber', 'sage', 'professor', 'ravenkeeper', 'undertaker',
-  'empath', 'fortuneteller', 'dreamer', 'flowergirl', 'towncrier', 'oracle', 'seamstress', 'juggler',
-  'mathematician', 'chambermaid', 'butler', 'spy', 'dawn',
+  'dusk', 'wraith', 'philosopher', 'poppygrower', 'barista', 'bonecollector', 'harlot', 'sailor', 'engineer', 'preacher', 'xaan',
+  'poisoner', 'courtier', 'innkeeper', 'snakecharmer', 'witch', 'cerenovus', 'pithag', 'fearmonger', 'harpy', 'mezepheles',
+  'scarletwoman', 'summoner', 'lunatic', 'exorcist', 'lycanthrope', 'legion', 'imp', 'zombuul', 'pukka', 'shabaloth', 'po', 'fanggu',
+  'nodashii', 'vortox', 'lordoftyphon', 'vigormortis', 'ojo', 'alhadikhia', 'lleech', 'lilmonsta', 'yaggababble', 'kazali', 'assassin',
+  'godfather', 'gossip', 'acrobat', 'hatter', 'barber', 'sweetheart', 'sage', 'banshee', 'professor', 'choirboy', 'huntsman', 'damsel',
+  'amnesiac', 'farmer', 'tinker', 'moonchild', 'grandmother', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'dreamer',
+  'flowergirl', 'towncrier', 'oracle', 'seamstress', 'juggler', 'balloonist', 'villageidiot', 'king', 'bountyhunter', 'nightwatchman',
+  'cultleader', 'butler', 'spy', 'highpriestess', 'general', 'chambermaid', 'mathematician', 'monk', 'gambler', 'bureaucrat', 'thief', 'dawn',
 ];
 export const NIGHT_PSEUDO: Record<string, { name: string; text: string }> = {
   dusk: { name: 'Dusk', text: 'Check all players are asleep.' },
@@ -200,8 +288,17 @@ export const DAY_ABILITIES: Record<string, DayAbility> = {
   moonchild: { public: true, target: true, frequency: 'once', resolution: 'note', requiresDead: true, prompt: 'You have died. Publicly choose one living player.' },
   artist: { public: false, target: false, frequency: 'once', resolution: 'note', prompt: 'You will be taken to the Storyteller to ask one yes/no question.' },
   savant: { public: false, target: false, frequency: 'daily', resolution: 'note', prompt: 'You will be taken to the Storyteller to learn 2 things.' },
+  // Experimental
+  alsaahir: { public: true, target: false, frequency: 'daily', resolution: 'note', prompt: 'Publicly name which players you think are the Minions and which is the Demon, then press Done.' },
+  psychopath: { public: true, target: true, frequency: 'daily', resolution: 'kill', prompt: 'Before nominations, publicly choose a player.' },
+  goblin: { public: true, target: false, frequency: 'daily', resolution: 'note', prompt: 'You are nominated: publicly claim to be the Goblin, then press Done.' },
+  gangster: { public: true, target: true, frequency: 'daily', resolution: 'kill', prompt: 'Choose a living neighbour (your other living neighbour must agree out loud).' },
+  fisherman: { public: false, target: false, frequency: 'once', resolution: 'note', prompt: 'You will be taken to the Storyteller for advice.' },
+  amnesiac: { public: false, target: false, frequency: 'daily', resolution: 'note', prompt: 'You will be taken to the Storyteller to guess your ability.' },
+  wizard: { public: false, target: false, frequency: 'once', resolution: 'note', prompt: 'You will be taken to the Storyteller to make your wish.' },
 };
-export const CLAIMABLE_ABILITIES = Object.entries(DAY_ABILITIES).filter(([, a]) => a.public).map(([id]) => id);
+// good players' public abilities are the ones worth bluffing (and Travellers are public anyway)
+export const CLAIMABLE_ABILITIES = Object.entries(DAY_ABILITIES).filter(([id, a]) => a.public && ['townsfolk', 'outsider'].includes(CHARACTER_BY_ID[id]?.type)).map(([id]) => id);
 
 export const ROOM_NAMES = ['The Tavern', 'The Chapel', 'The Graveyard', 'The Library', 'The Apothecary', 'The Blacksmith', 'The Clocktower Stair', 'The Old Mill'];
 export const ROOM_ICONS = ['🍺', '⛪', '🪦', '📚', '⚗️', '⚒️', '🕰️', '🌾'];

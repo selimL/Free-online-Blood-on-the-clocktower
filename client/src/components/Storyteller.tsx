@@ -530,7 +530,8 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
   const counts = TYPES.map(t => bag.filter(id => CHARACTER_BY_ID[id]?.type === t).length);
   const modifiers = bag.map(id => CHARACTER_BY_ID[id]).filter(c => c?.setup);
   const randomFill = () => {
-    const pick = (t: CharacterType, n: number) => pool.filter(c => c.type === t).sort(() => Math.random() - 0.5).slice(0, n).map(c => c.id);
+    // Experimental characters only go into a random bag when they are on the script
+    const pick = (t: CharacterType, n: number) => pool.filter(c => c.type === t && (c.edition !== 'exp' || settings.script.includes(c.id))).sort(() => Math.random() - 0.5).slice(0, n).map(c => c.id);
     save({ characters: TYPES.flatMap((t, i) => pick(t, rec[i])) });
   };
   return (
@@ -593,10 +594,11 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         <HouseRulesEditor rules={settings.houseRules} onChange={r => save({ houseRules: { ...settings.houseRules, ...r } })} />
       </section>
       <section>
-        <h3>Fabled</h3>
-        <div className="char-grid">{CHARACTERS.filter(c => c.type === 'fabled').map(c => (
+        <h3>Fabled &amp; Loric</h3>
+        <p className="muted small">Both are public and not held by a player. Loric change how the whole game works.</p>
+        <div className="char-grid">{CHARACTERS.filter(c => c.type === 'fabled' || c.type === 'loric').map(c => (
           <label key={c.id} className={`char-pick ${settings.fabled.includes(c.id) ? 'on' : ''}`} title={c.ability}>
-            <input type="checkbox" checked={settings.fabled.includes(c.id)} onChange={() => save({ fabled: settings.fabled.includes(c.id) ? settings.fabled.filter(x => x !== c.id) : [...settings.fabled, c.id] })} /> {c.name}
+            <input type="checkbox" checked={settings.fabled.includes(c.id)} onChange={() => save({ fabled: settings.fabled.includes(c.id) ? settings.fabled.filter(x => x !== c.id) : [...settings.fabled, c.id] })} /> {c.name}{c.type === 'loric' ? <span className="muted small"> (Loric)</span> : null}
           </label>
         ))}</div>
         {settings.fabled.includes('bootlegger') && <label className="field">Bootlegger rules (shown to all players)
@@ -628,7 +630,7 @@ function ScriptImport({ settings }: { settings: Settings }) {
       const { ids, unknown, name } = parseScript(text);
       if (!ids.length) { setMsg('No known characters found in that script.'); return; }
       void act('st:settings', { settings: { script: ids, scriptName: name, characters: settings.characters.filter(id => ids.includes(id)) } });
-      setMsg(`Loaded ${ids.length} characters${unknown.length ? `; ${unknown.length} not supported (e.g. Experimental): ${unknown.slice(0, 6).join(', ')}` : ''}.`);
+      setMsg(`Loaded ${ids.length} characters${unknown.length ? `; ${unknown.length} not recognised (homebrew?): ${unknown.slice(0, 6).join(', ')}` : ''}.`);
       setOpen(false);
     } catch (e) { setMsg(`Could not read the script: ${(e as Error).message}`); }
   };

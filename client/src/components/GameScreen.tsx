@@ -586,7 +586,7 @@ function ClaimAbilityDialog({ view, onClose, setConfirm }: { view: GameView; onC
 function ClaimLabelDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) : null;
   const [val, setVal] = useState(me?.claim ?? '');
-  const options = CHARACTERS.filter(c => c.type !== 'fabled');
+  const options = CHARACTERS.filter(c => c.type !== 'fabled' && c.type !== 'loric');
   return (
     <Modal title="Your claimed character" onClose={onClose}>
       <p className="muted">Shown next to your name. Entirely your choice — it may be a bluff, and it looks the same either way.</p>

@@ -1,10 +1,10 @@
 // The Almanac: every character's ability, when they wake, tips, and how they affect others.
 import { useMemo, useState } from 'react';
-import { CHARACTERS, CHARACTER_BY_ID, EDITIONS, FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, NIGHT_PSEUDO } from '../../../shared/characters';
+import { CHARACTERS, CHARACTER_BY_ID, EDITION_NAMES, FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, NIGHT_PSEUDO } from '../../../shared/characters';
 import { ALMANAC, TYPE_TIPS } from '../../../shared/almanac';
 import { Modal, CharacterToken, TYPE_LABEL } from './Overlays';
 
-const EDITION_LABEL: Record<string, string> = { ...EDITIONS, fabled: 'Fabled' };
+const EDITION_LABEL: Record<string, string> = EDITION_NAMES;
 const realOrder = (order: string[]) => order.filter(id => !NIGHT_PSEUDO[id]);
 const FIRST = realOrder(FIRST_NIGHT_ORDER), OTHER = realOrder(OTHER_NIGHT_ORDER);
 
@@ -43,7 +43,7 @@ export function Almanac({ onClose, initial, inPlay }: { onClose: () => void; ini
             <p className="muted small">{EDITION_LABEL[ch.edition]} · {TYPE_LABEL[ch.type]}
               {FIRST.includes(ch.id) && <> · wakes on the first night (#{FIRST.indexOf(ch.id) + 1})</>}
               {OTHER.includes(ch.id) && <> · wakes on other nights (#{OTHER.indexOf(ch.id) + 1})</>}
-              {!FIRST.includes(ch.id) && !OTHER.includes(ch.id) && ch.type !== 'fabled' && <> · does not wake at night</>}
+              {!FIRST.includes(ch.id) && !OTHER.includes(ch.id) && ch.type !== 'fabled' && ch.type !== 'loric' && <> · does not wake at night</>}
             </p>
             {ch.setup && <p><b>Setup:</b> {ch.setup}</p>}
             <h3>Tips</h3>

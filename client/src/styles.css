@@ -667,3 +667,6 @@ textarea.notes { width: 100%; min-height: 180px; }
 .sb-info:hover, .sb-info.on { background: var(--ink); color: var(--parchment); }
 .sb-ability { grid-column: 1 / -1; margin: .1rem 0 .35rem .3rem; padding: .3rem .45rem; border-left: 3px solid var(--candle); background: rgba(255, 255, 255, .35);
   font-size: .8rem; line-height: 1.3; border-radius: 0 6px 6px 0; }
+.sb-ed.exp { opacity: .9; color: #7a3fb0; font-weight: 700; }
+.alm-item.loric { border-left-color: #3f8ab0; }
+.token.loric .token-disc { background: radial-gradient(circle at 35% 30%, #cfe6f2, #3f8ab0); }

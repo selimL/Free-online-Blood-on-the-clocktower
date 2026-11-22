@@ -28,7 +28,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   );
 }
 
-export const TYPE_LABEL: Record<string, string> = { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion', demon: 'Demon', traveller: 'Traveller', fabled: 'Fabled' };
+export const TYPE_LABEL: Record<string, string> = { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion', demon: 'Demon', traveller: 'Traveller', fabled: 'Fabled', loric: 'Loric' };
 
 export function CharacterToken({ ch, small, onClick }: { ch: Character; small?: boolean; onClick?: () => void }) {
   return (
@@ -109,7 +109,7 @@ export function CharactersInPlay({ view, onClose, onPick }: { view: GameView; on
       })}
       {onPick && <p className="muted small">Click a character for tips in the 📚 Almanac.</p>}
       {list.hiddenExists && <p className="hidden-note">+ {list.hiddenCount ?? 'some'} hidden character{list.hiddenCount === 1 ? '' : 's'}</p>}
-      {list.fabled.length > 0 && <><h3>Fabled</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
+      {list.fabled.length > 0 && <><h3>Fabled &amp; Loric</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
       {list.bootleggerRules && <><h3>House rules (Bootlegger)</h3><p className="bootlegger">{list.bootleggerRules}</p></>}
       {list.djinnRules && <><h3>Jinxes (Djinn)</h3><p className="bootlegger">{list.djinnRules}</p></>}
     </Modal>
