@@ -1,3 +1,4 @@
+import { useTokenArt, tokenUrl } from '../tokenArt';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useStore, set, act } from '../net';
 import type { GameView, InfoCard } from '../../../shared/types';
@@ -31,10 +32,13 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
 export const TYPE_LABEL: Record<string, string> = { townsfolk: 'Townsfolk', outsider: 'Outsider', minion: 'Minion', demon: 'Demon', traveller: 'Traveller', fabled: 'Fabled', loric: 'Loric' };
 
 export function CharacterToken({ ch, small, onClick }: { ch: Character; small?: boolean; onClick?: () => void }) {
+  const art = useTokenArt();
   return (
     <div className={`token ${ch.type} ${small ? 'small' : ''} ${onClick ? 'clickable' : ''}`} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? e => { if (e.key === 'Enter') onClick(); } : undefined}>
-      <div className="token-disc"><span>{ch.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span></div>
+      <div className={`token-disc ${art.has(ch.id) ? 'painted' : ''}`}>
+        {art.has(ch.id) ? <img src={tokenUrl(ch.id)} alt="" loading="lazy" /> : <span>{ch.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span>}
+      </div>
       <div className="token-text">
         <b>{ch.name}</b> <span className="type">{TYPE_LABEL[ch.type]}</span>
         {!small && <p>{ch.ability}</p>}

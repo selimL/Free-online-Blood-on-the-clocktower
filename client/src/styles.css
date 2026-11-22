@@ -731,3 +731,6 @@ textarea.notes { width: 100%; min-height: 180px; }
 .admin .row { align-items: center; gap: .6rem; }
 .admin-table { width: 100%; color: var(--ink); }
 .admin-table td, .admin-table th { padding: .3rem .4rem; text-align: left; vertical-align: top; }
+.token-disc.painted { width: 76px; height: 76px; padding: 0; overflow: hidden; background: #120f17; }
+.token-disc.painted img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; transform: scale(1.12); }
+.token.small .token-disc.painted { width: 44px; height: 44px; }
