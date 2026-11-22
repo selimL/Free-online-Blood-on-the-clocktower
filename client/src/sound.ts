@@ -279,3 +279,44 @@ export function setMusic(mood: MusicMood) {
   if (mood === 'off' || musicVolume === 0) return;
   startMood(mood);
 }
+
+// ---------------------------------------------------------------- personal alerts
+export type PingKind = 'nominated' | 'woken' | 'whisper' | 'yourVote' | 'spotlight';
+const PING_KEY = 'botc:alerts';
+export interface AlertPrefs { sound: boolean; vibrate: boolean; notify: boolean }
+let alertPrefs: AlertPrefs = (() => { try { return { sound: true, vibrate: true, notify: false, ...JSON.parse(localStorage.getItem(PING_KEY) ?? '{}') }; } catch { return { sound: true, vibrate: true, notify: false }; } })();
+const aListeners = new Set<() => void>();
+export const useAlertPrefs = () => useSyncExternalStore(cb => { aListeners.add(cb); return () => aListeners.delete(cb); }, () => alertPrefs);
+export function setAlertPrefs(p: Partial<AlertPrefs>) {
+  alertPrefs = { ...alertPrefs, ...p };
+  try { localStorage.setItem(PING_KEY, JSON.stringify(alertPrefs)); } catch { /* ignore */ }
+  aListeners.forEach(l => l());
+}
+const PINGS: Record<PingKind, { notes: number[]; gap: number; vib: number[]; text: string }> = {
+  nominated: { notes: [659, 523, 392], gap: 0.13, vib: [200, 80, 200], text: 'You have been nominated!' },
+  woken: { notes: [523, 784], gap: 0.18, vib: [120, 60, 120], text: 'The Storyteller has woken you.' },
+  whisper: { notes: [880, 1175], gap: 0.09, vib: [60], text: 'The Storyteller sent you a private message.' },
+  yourVote: { notes: [988], gap: 0.1, vib: [250], text: 'The clock hand is on you: your vote is being counted.' },
+  spotlight: { notes: [784, 988], gap: 0.12, vib: [100, 50, 100], text: 'It is your turn to speak.' },
+};
+/** A short personal chime (plus vibration, and a system notification when the tab is hidden). */
+export function ping(kind: PingKind) {
+  const p = PINGS[kind];
+  if (alertPrefs.sound) {
+    const a = audio();
+    if (a) {
+      const t0 = a.ctx.currentTime + 0.02;
+      p.notes.forEach((f, i) => {
+        const o = a.ctx.createOscillator(); const g = a.ctx.createGain();
+        o.type = 'triangle'; o.frequency.value = f;
+        const t = t0 + i * p.gap;
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        o.connect(g).connect(a.out); o.start(t); o.stop(t + 0.55);
+      });
+    }
+  }
+  if (alertPrefs.vibrate && typeof navigator !== 'undefined' && 'vibrate' in navigator) { try { navigator.vibrate(p.vib); } catch { /* ignore */ } }
+  if (alertPrefs.notify && typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try { new Notification('Clocktower Nights', { body: p.text, tag: kind }); } catch { /* ignore */ }
+  }
+}

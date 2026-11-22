@@ -165,6 +165,8 @@ export class Game {
   aboutToDie: { playerId: string; votes: number } | null = null;
   highestVotes = 0;
   executedToday = false;
+  /** Morning summary shown to everyone at dawn (all public information). */
+  dawnRecap: { day: number; died: string[]; executed: string | null; exiled: string[] } | null = null;
   /** Who was executed on the most recent day (for the Undertaker). */
   lastExecutedId: string | null = null;
   speakerId: string | null = null;
@@ -1151,6 +1153,12 @@ export class Game {
     for (const p of this.players) { p.awake = false; }
     this.focusId = null;
     const deaths = this.pendingDawnDeaths.map(id => this.maybePlayer(id)).filter((p): p is Player => !!p);
+    const yesterday = this.day - 1; // (day was already advanced above)
+    this.dawnRecap = {
+      day: this.day, died: deaths.filter(p => p.alive).map(p => p.id),
+      executed: this.lastExecutedId,
+      exiled: this.voteHistory.filter(v => v.day === yesterday && v.exile && v.votes >= v.needed).map(v => v.nomineeId),
+    };
     this.pendingDawnDeaths = [];
     this.nominatedToday.clear(); this.nominatorsToday.clear(); this.extraNominations.clear(); this.abilityDeclarationsToday = 0; this.yaggababbleCount = 0;
     this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null; this.lastExecutedId = null;

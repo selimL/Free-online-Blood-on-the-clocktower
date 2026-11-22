@@ -45,6 +45,50 @@ const set = (p: Partial<VoiceState>) => { state = { ...state, ...p }; listeners.
 export const useVoice = () => useSyncExternalStore(cb => { listeners.add(cb); return () => listeners.delete(cb); }, () => state);
 
 let room: Room | null = null;
+
+// ---- ghost voices: dead players' voices get a faint echo and a cold, airy tone (Web Audio)
+let audioCtx: AudioContext | null = null;
+const getCtx = () => {
+  if (!audioCtx && typeof AudioContext !== 'undefined') {
+    audioCtx = new AudioContext();
+    for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (audioCtx?.state === 'suspended') void audioCtx.resume(); }, { passive: true });
+  }
+  return audioCtx;
+};
+let ghostIds = new Set<string>();
+let ghostImpulse: AudioBuffer | null = null;
+function ghostChain(c: AudioContext): AudioNode[] {
+  if (!ghostImpulse) {
+    // the dry voice at t=0, a soft echo at 0.28 s, and a decaying airy tail
+    const len = Math.floor(c.sampleRate * 1.8);
+    ghostImpulse = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ghostImpulse.getChannelData(ch);
+      d[0] = 0.85;
+      const echo = Math.floor(c.sampleRate * (0.28 + ch * 0.015));
+      d[echo] = 0.32;
+      for (let i = 1; i < len; i++) d[i] += (Math.random() * 2 - 1) * 0.06 * Math.exp(-i / (c.sampleRate * 0.45));
+    }
+  }
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 220;
+  const conv = c.createConvolver(); conv.normalize = false; conv.buffer = ghostImpulse;
+  const g = c.createGain(); g.gain.value = 0.9;
+  return [hp, conv, g];
+}
+function applyGhosts() {
+  const c = getCtx();
+  if (!c) return;
+  for (const { identity, track } of audioTracks.values()) {
+    try { track.setWebAudioPlugins(ghostIds.has(identity) ? ghostChain(c) : []); } catch { /* web audio not available */ }
+  }
+}
+/** Who is dead (their voices sound like ghosts). */
+export function setGhosts(ids: string[]) {
+  const next = new Set(ids);
+  if (next.size === ghostIds.size && [...next].every(i => ghostIds.has(i))) return;
+  ghostIds = next;
+  applyGhosts();
+}
 const audioEls = new Map<string, HTMLMediaElement>();
 const audioTracks = new Map<string, { identity: string; track: RemoteAudioTrack }>();
 
@@ -92,7 +136,7 @@ async function leave() {
 
 async function join(url: string, token: string, roomName: string, location: string) {
   await leave();
-  const r = new Room({ adaptiveStream: true, dynacast: true });
+  const r = new Room({ adaptiveStream: true, dynacast: true, ...(getCtx() ? { webAudioMix: { audioContext: getCtx()! } } : {}) });
   room = r;
   r.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant) => {
     if (track.kind === Track.Kind.Audio) {
@@ -103,6 +147,7 @@ async function join(url: string, token: string, roomName: string, location: stri
       const audio = track as RemoteAudioTrack;
       audioTracks.set(track.sid ?? participant.identity, { identity: participant.identity, track: audio });
       audio.setVolume(volumeFor(participant.identity));
+      if (ghostIds.has(participant.identity) && getCtx()) { try { audio.setWebAudioPlugins(ghostChain(getCtx()!)); } catch { /* ignore */ } }
     } else if (track.kind === Track.Kind.Video) {
       set({ video: { ...state.video, [participant.identity]: track.mediaStreamTrack } });
     }

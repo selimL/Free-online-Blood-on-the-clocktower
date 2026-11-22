@@ -104,3 +104,14 @@ describe('suggested night information', () => {
     expect(killWarnings(g.players[3].id, storytellerView(g))).toEqual([]);
   });
 });
+
+describe('dawn recap', () => {
+  it('summarises the night deaths and yesterday\'s execution', () => {
+    const g = setup();
+    g.beginNight(); g.kill(g.players[2].id); g.beginDay();
+    expect(g.dawnRecap).toEqual({ day: 1, died: [g.players[2].id], executed: null, exiled: [] });
+    g.execute(g.players[4].id);
+    g.endDay(); g.beginDay();
+    expect(g.dawnRecap).toEqual({ day: 2, died: [], executed: g.players[4].id, exiled: [] });
+  });
+});

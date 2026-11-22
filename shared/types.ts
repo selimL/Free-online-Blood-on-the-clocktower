@@ -306,6 +306,8 @@ export interface GameView {
   voteHistory: VoteRecord[] | null;
   /** Today's weather in the 3D town. */
   weather: Weather;
+  /** Morning summary at dawn: who died in the night, who was executed or exiled yesterday. */
+  dawnRecap: { day: number; died: string[]; executed: string | null; exiled: string[] } | null;
   /** Planned start time (ms), shown with a countdown. */
   scheduledFor: number | null;
   /** Group actions the viewer takes part in (or public ones); the Storyteller sees all. */

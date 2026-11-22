@@ -151,6 +151,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     } : null,
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     scheduledFor: g.scheduledFor ?? null,
+    dawnRecap: g.phase === 'day' ? g.dawnRecap ?? null : null,
     prompts: (g.prompts ?? []).filter(pr => isST || pr.public || (viewer && pr.playerIds.includes(viewer.id))).map(pr => ({
       ...pr, answers: isST || pr.public ? { ...pr.answers } : viewer && pr.answers[viewer.id] ? { [viewer.id]: pr.answers[viewer.id] } : {},
     })),

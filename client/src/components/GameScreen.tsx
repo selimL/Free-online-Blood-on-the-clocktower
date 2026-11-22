@@ -4,7 +4,7 @@ import { defaultAvatar, EMOTES } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { CHARACTER_BY_ID, CHARACTERS, CLAIMABLE_ABILITIES, DAY_ABILITIES, ROOM_ART } from '../../../shared/characters';
 import { act, useStore, rpc, set, forgetSession, getStore, saveSession } from '../net';
-import { useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
+import { setGhosts, useVoice, toggleMic, toggleCam, probeRegions, setPushToTalk, setTalking, setVoiceVolume, setPeerVolume, listMics, setMicDevice } from '../voice';
 import { sendEmote } from '../emotes';
 import { sunPosition } from '../daylight';
 import { recordGame } from '../history';
@@ -12,7 +12,7 @@ import { Countdown, downloadIcs, toLocalInput, fromLocalInput } from './Schedule
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
-import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain } from '../sound';
+import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain, ping, useAlertPrefs, setAlertPrefs } from '../sound';
 
 const TownScene = lazy(() => import('../three/TownScene'));
 const RoomScene = lazy(() => import('../three/RoomScene'));
@@ -37,7 +37,7 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
-  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | 'almanac' | null>(null);
+  const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | 'almanac' | 'alerts' | null>(null);
   const [almanacId, setAlmanacId] = useState<string | null>(null);
   const openAlmanac = (id: string | null = null) => { setAlmanacId(id); setModal('almanac'); };
   const [confirm, setConfirm] = useState<ConfirmState>(null);
@@ -94,6 +94,20 @@ export function GameScreen({ view }: { view: GameView }) {
   // background music follows the moment; rain is heard outdoors (or asleep in bed)
   const mood = voting ? 'vote' : night ? 'night' : 'day';
   useEffect(() => { setMusic(mood); }, [mood]);
+  // dead players sound like ghosts
+  const deadIds = view.players.filter(p => !p.alive).map(p => p.id).join(',');
+  useEffect(() => { setGhosts(deadIds ? deadIds.split(',') : []); }, [deadIds]);
+  useEffect(() => () => setGhosts([]), []);
+  // personal alerts: nominated, woken, your vote, your turn to speak
+  const myId = view.self.isStoryteller ? null : view.self.id;
+  const nomKey = view.nomination && !view.nomination.done ? `${view.nomination.nominatorId}>${view.nomination.nomineeId}` : '';
+  useEffect(() => { if (myId && view.nomination && !view.nomination.done && view.nomination.nomineeId === myId) ping('nominated'); }, [nomKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const woken = !view.self.isStoryteller && night && view.self.awake;
+  useEffect(() => { if (woken) ping('woken'); }, [woken]);
+  const myVoteNow = !!myId && view.stage === 'voting' && !!view.nomination && !view.nomination.done && view.nomination.order[view.nomination.voteIndex] === myId;
+  useEffect(() => { if (myVoteNow) ping('yourVote'); }, [myVoteNow]);
+  const mySpotlight = !!myId && view.speakerId === myId;
+  useEffect(() => { if (mySpotlight) ping('spotlight'); }, [mySpotlight]);
   // voice transcript: only with consent, the house rule on, and a live microphone
   const vstate = useVoice();
   const transcribing = !isST && !spectating && !view.self.isStoryteller && !!view.self.transcriptActive && view.self.transcriptConsent === true
@@ -159,7 +173,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
   return (
     <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
-      <TopBar view={view} openAlmanac={() => openAlmanac()} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      <TopBar view={view} openAlerts={() => setModal('alerts')} openAlmanac={() => openAlmanac()} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D || showSleep3D ? 'has-3d' : ''} ${showSleep3D ? 'sleep-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>
@@ -241,11 +255,13 @@ export function GameScreen({ view }: { view: GameView }) {
       {modal === 'customise' && <CustomiseDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'story' && view.story && <StoryDialog view={view} onClose={() => setModal(null)} />}
       {modal === 'voice' && <VoiceSettings view={view} onClose={() => setModal(null)} />}
+      {modal === 'alerts' && <Modal title="🔔 Personal alerts" onClose={() => setModal(null)}><AlertSettings /></Modal>}
       {modal === 'rules' && <Modal title="Table rules" onClose={() => setModal(null)}><ul>{view.tableRules.map(r => <li key={r}>{r}</li>)}</ul></Modal>}
       {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
       <QuestionPrompt view={view} />
       <PromptForPlayer view={view} />
+      <DawnRecap view={view} />
       <TranscriptConsent view={view} />
       <InfoPopup view={view} />
       <TransitionOverlay />
@@ -254,7 +270,7 @@ export function GameScreen({ view }: { view: GameView }) {
   );
 }
 
-function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openAlmanac: () => void; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
+function TopBar({ view, openAlerts, openAlmanac, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openAlerts: () => void; openAlmanac: () => void; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
@@ -289,6 +305,7 @@ function TopBar({ view, openAlmanac, openVoice, openList, openInvite, openRules,
         {!view.self.isStoryteller && view.self.transcriptActive && view.self.transcriptConsent && <span className="voice-status transcribed" title={transcriptionSupported() ? 'Your speech is checked for secret words; only detections are kept, for the Storyteller. Change this in ⚙ Voice settings.' : 'You agreed, but this browser cannot turn speech into text: nothing is checked.'}>🗣 {transcriptionSupported() ? 'listening for words' : 'not supported'}</span>}
         {view.spectators.length > 0 && <span className="watchers" title={view.spectators.map(s => s.name).join(', ')}>👁 {view.spectators.length} watching</span>}
         <VolumeControl />
+        <button className="icon-btn" onClick={openAlerts} title="Personal alerts: chime, vibration, notifications" aria-label="Personal alerts">🔔</button>
         {(view.self.isStoryteller || !view.self.spectator) && <button className="btn small ghost" onClick={openCustomise} title="Change your name and figure">👤 Customise</button>}
         <button className="btn small ghost" onClick={openRules}>⚖ Table rules</button>
         <button className="btn small ghost" onClick={openAlmanac} title="Every character's ability, with tips">📚 Almanac</button>
@@ -344,6 +361,31 @@ function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void })
   );
 }
 
+/** Morning summary at dawn (shown once per day; the Town crier tab keeps the details). */
+function DawnRecap({ view }: { view: GameView }) {
+  const r = view.dawnRecap;
+  const key = r ? `botc:recap:${view.id}:${r.day}` : '';
+  const [closed, setClosed] = useState<string | null>(null);
+  const seen = (() => { try { return !!key && localStorage.getItem(key) === '1'; } catch { return false; } })();
+  if (!r || closed === key || seen || view.stage !== 'discussion') return null;
+  const close = () => { try { localStorage.setItem(key, '1'); } catch { /* ignore */ } setClosed(key); };
+  const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
+  const alive = view.players.filter(p => p.alive && !p.traveller).length;
+  const residents = view.players.filter(p => !p.traveller).length;
+  return (
+    <div className="dawn-recap parchment" role="dialog" aria-label={`Day ${r.day}`}>
+      <h2>☀ Day {r.day}</h2>
+      <ul>
+        <li>{r.died.length ? <>🌙 During the night <b>{r.died.map(name).join(', ')}</b> {r.died.length > 1 ? 'died' : 'died'}.</> : <>🌙 Nobody died in the night.</>}</li>
+        {r.day > 1 && <li>{r.executed ? <>⚖ Yesterday <b>{name(r.executed)}</b> was executed.</> : <>⚖ Nobody was executed yesterday.</>}</li>}
+        {r.exiled.length > 0 && <li>🚪 Exiled yesterday: <b>{r.exiled.map(name).join(', ')}</b>.</li>}
+        <li>❤ {alive} of {residents} players are alive · {Math.ceil(view.players.filter(p => p.alive).length / 2)} votes are needed to put someone on the block.</li>
+      </ul>
+      <div className="row end"><button className="btn primary small" onClick={close}>To the Town Square</button></div>
+    </div>
+  );
+}
+
 function MvpVote({ view }: { view: GameView }) {
   const mvp = view.mvp!;
   const isST = view.self.isStoryteller;
@@ -379,6 +421,27 @@ function SpectatorBar({ view }: { view: GameView }) {
       👁 <b>You are watching.</b> <span className="muted small">Public information only · you can listen to the Town Square</span>
       {canSit && <button className="btn small primary" onClick={takeSeat}>{view.phase === 'lobby' ? 'Take a seat' : 'Join as a Traveller'}</button>}
     </span>
+  );
+}
+
+function AlertSettings() {
+  const a = useAlertPrefs();
+  const askNotify = async (on: boolean) => {
+    if (on && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      const r = await Notification.requestPermission();
+      if (r !== 'granted') return setAlertPrefs({ notify: false });
+    }
+    setAlertPrefs({ notify: on });
+  };
+  return (
+    <fieldset className="voice-mode">
+      <legend>🔔 Personal alerts</legend>
+      <p className="muted small">When you are nominated, woken at night, whispered to, when the vote reaches you, or it is your turn to speak.</p>
+      <label><input type="checkbox" checked={a.sound} onChange={e => setAlertPrefs({ sound: e.target.checked })} /> Play a chime</label>
+      <label><input type="checkbox" checked={a.vibrate} onChange={e => setAlertPrefs({ vibrate: e.target.checked })} /> Vibrate (phones)</label>
+      {typeof Notification !== 'undefined' && <label><input type="checkbox" checked={a.notify} onChange={e => void askNotify(e.target.checked)} /> Show a notification when this tab is in the background</label>}
+      <button type="button" className="btn small ghost" onClick={() => ping('nominated')}>Test the alert</button>
+    </fieldset>
   );
 }
 
@@ -460,6 +523,7 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
         <label className="toggle"><input type="checkbox" checked={!!view.self.transcriptConsent} disabled={!!view.self.consentLocked} onChange={e => act('transcriptConsent', { allow: e.target.checked })} />
           🗣 Listening for secret words (only detections are kept, Storyteller only).{view.self.consentLocked ? ' Locked: it can\'t be changed after the game has started.' : ''}</label>
       </>}
+      <AlertSettings />
       <p className="muted small">These settings only change what <i>you</i> hear and are saved in this browser. Nobody else is told.</p>
     </Modal>
   );

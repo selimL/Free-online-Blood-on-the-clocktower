@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameView } from '../../../shared/types';
 import { rpc, pushAlert, socket, getStore } from '../net';
+import { ping } from '../sound';
 
 // unread counts per thread (player id), kept in memory for this tab
 let unread: Record<string, number> = {};
@@ -17,6 +18,7 @@ socket.on('whisper', (w: { playerId: string; fromST: boolean; text: string; name
   if (mine) return;
   if (openThread !== w.playerId) { unread = { ...unread, [w.playerId]: (unread[w.playerId] ?? 0) + 1 }; notify(); }
   pushAlert(`✉ ${me === 'st' ? w.name : 'Storyteller'}: ${w.text}`, 'info');
+  if (me !== 'st') ping('whisper');
 });
 
 export function WhisperThread({ view, playerId }: { view: GameView; playerId: string }) {
