@@ -8,6 +8,7 @@ function game(cast: string[]) {
   g.emit = () => {};
   cast.forEach((_, i) => g.join(`P${i}`, undefined));
   g.updateSettings({ characters: cast.filter(c => !['traveller'].includes(c)) });
+  for (const p of g.players) g.setTranscriptConsent(p, true); // word characters need everyone's agreement
   g.deal();
   cast.forEach((c, i) => g.setCharacter(g.players[i].id, c));
   g.reveal(); g.beginNight(); g.beginDay(); g.tick(Date.now() + 10_000);

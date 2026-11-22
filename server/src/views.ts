@@ -194,6 +194,7 @@ export function playerView(g: Game, p: Player): GameView {
     revealedTo: p.revealedTo,
     transcriptConsent: p.transcriptConsent ?? null,
     transcriptActive: g.transcriptActive(),
+    transcriptRequired: g.transcriptRequired(),
     tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
   // Tor: your character and alignment stay hidden until you die
@@ -233,7 +234,7 @@ export function storytellerView(g: Game): GameView {
     demonBluffs: g.demonBluffs, lunaticBluffs: g.lunaticBluffs, pendingDawnDeaths: g.pendingDawnDeaths,
     pendingAbility: g.pendingAbility, privateRequests: g.privateRequests, notes: g.stNotes, log: g.log.slice(-200),
     regionsRtt: Object.fromEntries(g.players.map(p => [p.id, p.rtt])),
-    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId, secretWords: g.secretWords ?? { mezepheles: '', yaggababble: '' }, yaggababbleCount: g.yaggababbleCount ?? 0, winRules: g.specialWinRules(), wordHits: g.wordHits ?? [], wordLog: g.wordLog ?? [], transcriptActive: g.transcriptActive(),
+    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId, secretWords: g.secretWords ?? { mezepheles: '', yaggababble: '' }, yaggababbleCount: g.yaggababbleCount ?? 0, winRules: g.specialWinRules(), wordHits: g.wordHits ?? [], wordLog: g.wordLog ?? [], transcriptActive: g.transcriptActive(), transcriptRequired: g.transcriptRequired(), awaitingConsent: g.awaitingConsent().map(p => p.id),
   };
   return { ...baseView(g, null, null), self } as GameView;
 }

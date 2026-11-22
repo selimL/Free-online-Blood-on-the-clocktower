@@ -693,3 +693,5 @@ textarea.notes { width: 100%; min-height: 180px; }
 .prompt-status.word-hit { border-left: 3px solid var(--candle); }
 .word-log { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; overflow: auto; max-height: 55vh; }
 .word-log li { padding: .35rem .5rem; border-left: 3px solid var(--candle); background: rgba(255, 255, 255, .04); border-radius: 0 6px 6px 0; }
+.consent-banner { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 70; max-width: min(720px, calc(100% - 32px)); padding: .55rem .9rem;
+  border-radius: var(--radius); background: rgba(60, 20, 22, .95); border: 1px solid var(--blood-hi); color: var(--text); box-shadow: var(--shadow); }

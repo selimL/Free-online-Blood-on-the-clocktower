@@ -8,11 +8,20 @@ const WORD_CHARS = 'the Mezepheles\' secret word, the Yaggababble\'s phrase, a G
 
 export function TranscriptConsent({ view }: { view: GameView }) {
   if (view.self.isStoryteller || view.self.spectator || view.self.tutorial) return null;
-  if (!view.self.transcriptActive || (view.self.transcriptConsent !== null && view.self.transcriptConsent !== undefined)) return null;
+  if (!view.self.transcriptRequired) return null;
+  const needed = view.phase === 'lobby' || view.phase === 'dealt';
+  if (view.self.transcriptConsent === false && needed) return (
+    <div className="consent-banner" role="alert">
+      🗣 This game has a character that needs <b>listening for secret words</b>, so it can't start until everyone allows it.
+      You chose not to. <button className="btn small primary" onClick={() => act('transcriptConsent', { allow: true })}>Allow</button>
+      <span className="muted small"> or ask the Storyteller to change the characters, or leave.</span>
+    </div>
+  );
+  if (view.self.transcriptConsent !== null && view.self.transcriptConsent !== undefined) return null;
   const supported = transcriptionSupported();
   return (
     <Modal title="🗣 Listening for secret words">
-      <p>A character in this game depends on what people <b>say out loud</b> ({WORD_CHARS}). If you agree:</p>
+      <p>A character in this game depends on what people <b>say out loud</b> ({WORD_CHARS}). {needed && <b>The game can only start once every player allows this.</b>} If you agree:</p>
       <ul>
         <li>While your microphone is live, your browser turns your speech into English text.</li>
         <li>The game checks it <b>only</b> for those words, then throws it away. <b>What you say is never kept.</b></li>

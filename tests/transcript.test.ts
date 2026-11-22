@@ -9,12 +9,43 @@ function game(cast = ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'mezep
   g.emit = () => {};
   cast.forEach((_, i) => g.join(`P${i}`, undefined));
   g.updateSettings({ characters: cast });
+  for (const p of g.players) g.setTranscriptConsent(p, true);
   g.deal();
   cast.forEach((c, i) => g.setCharacter(g.players[i].id, c));
   g.reveal(); g.beginNight(); g.beginDay(); g.tick(Date.now() + 10_000);
-  for (const p of g.players) g.setTranscriptConsent(p, true);
   return { g, by: (c: string) => g.players.find(p => p.characterId === c)! };
 }
+
+describe('consent before the game starts', () => {
+  it('a word character in the setup blocks dealing until every player has said yes', () => {
+    const g = new Game({ name: 'C', visibility: 'public', stName: 'ST' });
+    g.emit = () => {};
+    for (let i = 0; i < 7; i++) g.join(`P${i}`, undefined);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'mezepheles', 'imp'] });
+    expect(g.transcriptRequired()).toBe(true);
+    expect(!playerView(g, g.players[0]).self.isStoryteller && playerView(g, g.players[0]).self.transcriptRequired).toBe(true); // asked in the lobby
+    expect(() => g.deal()).toThrow(/Waiting for: P0, P1, P2, P3, P4, P5, P6/);
+    for (const p of g.players.slice(0, 6)) g.setTranscriptConsent(p, true);
+    g.setTranscriptConsent(g.players[6], false);
+    expect(() => g.deal()).toThrow(/Waiting for: P6\./);
+    const sv = storytellerView(g).self;
+    expect(sv.isStoryteller && sv.awaitingConsent).toEqual([g.players[6].id]);
+    g.setTranscriptConsent(g.players[6], true);
+    expect(() => g.deal()).not.toThrow();
+  });
+  it('games without a word character (or with the rule off) are not affected', () => {
+    const g = new Game({ name: 'C', visibility: 'public', stName: 'ST' });
+    g.emit = () => {};
+    for (let i = 0; i < 7; i++) g.join(`P${i}`, undefined);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'poisoner', 'imp'] });
+    expect(() => g.deal()).not.toThrow();
+    const h = new Game({ name: 'D', visibility: 'public', stName: 'ST' });
+    h.emit = () => {};
+    for (let i = 0; i < 7; i++) h.join(`P${i}`, undefined);
+    h.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'soldier', 'mezepheles', 'imp'], houseRules: { ...h.settings.houseRules, voiceTranscript: false } });
+    expect(() => h.deal()).not.toThrow();
+  });
+});
 
 describe('word listening', () => {
   it('runs only when a word character is visible (never reveals a hidden one)', () => {

@@ -634,11 +634,24 @@ export class Game {
    * players can already see (the public list, the script, Fabled/Loric), so it never gives away a hidden character.
    */
   transcriptActive(): boolean {
-    if (!this.settings.houseRules.voiceTranscript || !['questions', 'night', 'day'].includes(this.phase)) return false;
+    return this.transcriptRequired() && ['questions', 'night', 'day'].includes(this.phase);
+  }
+  /** A word character is (or will be, once revealed) visible: everyone must agree before the game starts. */
+  transcriptRequired(): boolean {
+    if (!this.settings.houseRules.voiceTranscript || this.phase === 'ended') return false;
     const pl = this.settings.publicList;
     const visible = pl.visible ? this.settings.characters.filter(id => !pl.hidden.includes(id)) : [];
     const seen = new Set([...visible, ...this.settings.script, ...this.settings.fabled]);
     return VOICE_CHARACTERS.some(id => seen.has(id));
+  }
+  /** Players (not bots or Travellers) who have not yet agreed to word listening. */
+  awaitingConsent(): Player[] {
+    if (!this.transcriptRequired()) return [];
+    return this.players.filter(p => !p.bot && !p.traveller && p.transcriptConsent !== true);
+  }
+  private requireConsent() {
+    const missing = this.awaitingConsent();
+    if (missing.length) fail(`A character in this game needs word listening, so everyone must allow it first. Waiting for: ${missing.map(p => p.name).join(', ')}.`);
   }
   /** Check one spoken sentence; nothing of it is stored unless it triggers a character. */
   checkSpeech(pid: string, text: unknown) {
@@ -869,6 +882,7 @@ export class Game {
     if (residents.length > MAX_PLAYERS) fail(`At most ${MAX_PLAYERS} players.`);
     const bag = this.settings.characters;
     if (bag.length !== residents.length) fail(`Select exactly ${residents.length} characters (selected ${bag.length}).`);
+    this.requireConsent();
     // a Demon is needed, except with the Summoner (who makes one on night 3) or the Atheist (no evil at all)
     if (!bag.some(id => CHARACTER_BY_ID[id].type === 'demon') && !bag.includes('summoner') && !bag.includes('atheist')) fail('The bag needs a Demon.');
     const editions = new Set(bag.map(id => CHARACTER_BY_ID[id].edition));
@@ -906,6 +920,7 @@ export class Game {
   }
   reveal() {
     this.requireST(['dealt']);
+    this.requireConsent();
     this.phase = 'questions';
     this.pickRegion();
     for (const p of this.players) { p.wantsQuestion = null; }

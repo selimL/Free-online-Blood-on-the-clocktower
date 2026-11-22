@@ -31,7 +31,9 @@ export function StorytellerControls({ view }: { view: GameView }) {
     <button className="btn small ghost" onClick={() => act('st:pause', { paused: !view.paused })}>{view.paused ? '▶ Resume' : '⏸ Pause'}</button>;
   switch (view.phase) {
     case 'lobby': {
-      const problem = residents < MIN_PLAYERS ? `Need ${MIN_PLAYERS - residents} more player(s)` : bag !== residents ? `Select ${residents} characters (have ${bag})` : null;
+      const waiting = self.awaitingConsent.map(name);
+      const problem = residents < MIN_PLAYERS ? `Need ${MIN_PLAYERS - residents} more player(s)` : bag !== residents ? `Select ${residents} characters (have ${bag})`
+        : waiting.length ? `🗣 A word character is in play: waiting for ${waiting.join(', ')} to allow listening` : null;
       return <div className="st-controls">
         <button className="btn ghost" disabled={view.players.length >= 10} onClick={() => act('st:addBot')} title="Add a computer player to try a setup on your own. Bots decline questions and vote at random. Remove them with Kick.">🤖 Add bot</button>
         <button className="btn primary" disabled={!!problem} onClick={() => act('st:deal')}>Deal characters</button>{problem && <span className="muted small">{problem}</span>}
@@ -41,7 +43,8 @@ export function StorytellerControls({ view }: { view: GameView }) {
       return <div className="st-controls">
         <span className="muted small">Review the Grimoire, then:</span>
         <button className="btn ghost" onClick={() => act('st:deal')}>Re-deal</button>
-        <button className="btn primary" onClick={() => act('st:reveal')}>Reveal characters &amp; take questions</button>
+        <button className="btn primary" disabled={self.awaitingConsent.length > 0} onClick={() => act('st:reveal')}>Reveal characters &amp; take questions</button>
+        {self.awaitingConsent.length > 0 && <span className="muted small">🗣 Waiting for {self.awaitingConsent.map(name).join(', ')} to allow listening</span>}
       </div>;
     case 'questions':
       return <div className="st-controls">

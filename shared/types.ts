@@ -249,6 +249,8 @@ export interface SelfView {
   spectator?: boolean;
   /** Voice transcript: whether this player agreed (null = not asked yet). */
   transcriptActive?: boolean;
+  /** A word character is in the setup: everyone must agree before the game can start. */
+  transcriptRequired?: boolean;
   transcriptConsent?: boolean | null;
   /** Practice game: the Guide's current tip for this player. */
   tutorial?: { title: string; text: string; next: string | null; done: boolean } | null;
@@ -372,6 +374,9 @@ export interface StorytellerSelf {
   yaggababbleCount: number;
   /** The voice transcript is running in this game right now. */
   transcriptActive: boolean;
+  /** Everyone must agree before dealing; who has not yet. */
+  transcriptRequired: boolean;
+  awaitingConsent: string[];
   /** Word listening: everything detected so far. */
   wordLog: WordEvent[];
   /** Detections waiting for the Storyteller to confirm. */
