@@ -14,11 +14,12 @@ let openThread: string | null = null; // the thread currently on screen counts a
 
 socket.on('whisper', (w: { playerId: string; fromST: boolean; text: string; name: string }) => {
   const me = getStore().session?.id;
-  const mine = me === 'st' ? w.fromST : !w.fromST;
+  const isST = me === 'st' || !!me?.startsWith('co:');
+  const mine = isST ? w.fromST : !w.fromST;
   if (mine) return;
   if (openThread !== w.playerId) { unread = { ...unread, [w.playerId]: (unread[w.playerId] ?? 0) + 1 }; notify(); }
-  pushAlert(`✉ ${me === 'st' ? w.name : 'Storyteller'}: ${w.text}`, 'info');
-  if (me !== 'st') ping('whisper');
+  pushAlert(`✉ ${isST ? w.name : 'Storyteller'}: ${w.text}`, 'info');
+  if (!isST) ping('whisper');
 });
 
 export function WhisperThread({ view, playerId }: { view: GameView; playerId: string }) {

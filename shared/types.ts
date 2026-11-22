@@ -114,6 +114,7 @@ export interface Settings {
   region: string | null;     // null = auto
   openBuildings: number[];   // building indices (0-7) the Storyteller opened; [] = automatic
   weather: WeatherSetting;   // cosmetic: the 3D town's weather
+  customJinxes: { a: string; b: string; text: string }[]; // the Storyteller's own jinx rulings
 }
 
 export type Weather = 'clear' | 'rain' | 'fog' | 'snow' | 'storm';
@@ -141,6 +142,7 @@ export const defaultSettings = (): Settings => ({
   scriptName: null,
   openBuildings: [],
   weather: 'clear',
+  customJinxes: [],
   publicList: { visible: true, hidden: [], showHiddenCount: true },
   timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {
@@ -308,6 +310,8 @@ export interface GameView {
   weather: Weather;
   /** Morning summary at dawn: who died in the night, who was executed or exiled yesterday. */
   dawnRecap: { day: number; died: string[]; executed: string | null; exiled: string[] } | null;
+  /** Co-Storytellers helping run the game (public). */
+  coStorytellers: { id: string; name: string; connected: boolean }[];
   /** Planned start time (ms), shown with a countdown. */
   scheduledFor: number | null;
   /** Group actions the viewer takes part in (or public ones); the Storyteller sees all. */
@@ -397,6 +401,8 @@ export interface VoteRecord { day: number; nominatorId: string; nomineeId: strin
 
 export interface GameStory {
   log: string[];
+  /** Step-by-step replay: each event with who was alive at that moment. */
+  timeline: { ts: number; when: string; text: string; alive: string[] }[];
   votes: VoteRecord[];
   grimoire: { id: string; name: string; characterId: string | null; shownCharacterId: string | null; alignment: Alignment; alive: boolean; reminders: string[]; traveller: boolean }[];
   demonBluffs: string[];

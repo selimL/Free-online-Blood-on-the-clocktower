@@ -284,6 +284,7 @@ function TopBar({ view, openAlerts, openAlmanac, openVoice, openList, openInvite
     <header className="top-bar">
       <div className="tl">
         <span className="game-name">{view.name}</span>
+        {view.coStorytellers.length > 0 && <span className="muted small" title="Co-Storytellers">🎩 with {view.coStorytellers.map(c => c.name).join(', ')}</span>}
         <button className="btn small ghost" onClick={openInvite} title="Invite players">Code <b>{view.code}</b></button>
       </div>
       <div className="tc">
@@ -327,7 +328,7 @@ function roomArt(view: GameView): string | null {
 
 function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void }) {
   const story = view.story!;
-  const [tab, setTab] = useState<'timeline' | 'votes' | 'grimoire'>('timeline');
+  const [tab, setTab] = useState<'timeline' | 'replay' | 'votes' | 'grimoire'>('timeline');
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? (id === 'st' ? view.storyteller.name : '?');
   // group "[Night 1] text" lines under their night/day heading
   const groups: { when: string; lines: string[] }[] = [];
@@ -343,11 +344,12 @@ function StoryDialog({ view, onClose }: { view: GameView; onClose: () => void })
       <p className={`story-winner ${view.winner}`}>{view.winner === 'good' ? '☀ Good wins!' : view.winner === 'evil' ? '🩸 Evil wins!' : ''}</p>
       {view.mvp && !(!view.self.isStoryteller && view.self.spectator) && <MvpVote view={view} />}
       <div className="tabs" role="tablist">
-        {(['timeline', 'votes', 'grimoire'] as const).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'timeline' ? 'Timeline' : t === 'votes' ? `Votes (${story.votes.length})` : 'Grimoire'}</button>)}
+        {(['timeline', 'replay', 'votes', 'grimoire'] as const).filter(t => t !== 'replay' || story.timeline?.length).map(t => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t === 'timeline' ? 'Timeline' : t === 'replay' ? '▶ Replay' : t === 'votes' ? `Votes (${story.votes.length})` : 'Grimoire'}</button>)}
       </div>
       {tab === 'timeline' && <div className="story-timeline">{groups.map((g, i) => (
         <section key={i}><h3>{g.when || 'Setup'}</h3><ul>{g.lines.map((l, j) => <li key={j} className={/BLUFF|died|executed|exiled|Demon/i.test(l) ? 'key' : ''}>{l}</li>)}</ul></section>
       ))}</div>}
+      {tab === 'replay' && <Replay view={view} />}
       {tab === 'votes' && (story.votes.length ? <table className="story-votes"><thead><tr><th>Day</th><th>Nomination</th><th>Votes</th><th>Voted yes</th></tr></thead><tbody>
         {story.votes.map((v, i) => <tr key={i}><td>{v.day}</td><td>{name(v.nominatorId)} → {name(v.nomineeId)}{v.exile ? ' (exile)' : ''}</td><td>{v.votes}/{v.needed}</td><td>{v.yes.map(name).join(', ') || '—'}</td></tr>)}
       </tbody></table> : <p className="muted">No votes this game.</p>)}
@@ -400,6 +402,52 @@ function MvpVote({ view }: { view: GameView }) {
             onClick={() => act(isST ? 'st:mvp' : 'mvp', { candidateId: p.id })}>{n && n === top ? '🏆 ' : ''}{p.name}{n ? ` · ${n}` : ''}</button>;
         })}
       </div>
+    </div>
+  );
+}
+
+/** Step through the finished game on the town circle: who was alive, who was involved, what happened. */
+function Replay({ view }: { view: GameView }) {
+  // skip the lobby (players joining), where not everyone is seated yet
+  const tl = view.story!.timeline.filter(e => !(e.when === 'Setup' && / joined/.test(e.text)));
+  const [i, setI] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!playing) return;
+    const t = setInterval(() => setI(x => { if (x >= tl.length - 1) { setPlaying(false); return x; } return x + 1; }), 1300);
+    return () => clearInterval(t);
+  }, [playing, tl.length]);
+  const step = tl[Math.min(i, tl.length - 1)];
+  const grim = Object.fromEntries(view.story!.grimoire.map(g => [g.id, g]));
+  const n = view.players.length;
+  const involved = new Set(view.players.filter(p => step.text.includes(p.name)).map(p => p.id));
+  const secret = /BLUFF|Info to|chose|poison|Drunk|Demon bluffs|Grimoire/i.test(step.text);
+  return (
+    <div className="replay">
+      <div className="replay-circle">
+        {view.players.map((p, k) => {
+          const a = (k / n) * Math.PI * 2 - Math.PI / 2;
+          const g = grim[p.id];
+          return (
+            <div key={p.id} className={`rp-seat ${step.alive.includes(p.id) ? '' : 'dead'} ${involved.has(p.id) ? 'hot' : ''} ${g?.alignment ?? ''}`} style={{ left: `${50 + Math.cos(a) * 40}%`, top: `${50 + Math.sin(a) * 40}%` }}>
+              <span className="rp-dot">{step.alive.includes(p.id) ? '' : '👻'}</span>
+              <span className="rp-name">{p.name}</span>
+              <span className="rp-char">{CHARACTER_BY_ID[g?.characterId ?? '']?.name ?? ''}</span>
+            </div>
+          );
+        })}
+        <div className="rp-center"><b>{step.when}</b><span>{i + 1} / {tl.length}</span></div>
+      </div>
+      <p className={`rp-text ${secret ? 'secret' : ''}`}>{secret ? '🔒 ' : ''}{step.text}</p>
+      <div className="rp-controls">
+        <button className="btn small ghost" onClick={() => { setPlaying(false); setI(0); }}>⏮</button>
+        <button className="btn small" onClick={() => { setPlaying(false); setI(x => Math.max(0, x - 1)); }}>◀ Back</button>
+        <button className="btn small primary" onClick={() => setPlaying(p => !p)}>{playing ? '⏸ Pause' : '▶ Play'}</button>
+        <button className="btn small" onClick={() => { setPlaying(false); setI(x => Math.min(tl.length - 1, x + 1)); }}>Next ▶</button>
+        <button className="btn small ghost" onClick={() => { setPlaying(false); setI(tl.length - 1); }}>⏭</button>
+      </div>
+      <input type="range" min={0} max={tl.length - 1} value={i} onChange={e => { setPlaying(false); setI(Number(e.target.value)); }} aria-label="Replay position" style={{ width: '100%' }} />
+      <p className="muted small">🔒 marks things that were secret during the game. Names in gold were involved in that moment.</p>
     </div>
   );
 }

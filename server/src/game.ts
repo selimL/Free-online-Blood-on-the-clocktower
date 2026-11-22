@@ -165,6 +165,10 @@ export class Game {
   aboutToDie: { playerId: string; votes: number } | null = null;
   highestVotes = 0;
   executedToday = false;
+  /** Co-Storytellers: a second (or third) pair of hands with the full Grimoire. Ids start with 'co:'. */
+  coStorytellers: { id: string; token: string; name: string; connected: boolean }[] = [];
+  /** Every log line with who was alive then (for the end-of-game replay). */
+  timeline: { ts: number; when: string; text: string; alive: string[] }[] = [];
   /** Morning summary shown to everyone at dawn (all public information). */
   dawnRecap: { day: number; died: string[]; executed: string | null; exiled: string[] } | null = null;
   /** Who was executed on the most recent day (for the Undertaker). */
@@ -245,6 +249,7 @@ export class Game {
       (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
     g.storyteller.connected = !!g.tutorial; // a practice game's Storyteller is the server itself
+    for (const c of g.coStorytellers ?? []) c.connected = false;
     for (const p of g.players) p.connected = !!p.bot;
     for (const s of g.spectators ?? []) s.connected = false;
     g.spectators ??= [];
@@ -266,7 +271,7 @@ export class Game {
     if (ids(data.players ?? []) !== ids(this.players)) fail('Someone joined or left since then, so this can no longer be undone.');
     const keep = {
       connected: new Map(this.players.map(p => [p.id, { connected: p.connected, offlineSince: p.offlineSince, offlineNoticed: p.offlineNoticed, rtt: p.rtt, transcriptConsent: p.transcriptConsent }])),
-      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, wordLog: this.wordLog, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
+      st: this.storyteller.connected, spectators: this.spectators, whispers: this.whispers, wordLog: this.wordLog, coStorytellers: this.coStorytellers, lastWhisperAt: this.lastWhisperAt, lastEmoteAt: this.lastEmoteAt,
     };
     for (const [k, v] of Object.entries(data)) {
       if (k === 'savedAt' || k === 'id' || k === 'code' || k === 'createdAt') continue;
@@ -274,7 +279,7 @@ export class Game {
     }
     for (const p of this.players) Object.assign(p, keep.connected.get(p.id));
     this.storyteller.connected = keep.st;
-    Object.assign(this, { wordLog: keep.wordLog, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
+    Object.assign(this, { coStorytellers: keep.coStorytellers, wordLog: keep.wordLog, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
     if (!this.paused) {
       if (this.timer?.endsAt) this.timer.endsAt += ageMs;
       if (this.nomination && Number.isFinite(this.nomination.deadline)) this.nomination.deadline += ageMs;
@@ -289,12 +294,36 @@ export class Game {
   changed() { this.lastActivity = Date.now(); this.onChange(); }
   player(id: string): Player { return this.players.find(p => p.id === id) ?? fail('No such player'); }
   maybePlayer(id: string | null | undefined) { return this.players.find(p => p.id === id); }
-  nameOf(id: string) { return id === 'st' ? this.storyteller.name : this.maybePlayer(id)?.name ?? '?'; }
+  nameOf(id: string) {
+    if (id === 'st') return this.storyteller.name;
+    if (id.startsWith('co:')) return `${this.coStorytellers.find(c => c.id === id)?.name ?? '?'} (co-Storyteller)`;
+    return this.maybePlayer(id)?.name ?? '?';
+  }
+  isStoryteller(id: string) { return id === 'st' || this.coStorytellers.some(c => c.id === id); }
+  addCoStoryteller(name: unknown) {
+    if ((this.coStorytellers ??= []).length >= 2) fail('At most two co-Storytellers.');
+    const c = { id: `co:${nanoid(8)}`, token: nanoid(24), name: cleanText(name, 24) || 'Co-Storyteller', connected: false };
+    this.coStorytellers.push(c);
+    this.addLog(`${c.name} was invited as a co-Storyteller.`);
+    this.changed();
+    return c;
+  }
+  removeCoStoryteller(id: string) {
+    this.coStorytellers = this.coStorytellers.filter(c => c.id !== id);
+    this.banned.add(id);
+    this.changed();
+  }
   get residents() { return this.players.filter(p => !p.traveller); }
   get alivePlayers() { return this.players.filter(p => p.alive); }
   get started() { return this.phase !== 'lobby'; }
   when() { return this.phase === 'night' ? `Night ${this.night}` : this.phase === 'day' ? `Day ${this.day}` : 'Setup'; }
-  addLog(s: string) { this.log.push(`[${this.when()}] ${s}`); if (this.log.length > 500) this.log.shift(); }
+  addLog(s: string) {
+    this.log.push(`[${this.when()}] ${s}`);
+    if (this.log.length > 500) this.log.shift();
+    // the replay: the same line, plus who was alive at that moment
+    this.timeline.push({ ts: Date.now(), when: this.when(), text: s, alive: this.players.filter(p => p.alive).map(p => p.id) });
+    if (this.timeline.length > 600) this.timeline.shift();
+  }
   announce(text: string, kind: Announcement['kind'] = 'info') {
     const a = { id: nanoid(8), text, ts: Date.now(), kind };
     this.announcements.push(a);
@@ -454,6 +483,10 @@ export class Game {
     if (id === 'st') {
       return { room: this.storyteller.location, publish: true, subscribe: true };
     }
+    if (id.startsWith('co:')) { // co-Storytellers are always where the lead Storyteller is
+      if (!this.coStorytellers.some(c => c.id === id)) return { room: null, publish: false, subscribe: false };
+      return { room: this.storyteller.location, publish: true, subscribe: true };
+    }
     const p = this.maybePlayer(id);
     if (!p) return { room: null, publish: false, subscribe: false };
     if (this.phase === 'night') {
@@ -470,7 +503,7 @@ export class Game {
     if (!t) return;
     const me = this.voiceTarget(fromId);
     if (!me.room || !me.publish) fail(fromId !== 'st' && this.maybePlayer(fromId)?.muted ? 'You are muted by the Storyteller.' : 'Nobody can hear you right now.');
-    const audience = ['st', ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
+    const audience = ['st', ...this.coStorytellers.map(c => c.id), ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
       const v = this.voiceTarget(id);
       return v.room === me.room && v.subscribe;
     });
@@ -487,12 +520,12 @@ export class Game {
     const def = EMOTES.find(e => e.id === kind);
     if (!def) fail('Unknown gesture.');
     if (this.phase === 'night') fail('Everyone is asleep. No gestures at night.');
-    const loc = fromId === 'st' ? this.storyteller.location : this.maybePlayer(fromId)?.location;
+    const loc = this.isStoryteller(fromId) ? this.storyteller.location : this.maybePlayer(fromId)?.location;
     if (!loc) fail('Nobody can see you right now.');
     const now = Date.now();
     if (now - (this.lastEmoteAt[fromId] ?? 0) < 1000) return;
     this.lastEmoteAt[fromId] = now;
-    const audience = ['st', ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
+    const audience = ['st', ...this.coStorytellers.map(c => c.id), ...this.players.map(p => p.id), ...this.spectators.map(s => s.id)].filter(id => {
       if (id === fromId) return true;
       const v = this.voiceTarget(id);
       return v.room === loc && v.subscribe;
@@ -874,6 +907,12 @@ export class Game {
     }
     if (s.houseRules.beginnerMode) for (const f of ['toymaker', 'angel', 'buddhist']) if (!s.fabled.includes(f)) s.fabled.push(f);
     if (patch.weather && WEATHERS.some(w => w.id === patch.weather)) s.weather = patch.weather;
+    if (Array.isArray(patch.customJinxes)) {
+      s.customJinxes = patch.customJinxes
+        .filter(j => j && CHARACTER_BY_ID[String(j.a)] && CHARACTER_BY_ID[String(j.b)] && j.a !== j.b)
+        .map(j => ({ a: String(j.a), b: String(j.b), text: cleanText(j.text, 300) || 'Special ruling (see the Storyteller).' }))
+        .slice(0, 50);
+    }
     if (patch.region !== undefined) s.region = typeof patch.region === 'string' ? patch.region : null;
     if (Array.isArray(patch.openBuildings)) {
       s.openBuildings = [...new Set(patch.openBuildings.map(Number).filter(i => Number.isInteger(i) && i >= 0 && i < ROOM_NAMES.length))];
@@ -1167,7 +1206,7 @@ export class Game {
     this.emit('all', 'transition', { to: 'day' });
     this.announce(`Dawn breaks. Day ${this.day} begins.`, 'phase');
     if (deaths.length === 0) this.announce('Nobody died in the night.', 'info');
-    for (const p of deaths) this.applyDeath(p, `${p.name} died in the night.`);
+    for (const p of deaths) { this.applyDeath(p, `${p.name} died in the night.`); this.addLog(`${p.name} was found dead at dawn.`); }
     this.setStage('discussion');
   }
   setStage(stage: DayStage) {
@@ -1405,10 +1444,10 @@ export class Game {
     this.lastExecutedId = p.id;
     this.noteExecution(p);
     this.aboutToDie = null;
-    this.addLog(`${p.name} was executed.`);
     this.emit('all', 'execution', { playerId: p.id });
     if (p.alive) this.applyDeath(p, `${p.name} has been executed.`);
     else this.announce(`${p.name} has been executed (they were already dead).`, 'death');
+    this.addLog(`${p.name} was executed.`); // after the death, so the replay shows them dead
     this.changed();
   }
   applyDeath(p: Player, text: string) {
@@ -1425,8 +1464,8 @@ export class Game {
       this.addLog(`${p.name} will be found dead at dawn.`);
     } else {
       if (!p.alive) fail('Already dead.');
-      this.addLog(`${p.name} died${why}.`);
       this.applyDeath(p, `${p.name} has died${why}.`);
+      this.addLog(`${p.name} died${why}.`);
     }
     this.changed();
   }

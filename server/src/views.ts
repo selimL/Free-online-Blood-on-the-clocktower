@@ -145,12 +145,14 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     spectators: g.spectators.map(s => ({ id: s.id, name: s.name, connected: s.connected })),
     story: g.phase === 'ended' ? {
       log: g.log.slice(-400),
+      timeline: (g.timeline ?? []).slice(-600),
       votes: g.voteHistory,
       grimoire: g.players.map(p => ({ id: p.id, name: p.name, characterId: p.characterId, shownCharacterId: p.shownCharacterId, alignment: p.alignment, alive: p.alive, reminders: [...p.reminders], traveller: p.traveller })),
       demonBluffs: [...g.demonBluffs],
     } : null,
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     scheduledFor: g.scheduledFor ?? null,
+    coStorytellers: (g.coStorytellers ?? []).map(c => ({ id: c.id, name: c.name, connected: c.connected })),
     dawnRecap: g.phase === 'day' ? g.dawnRecap ?? null : null,
     prompts: (g.prompts ?? []).filter(pr => isST || pr.public || (viewer && pr.playerIds.includes(viewer.id))).map(pr => ({
       ...pr, answers: isST || pr.public ? { ...pr.answers } : viewer && pr.answers[viewer.id] ? { [viewer.id]: pr.answers[viewer.id] } : {},

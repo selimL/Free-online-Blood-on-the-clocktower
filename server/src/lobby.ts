@@ -88,20 +88,22 @@ export class Lobby {
     };
   }
   sendTo(gameId: string, audience: string[] | 'all', event: string, payload: unknown) {
+    // anything meant for the Storyteller also goes to the co-Storytellers
+    const toST = audience !== 'all' && audience.includes('st');
     for (const s of this.sockets.get(gameId) ?? []) {
       const id = (s.data.binding as Binding).id;
-      if (audience === 'all' || audience.includes(id)) s.emit(event, payload);
+      if (audience === 'all' || audience.includes(id) || (toST && id.startsWith('co:'))) s.emit(event, payload);
     }
   }
   broadcast(g: Game) {
     for (const s of this.sockets.get(g.id) ?? []) {
       const id = (s.data.binding as Binding).id;
-      const view = id === 'st' ? storytellerView(g)
+      const view = id === 'st' || id.startsWith('co:') ? storytellerView(g)
         : id.startsWith('spec:') ? (() => { const sp = g.spectators.find(x => x.id === id); return sp ? spectatorView(g, sp) : null; })()
         : (() => { const p = g.maybePlayer(id); return p ? playerView(g, p) : null; })();
       if (!view) continue;
       view.voice.enabled = this.voice.enabled;
-      if (id === 'st' && view.self.isStoryteller) {
+      if ((id === 'st' || id.startsWith('co:')) && view.self.isStoryteller) {
         view.self.availableRegions = this.voice.regions.map(r => r.name);
         const top = this.undo.get(g.id)?.at(-1);
         view.self.undo = top && Date.now() - top.at < UNDO_WINDOW_MS ? { label: top.label, at: top.at } : null;
@@ -168,6 +170,15 @@ export class Lobby {
       g.changed();
       return { gameId: g.id, code: g.code, id: 'st' };
     }
+    const co = (g.coStorytellers ?? []).find(x => x.token === token);
+    if (co) {
+      if (g.banned.has(co.id)) fail('You were removed from this game.');
+      this.bind(socket, g, co.id);
+      co.connected = true;
+      if (g.paused && g.pausedBySTDisconnect) { g.pausedBySTDisconnect = false; g.setPaused(false); }
+      g.changed();
+      return { gameId: g.id, code: g.code, id: co.id };
+    }
     const sp = g.spectators.find(x => x.token === token);
     if (sp) {
       this.bind(socket, g, sp.id);
@@ -193,9 +204,14 @@ export class Lobby {
   private markDisconnected(g: Game, id: string) {
     const stillThere = [...(this.sockets.get(g.id) ?? [])].some(s => (s.data.binding as Binding).id === id);
     if (stillThere) return;
-    if (id === 'st') {
+    if (id.startsWith('co:')) {
+      const c = g.coStorytellers.find(x => x.id === id);
+      if (c) c.connected = false;
+      if (!g.storyteller.connected && g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
+    } else if (id === 'st') {
       g.storyteller.connected = false;
-      if (g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
+      // a connected co-Storyteller keeps the game running
+      if (!g.coStorytellers.some(c => c.connected) && g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
     } else if (id.startsWith('spec:')) {
       const sp = g.spectators.find(x => x.id === id);
       if (sp) sp.connected = false;
@@ -211,7 +227,7 @@ export class Lobby {
   }
   whisper(socket: Socket, d: any) {
     const { g, id } = this.binding(socket);
-    g.whisper(id, String(d.to ?? 'st'), d.text);
+    g.whisper(g.isStoryteller(id) ? 'st' : id, String(d.to ?? 'st'), d.text);
   }
   chat(socket: Socket, text: string) {
     const { g, id } = this.binding(socket);
@@ -222,9 +238,16 @@ export class Lobby {
     const { g, id } = this.binding(socket);
     const type = String(d.type ?? '');
     if (type.startsWith('st:')) {
-      if (id !== 'st') fail('Only the Storyteller can do that.');
+      if (!g.isStoryteller(id)) fail('Only the Storyteller can do that.');
       if (g.paused && !['st:pause', 'st:notes', 'st:end'].includes(type) && g.pausedBySTDisconnect) fail('Game is paused.');
       return this.stAction(g, type, d);
+    }
+    if (id.startsWith('co:')) {
+      const c = g.coStorytellers.find(x => x.id === id)!;
+      if (type === 'profile') { c.name = cleanText(d.name ?? c.name, 24) || c.name; g.changed(); return; }
+      if (type === 'emote') return g.emote(id, d.kind);
+      if (type === 'walk' || type === 'move') return; // co-Storytellers follow the lead Storyteller
+      fail('Storytellers use the Grimoire.');
     }
     if (id === 'st') {
       if (type === 'profile') {
@@ -335,6 +358,12 @@ export class Lobby {
       }
       case 'st:schedule': return g.setSchedule(d.scheduledFor);
       case 'st:mvp': return g.voteMvp('st', String(d.candidateId ?? ''));
+      case 'st:addCo': { const c = g.addCoStoryteller(d.name); return { token: c.token, id: c.id }; }
+      case 'st:removeCo': {
+        g.removeCoStoryteller(String(d.id ?? ''));
+        for (const s of this.sockets.get(g.id) ?? []) if ((s.data.binding as Binding).id === d.id) { s.emit('kicked', { reason: 'The Storyteller removed you as co-Storyteller.' }); this.leave(s); }
+        return;
+      }
       case 'st:dismissWordHit': return g.dismissWordHit(String(d.id ?? ''));
       case 'st:prompt': { g.startPrompt(d.kind === 'rps' ? 'rps' : d.kind === 'point' ? 'point' : 'livedie', Array.isArray(d.playerIds) ? d.playerIds.map(String) : []); return; }
       case 'st:applyPrompt': return g.applyPrompt(String(d.promptId ?? ''));

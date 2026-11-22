@@ -66,8 +66,24 @@ function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  // a co-Storyteller invitation link: /g/CODE?co=TOKEN
+  useEffect(() => {
+    const co = new URLSearchParams(location.search).get('co');
+    if (!co || !code || !connected) return;
+    history.replaceState(null, '', `/g/${code}`);
+    void (async () => {
+      const l = await rpc('game:lookup', { code });
+      if (!l.ok) return pushAlert(l.error ?? 'Game not found', 'error');
+      const r = await rpc('game:rejoin', { gameId: l.game.id, token: co });
+      if (!r.ok) return pushAlert(r.error ?? 'That invitation is no longer valid.', 'error');
+      const s = { gameId: r.gameId, code: r.code, token: co, id: r.id };
+      saveSession(s);
+      set({ session: s });
+    })();
+  }, [code, connected]);
   useEffect(() => {
     if (!code || session || !connected) { setTried(true); return; }
+    if (new URLSearchParams(location.search).get('co')) return;
     const s = sessionForCode(code);
     if (!s) { setTried(true); return; }
     void rejoin(s).then(() => setTried(true));

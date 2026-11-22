@@ -1,3 +1,4 @@
+import { jinxesFor } from '../../../shared/jinxes';
 import { TranscriptReader } from './Transcript';
 import { SpecialRules } from './GroupActions';
 import { WEATHERS } from '../../../shared/types';
@@ -614,6 +615,8 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         {settings.fabled.includes('djinn') && <label className="field">Djinn: jinx rules in effect (shown to all players)
           <BootleggerText value={settings.djinnRules} onSave={v => save({ djinnRules: v })} /></label>}
       </section>
+      <JinxPanel settings={settings} save={save} />
+      <CoStorytellers view={view} />
       {self.availableRegions.length > 1 && <section>
         <h3>Voice region</h3>
         <select value={settings.region ?? ''} onChange={e => save({ region: e.target.value || null })}>
@@ -623,6 +626,59 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         <p className="muted small">Currently: {view.voice.region ?? 'decided at start'}.</p>
       </section>}
     </div>
+  );
+}
+
+function CoStorytellers({ view }: { view: GameView }) {
+  const [name, setName] = useState('');
+  const [link, setLink] = useState<string | null>(null);
+  const invite = async () => {
+    const r = await act('st:addCo', { name });
+    if (r.ok) { setLink(`${location.origin}/g/${view.code}?co=${r.token}`); setName(''); }
+  };
+  return (
+    <section>
+      <h3>🎩 Co-Storytellers</h3>
+      <p className="muted small">A co-Storyteller sees the whole Grimoire and can do everything you can (wake players, send info, run votes). They are always with you in your current room, and the game keeps running if one of you drops out.</p>
+      {view.coStorytellers.length > 0 && <ul className="small">{view.coStorytellers.map(c => <li key={c.id}>{c.connected ? '🟢' : '⚪'} {c.name} <button className="btn small ghost" onClick={() => { if (confirm(`Remove ${c.name} as co-Storyteller?`)) void act('st:removeCo', { id: c.id }); }}>Remove</button></li>)}</ul>}
+      {view.coStorytellers.length < 2 && <div className="row"><input value={name} onChange={e => setName(e.target.value)} placeholder="Their name" maxLength={24} />
+        <button className="btn small" disabled={!name.trim()} onClick={invite}>Invite</button></div>}
+      {link && <p className="small">Send this private link to them (anyone with it becomes a Storyteller): <input readOnly value={link} onFocus={e => e.target.select()} aria-label="Co-Storyteller link" />
+        <button className="btn small" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button></p>}
+    </section>
+  );
+}
+
+function JinxPanel({ settings, save }: { settings: Settings; save: (p: Partial<Settings>) => unknown }) {
+  const [a, setA] = useState<string | null>(null);
+  const [b, setB] = useState<string | null>(null);
+  const [text, setText] = useState('');
+  const custom = settings.customJinxes ?? [];
+  const ids = [...settings.characters, ...settings.script, ...settings.fabled];
+  const found = jinxesFor(ids, custom);
+  const ch = (id: string) => CHARACTER_BY_ID[id]?.name ?? id;
+  const toDjinn = () => save({
+    fabled: settings.fabled.includes('djinn') ? settings.fabled : [...settings.fabled, 'djinn'],
+    djinnRules: found.map(j => `${ch(j.a)} & ${ch(j.b)}: ${j.text}`).join('\n'),
+  });
+  return (
+    <section>
+      <h3>⚠ Jinxes</h3>
+      <p className="muted small">Special rulings when two particular characters are in the same game. The built-in list is a starter list written from memory: <b>check the official wiki</b> for the current jinxes, and add your own below.</p>
+      {found.length === 0 ? <p className="small">No jinxes between the characters in your bag, script or Fabled.</p> : <>
+        <ul className="jinx-list">{found.map((j, i) => <li key={i}><b>{ch(j.a)} &amp; {ch(j.b)}</b>{j.custom ? <span className="muted small"> (yours)</span> : null}: {j.text}</li>)}</ul>
+        <button className="btn small" onClick={toDjinn}>Add the Djinn and announce these to everyone</button>
+      </>}
+      <details><summary className="small">Your own jinxes ({custom.length})</summary>
+        <ul className="jinx-list">{custom.map((j, i) => <li key={i}><b>{ch(j.a)} &amp; {ch(j.b)}</b>: {j.text} <button className="btn small ghost" onClick={() => save({ customJinxes: custom.filter((_, k) => k !== i) })}>Remove</button></li>)}</ul>
+        <div className="row wrap">
+          <CharSelect label="First character" value={a} onChange={setA} />
+          <CharSelect label="Second character" value={b} onChange={setB} />
+        </div>
+        <div className="row"><input value={text} onChange={e => setText(e.target.value)} placeholder="The ruling, e.g. Only one of them can be in play." maxLength={300} />
+          <button className="btn small" disabled={!a || !b || a === b || !text.trim()} onClick={() => { void save({ customJinxes: [...custom, { a: a!, b: b!, text }] }); setA(null); setB(null); setText(''); }}>Add jinx</button></div>
+      </details>
+    </section>
   );
 }
 

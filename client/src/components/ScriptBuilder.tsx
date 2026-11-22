@@ -4,6 +4,7 @@ import { CHARACTERS, CHARACTER_BY_ID, EDITION_NAMES, EDITION_SHORT, parseScript 
 import { Modal, TYPE_LABEL } from './Overlays';
 import { pushAlert } from '../net';
 import { saveScript, toScriptJson, shareLink, newScriptId, type SavedScript } from '../scripts';
+import { jinxesFor } from '../../../shared/jinxes';
 
 const TYPES = ['townsfolk', 'outsider', 'minion', 'demon', 'traveller'] as const;
 // a typical full script has about this many of each
@@ -80,6 +81,8 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
         <button className="btn small" onClick={importJson}>Import</button>
       </details>
       {problems.length > 0 && <p className="warn small">A playable script needs {problems.join(', ')}.</p>}
+      {jinxesFor(ids).length > 0 && <details className="small"><summary>⚠ {jinxesFor(ids).length} jinx{jinxesFor(ids).length > 1 ? 'es' : ''} between these characters (starter list, check the wiki)</summary>
+        <ul className="jinx-list">{jinxesFor(ids).map((j, i) => <li key={i}><b>{CHARACTER_BY_ID[j.a]?.name} &amp; {CHARACTER_BY_ID[j.b]?.name}</b>: {j.text}</li>)}</ul></details>}
       <div className="row end">
         <button className="btn ghost" onClick={() => setIds([])} disabled={!ids.length}>Clear</button>
         <button className="btn ghost" onClick={download} disabled={!ids.length}>⬇ Export JSON</button>
