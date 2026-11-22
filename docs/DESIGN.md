@@ -210,4 +210,10 @@ Added from the supplied *Experimental Characters Reference*: 30 Townsfolk, 11 Ou
 - Abilities are paraphrased; wording and balance of Experimental characters may still change, so check the wiki.
 - Their places in the night order are approximate (the official order was not available offline).
 - Like most characters, their effects are run by the Storyteller through the Grimoire. Automated: Use/Claim Ability buttons for Alsaahir, Psychopath, Goblin, Gangster (public) and Fisherman, Amnesiac, Wizard (private); a Demon-less bag is allowed with the Summoner or the Atheist; random bags never pick Experimental characters unless they are on the script.
-- Not automated yet (the Storyteller handles them by hand): double votes (Banshee, God of Ug), forced or secret voting (Zealot, Organ Grinder), group actions (Boomdandy, Al-Hadikhia, Psychopath's rock-paper-scissors), special win conditions, and the two Loric that need special support, Knaves (two Storytellers) and Tor (hidden character cards).
+- Automated mechanics:
+  - **Voting:** Banshee (once marked *Has ability*: two votes per nomination, two nominations a day, even when dead), God of Ug (the Storyteller hands out the Ug hat; that vote counts twice), Zealot (votes yes automatically while 5+ are alive), Organ Grinder (while alive and not drunk: players only see their own hand, never the count; the result is "cast in secret" and *about to die* is hidden).
+  - **Group actions** (Storyteller → Grimoire → Special rules): Al-Hadikhia live-or-die (secret answers, *Apply deaths*), rock-paper-scissors (Psychopath vs. nominator, result announced), Boomdandy (everyone but three survivors dies, then a public 10-second pointing vote).
+  - **Secret words:** Mezepheles and Yaggababble word/phrase, *Tell them* card, "someone said it" (adds *Turns evil*) and a daily Yaggababble counter.
+  - **Win reminders:** a list of special win rules in play, and automatic hints for Leviathan (2nd good execution, after day 5), Goblin, Fearmonger, Saint, Psychopath and Boomdandy executions; a Heretic warning when ending the game.
+  - **Tor:** players do not see their character, alignment or team until they die; evil team info is not given. Poppy Grower alive also withholds evil team info.
+- Still run by hand: Knaves (two Storytellers), and the remaining character effects through the Grimoire.

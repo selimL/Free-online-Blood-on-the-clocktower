@@ -31,6 +31,14 @@ export function botTick(g: Game, vote: BotVote = randomVote) {
   if (g.phase === 'questions') {
     for (const p of g.players) if (p.bot && p.wantsQuestion === null) g.answerQuestion(p, false);
   }
+  // group actions: bots answer at random
+  for (const pr of g.prompts) {
+    if (pr.result) continue;
+    for (const id of pr.playerIds) {
+      const p = g.maybePlayer(id);
+      if (p?.bot && !pr.answers[id]) try { g.answerPrompt(id, pr.id, pr.options[Math.floor(Math.random() * pr.options.length)]); } catch { /* closed */ }
+    }
+  }
   const n = g.nomination;
   if (n && !n.done && ['accusation', 'defense', 'voting'].includes(g.stage ?? '')) {
     for (const p of g.players) {

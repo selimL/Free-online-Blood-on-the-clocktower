@@ -8,6 +8,10 @@ import { MAX_PLAYERS, resolveWeather } from '../../shared/types';
 import type { Game, Player, Spectator } from './game';
 
 export function evilInfoGiven(g: Game) {
+  // Tor: Minions and the Demon do not know each other; Poppy Grower: not while the Poppy Grower lives
+  if (g.settings.fabled.includes('tor')) return false;
+  const poppy = g.players.find(p => p.characterId === 'poppygrower');
+  if (poppy && poppy.alive && !poppy.reminders.some(r => /poison|drunk/i.test(r))) return false;
   return g.residents.length >= 7 || g.settings.houseRules.evilInfoSmallGames;
 }
 
@@ -51,16 +55,21 @@ function publicPlayers(g: Game, viewer: Player | null, evil: EvilTeamView | null
   }));
 }
 
-function nominationView(g: Game): NominationView | null {
+function nominationView(g: Game, viewerId: string | null, isST: boolean): NominationView | null {
   const n = g.nomination;
   if (!n) return null;
   const anon = g.settings.houseRules.anonymousVotes;
+  // Organ Grinder: players only see their own hand, and never the tally
+  const secret = !!n.secret && !isST;
+  const own = (rec: Record<string, boolean>) => (viewerId && viewerId in rec ? { [viewerId]: rec[viewerId] } : {});
   return {
     nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, order: n.order, voteIndex: n.voteIndex,
-    hands: anon ? {} : { ...n.hands }, locked: anon ? {} : { ...n.locked },
-    tally: anon && !n.done ? 0 : g.tally(n), needed: n.needed, done: n.done, result: n.result,
+    hands: secret ? own(n.hands) : anon ? {} : { ...n.hands }, locked: secret ? own(n.locked) : anon ? {} : { ...n.locked },
+    tally: secret || (anon && !n.done) ? 0 : g.tally(n), needed: n.needed, done: n.done, result: n.result, secret: !!n.secret,
   };
 }
+const secretToday = (g: Game) => g.voteHistory.some(v => v.day === g.day && v.votes === -1) || !!g.nomination?.secret;
+export const torActive = (g: Game) => g.settings.fabled.includes('tor');
 
 /** Public ability shape: NO real/bluff field, ever. */
 function abilityView(g: Game): AbilityEventView | null {
@@ -114,10 +123,10 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     players: publicPlayers(g, viewer, evil),
     rooms: g.rooms().map(r => night && !isST ? { ...r, occupants: [] } : r),
     timer: g.timer ? { label: g.timer.label, endsAt: g.timer.endsAt, remainingMs: g.timer.remainingMs, paused: g.paused } : null,
-    nomination: nominationView(g),
+    nomination: nominationView(g, viewer?.id ?? null, isST),
     nominatedToday: [...g.nominatedToday],
     nominatorsToday: [...g.nominatorsToday],
-    aboutToDie: g.aboutToDie,
+    aboutToDie: !isST && secretToday(g) ? null : g.aboutToDie,
     ability: abilityView(g),
     questions: {
       active: g.phase === 'questions', currentId: g.studyGuest,
@@ -141,6 +150,11 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     } : null,
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     scheduledFor: g.scheduledFor ?? null,
+    prompts: (g.prompts ?? []).filter(pr => isST || pr.public || (viewer && pr.playerIds.includes(viewer.id))).map(pr => ({
+      ...pr, answers: isST || pr.public ? { ...pr.answers } : viewer && pr.answers[viewer.id] ? { [viewer.id]: pr.answers[viewer.id] } : {},
+    })),
+    ugHat: g.settings.fabled.includes('godofug') ? g.ugHat ?? null : null,
+    torActive: torActive(g),
     mvp: g.phase === 'ended' ? { votes: g.mvpTally(), mine: g.mvpVotes[isST ? 'st' : viewer?.id ?? ''] ?? null } : null,
     weather: resolveWeather(g.settings.weather ?? 'clear', g.id, g.day),
     voteHistory: g.settings.houseRules.openVoteRecord
@@ -179,7 +193,9 @@ export function playerView(g: Game, p: Player): GameView {
     revealedTo: p.revealedTo,
     tutorial: g.tutorial && g.tutorial.humanId === p.id ? { ...g.tutorial.tip, done: g.tutorial.done } : null,
   };
-  const view = { ...baseView(g, p, evil), self } as GameView;
+  // Tor: your character and alignment stay hidden until you die
+  if (torActive(g) && p.alive && g.phase !== 'ended' && !p.traveller) { self.characterId = null; self.alignment = null; self.evilTeam = null; self.abilityAvailable = false; }
+  const view = { ...baseView(g, p, self.evilTeam, false), self } as GameView;
   if (g.phase === 'night' && !p.awake) {
     // A sleeping player sees nothing that happens at night.
     view.announcements = view.announcements.filter(a => a.ts <= g.lastNightStart);
@@ -214,7 +230,7 @@ export function storytellerView(g: Game): GameView {
     demonBluffs: g.demonBluffs, lunaticBluffs: g.lunaticBluffs, pendingDawnDeaths: g.pendingDawnDeaths,
     pendingAbility: g.pendingAbility, privateRequests: g.privateRequests, notes: g.stNotes, log: g.log.slice(-200),
     regionsRtt: Object.fromEntries(g.players.map(p => [p.id, p.rtt])),
-    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId,
+    availableRegions: [], nightOrder: nightOrder(g), focusId: g.focusId, winHint: g.winHint(), lastExecutedId: g.lastExecutedId, secretWords: g.secretWords ?? { mezepheles: '', yaggababble: '' }, yaggababbleCount: g.yaggababbleCount ?? 0, winRules: g.specialWinRules(),
   };
   return { ...baseView(g, null, null), self } as GameView;
 }

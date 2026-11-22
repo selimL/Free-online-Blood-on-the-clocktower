@@ -1,3 +1,4 @@
+import { SpecialRules } from './GroupActions';
 import { WEATHERS } from '../../../shared/types';
 import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
 import { ScriptBuilder } from './ScriptBuilder';
@@ -161,6 +162,7 @@ function CharSelect({ value, onChange, filter, label }: { value: string | null; 
 
 function Grimoire({ view }: { view: GameView }) {
   const self = st(view);
+  const heretic = self.grimoire.some(g => g.characterId === 'heretic' && !g.reminders.some(r => /poison|drunk/i.test(r))) ? '\n\n⚠ The Heretic is in play: whoever wins LOSES. Did you swap the winner?' : '';
   const [infoFor, setInfoFor] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const pub = (id: string) => view.players.find(p => p.id === id)!;
@@ -220,12 +222,13 @@ function Grimoire({ view }: { view: GameView }) {
           </div>
         );
       })}
+      <SpecialRules view={view} />
       {view.phase !== 'lobby' && <Bluffs view={view} />}
       {view.phase !== 'lobby' && view.phase !== 'ended' && (
         <div className="end-game">
           <b>End the game:</b>
-          <button className="btn small" onClick={() => { if (confirm('Declare GOOD the winner and reveal all characters?')) void act('st:end', { winner: 'good' }); }}>Good wins</button>
-          <button className="btn small danger" onClick={() => { if (confirm('Declare EVIL the winner and reveal all characters?')) void act('st:end', { winner: 'evil' }); }}>Evil wins</button>
+          <button className="btn small" onClick={() => { if (confirm(`Declare GOOD the winner and reveal all characters?${heretic}`)) void act('st:end', { winner: 'good' }); }}>Good wins</button>
+          <button className="btn small danger" onClick={() => { if (confirm(`Declare EVIL the winner and reveal all characters?${heretic}`)) void act('st:end', { winner: 'evil' }); }}>Evil wins</button>
         </div>
       )}
       {infoFor && <InfoComposer view={view} playerId={infoFor} onClose={() => setInfoFor(null)} />}

@@ -50,7 +50,9 @@ export function CharacterModal({ view, onClose }: { view: GameView; onClose: () 
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
   return (
     <Modal title="Your character" onClose={onClose}>
-      {!ch && <p>You have not been given a character yet.</p>}
+      {!ch && (view.torActive && view.phase !== 'lobby' && view.phase !== 'dealt'
+        ? <p>🌫 <b>Tor is in play:</b> your character and alignment are hidden from you until you die. The Storyteller still wakes you when your character acts.</p>
+        : <p>You have not been given a character yet.</p>)}
       {ch && <>
         <CharacterToken ch={ch} />
         <p className={`alignment ${self.alignment}`}>You are <b>{self.alignment === 'evil' ? 'Evil' : 'Good'}</b>.</p>
@@ -167,7 +169,7 @@ export function VoteBar({ view }: { view: GameView }) {
     <div className={`vote-bar ${nom.done ? 'done' : ''}`} role="region" aria-label="Vote">
       <div className="vote-title">
         {nom.exile ? 'Exile' : 'Nomination'}: <b>{name(nom.nominatorId)}</b> → <b>{name(nom.nomineeId)}</b>
-        <span className="tally">{nom.tally} / {nom.needed} needed</span>
+        <span className="tally">{nom.secret && !view.self.isStoryteller ? `🤫 secret vote · ${nom.needed} needed` : `${nom.tally} / ${nom.needed} needed`}</span>
         {view.aboutToDie && <span className="block">On the block: {name(view.aboutToDie.playerId)} ({view.aboutToDie.votes})</span>}
       </div>
       {view.stage === 'accusation' && <div className="speech">🗣 {name(nom.nominatorId)} makes the accusation</div>}
@@ -179,6 +181,8 @@ export function VoteBar({ view }: { view: GameView }) {
           <button className={`btn ${raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: true })} aria-pressed={raised}>✋ Yes</button>
           <button className={`btn ${!raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: false })} aria-pressed={!raised}>No</button>
           {me && !me.alive && !nom.exile && <span className="muted small">Voting yes spends your ghost vote.</span>}
+          {!view.self.isStoryteller && view.self.characterId === 'zealot' && !nom.exile && <span className="muted small">As the Zealot, while 5 or more are alive, you must vote yes.</span>}
+          {nom.secret && <span className="muted small">🤫 Organ Grinder: nobody sees the hands or the count.</span>}
         </div>
       )}
     </div>

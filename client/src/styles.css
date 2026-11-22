@@ -670,3 +670,14 @@ textarea.notes { width: 100%; min-height: 180px; }
 .sb-ed.exp { opacity: .9; color: #7a3fb0; font-weight: 700; }
 .alm-item.loric { border-left-color: #3f8ab0; }
 .token.loric .token-disc { background: radial-gradient(circle at 35% 30%, #cfe6f2, #3f8ab0); }
+
+/* ---------------- special rules & group actions */
+.special-rules { margin: .8rem 0; padding: .5rem .6rem; border: 1px solid #4a4252; border-radius: 8px; }
+.special-rules h3 { margin: 0 0 .3rem; }
+.special-rules ul { margin: 0 0 .4rem; padding-left: 1.1rem; }
+.secret-word, .prompt-status, .pick-players { margin: .4rem 0; padding: .35rem .5rem; border-radius: 6px; background: rgba(255, 255, 255, .04); }
+.prompt-status.done { opacity: .8; }
+.countdown-big { font: 700 2.4rem 'Cinzel', serif; text-align: center; margin: .2rem 0; color: var(--blood); }
+.countdown-big.small { font-size: 1.2rem; }
+.pointing { position: fixed; top: 4.5rem; left: 50%; transform: translateX(-50%); z-index: 60; padding: .5rem .9rem; border-radius: var(--radius); box-shadow: var(--shadow); color: var(--ink); }
+.badge.ughat { top: -6px; left: 50%; transform: translateX(-50%); font-size: .95rem; background: transparent; border: 0; }

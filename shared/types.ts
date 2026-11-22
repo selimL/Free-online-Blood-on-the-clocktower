@@ -204,6 +204,8 @@ export interface NominationView {
   needed: number;
   done: boolean;
   result: string | null;
+  /** Organ Grinder: votes are secret. */
+  secret?: boolean;
 }
 
 /** Public shape of a day ability use — identical for real and bluffed uses. */
@@ -250,6 +252,8 @@ export interface SelfView {
 export interface StorytellerPublic { name: string; avatar: Avatar; location: string | null; connected: boolean; pos: WalkPos | null }
 export interface WalkPos { x: number; z: number; ry: number }
 
+export interface PromptView { id: string; kind: 'livedie' | 'rps' | 'point'; title: string; playerIds: string[]; options: string[]; answers: Record<string, string>; public: boolean; endsAt: number | null; result: string | null; applied: boolean }
+
 export interface WhisperView { id: string; playerId: string; fromST: boolean; text: string; ts: number }
 
 export interface GameView {
@@ -287,6 +291,12 @@ export interface GameView {
   weather: Weather;
   /** Planned start time (ms), shown with a countdown. */
   scheduledFor: number | null;
+  /** Group actions the viewer takes part in (or public ones); the Storyteller sees all. */
+  prompts: PromptView[];
+  /** God of Ug: who wears the Ug hat (public). */
+  ugHat: string | null;
+  /** Tor (Loric): characters stay hidden until death. */
+  torActive: boolean;
   /** After the game: MVP votes per player, and the viewer's own vote. */
   mvp: { votes: Record<string, number>; mine: string | null } | null;
   /** Private messages with the Storyteller: a player sees their own thread, the Storyteller sees all. */
@@ -342,6 +352,11 @@ export interface StorytellerSelf {
   winHint: string | null;
   /** The last Storyteller action that can still be undone. */
   undo?: { label: string; at: number } | null;
+  /** Mezepheles / Yaggababble secret words and today's count. */
+  secretWords: { mezepheles: string; yaggababble: string };
+  yaggababbleCount: number;
+  /** Characters in play with special win conditions. */
+  winRules: string[];
   /** Who was executed on the most recent day (Undertaker). */
   lastExecutedId: string | null;
 }

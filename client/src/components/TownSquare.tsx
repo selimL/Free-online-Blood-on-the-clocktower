@@ -116,6 +116,7 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
           {p.muted && <span className="badge muted" title="Muted by Storyteller">🔇</span>}
           {p.joining && <span className="badge joining" title="Joining…">⏳</span>}
           {p.bot && <span className="badge bot" title="Computer player">🤖</span>}
+          {view.ugHat === p.id && <span className="badge ughat" title="Wears the Ug hat: one-syllable words only; their vote counts twice">🎩</span>}
           {p.offlineSince && <span className="badge offline" title={`Lost connection ${Math.max(1, Math.round((Date.now() - p.offlineSince) / 60000))} min ago. Their seat is kept.`}>📶✕</span>}
           {away && room && <span className="badge room" title={room.name}>{room.icon}</span>}
           {!p.alive && <span className={`badge ghostvote ${p.ghostVoteUsed ? 'used' : ''}`} title={p.ghostVoteUsed ? 'Ghost vote used' : 'Ghost vote available'}>{p.ghostVoteUsed ? '◌' : '●'}</span>}

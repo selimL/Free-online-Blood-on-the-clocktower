@@ -33,6 +33,9 @@ function undoLabel(g: Game, type: string, d: any): string | null {
     case 'st:skipTimer': return 'End the timer';
     case 'st:resolveAbility': return 'Resolve the ability';
     case 'st:end': return 'End the game';
+    case 'st:boomdandy': return 'Boomdandy explosion';
+    case 'st:applyPrompt': return 'Apply the Al-Hadikhia deaths';
+    case 'st:mezephelesSaid': return `${who()} said the Mezepheles' word`;
     case 'st:bluffs': return 'Change bluffs';
     default: return null;
   }
@@ -273,6 +276,7 @@ export class Lobby {
       case 'tutorial:next': return tutorialNext(g, p.id);
       case 'tutorial:skip': return tutorialSkip(g, p.id);
       case 'mvp': return g.voteMvp(p.id, String(d.candidateId ?? ''));
+      case 'prompt': return g.answerPrompt(p.id, String(d.promptId ?? ''), String(d.answer ?? ''));
       case 'walk': return g.walk(p.id, d.x, d.z, d.ry);
       case 'emote': return g.emote(p.id, d.kind);
       case 'question': return g.answerQuestion(p, !!d.yes);
@@ -328,6 +332,14 @@ export class Lobby {
       }
       case 'st:schedule': return g.setSchedule(d.scheduledFor);
       case 'st:mvp': return g.voteMvp('st', String(d.candidateId ?? ''));
+      case 'st:prompt': { g.startPrompt(d.kind === 'rps' ? 'rps' : d.kind === 'point' ? 'point' : 'livedie', Array.isArray(d.playerIds) ? d.playerIds.map(String) : []); return; }
+      case 'st:applyPrompt': return g.applyPrompt(String(d.promptId ?? ''));
+      case 'st:dismissPrompt': return g.dismissPrompt(String(d.promptId ?? ''));
+      case 'st:boomdandy': return g.boomdandy(Array.isArray(d.survivors) ? d.survivors.map(String) : []);
+      case 'st:word': return g.setSecretWord(d.kind === 'yaggababble' ? 'yaggababble' : 'mezepheles', d.word);
+      case 'st:mezephelesSaid': return g.mezephelesSaid(pid);
+      case 'st:yagga': return g.yaggababbleSaid(Number(d.delta) || 1);
+      case 'st:ugHat': return g.setUgHat(d.playerId ? String(d.playerId) : null);
       case 'st:deal': return g.deal();
       case 'st:addBot': { if (g.players.filter(p => p.bot).length >= 9) fail('That is plenty of bots.'); addBot(g); return; }
       case 'st:reveal': return g.reveal();

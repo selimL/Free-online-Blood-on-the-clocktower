@@ -23,6 +23,7 @@ import {
 } from './Overlays';
 import { StorytellerPanel, StorytellerControls } from './Storyteller';
 import { Almanac } from './Almanac';
+import { PromptForPlayer } from './GroupActions';
 import { WhisperThread, useUnread } from './Whispers';
 
 type ConfirmState = { title: string; text: React.ReactNode; confirm: string; onYes: () => void } | null;
@@ -236,6 +237,7 @@ export function GameScreen({ view }: { view: GameView }) {
       {!isST && me?.traveller && !view.self.isStoryteller && !view.self.characterId && view.phase !== 'lobby' && <TravellerPicker view={view} />}
       {confirm && <Confirm {...confirm} onYes={() => { confirm.onYes(); setConfirm(null); }} onNo={() => setConfirm(null)} />}
       <QuestionPrompt view={view} />
+      <PromptForPlayer view={view} />
       <InfoPopup view={view} />
       <TransitionOverlay />
       {view.paused && <div className="paused-banner">⏸ The game is paused{!view.storyteller.connected ? ' — waiting for the Storyteller to reconnect' : ''}.</div>}

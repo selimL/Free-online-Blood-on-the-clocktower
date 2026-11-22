@@ -55,6 +55,8 @@ export interface Player {
 
 export interface Nomination {
   nominatorId: string; nomineeId: string; exile: boolean;
+  /** Organ Grinder: hands and the tally are hidden from players. */
+  secret?: boolean;
   order: string[]; voteIndex: number; hands: Record<string, boolean>; locked: Record<string, boolean>;
   needed: number; done: boolean; result: string | null; deadline: number;
 }
@@ -80,6 +82,12 @@ export const ROOM_Z: [number, number] = [-2.6, 4.6];
 /** Watches without a seat; ids are prefixed 'spec:' so they never collide with players or the Storyteller. */
 export interface Spectator { id: string; token: string; name: string; avatar: Avatar; connected: boolean }
 export const MAX_SPECTATORS = 20;
+
+/** A question put to a few players at once (secret unless public): Al-Hadikhia, rock-paper-scissors, Boomdandy pointing. */
+export interface GroupPrompt {
+  id: string; kind: 'livedie' | 'rps' | 'point'; title: string; playerIds: string[]; options: string[];
+  answers: Record<string, string>; public: boolean; endsAt: number | null; result: string | null; applied: boolean;
+}
 
 /** One private message in a player's thread with the Storyteller. */
 export interface Whisper { id: string; playerId: string; fromST: boolean; text: string; ts: number }
@@ -173,6 +181,18 @@ export class Game {
   tutorial: TutorialState | null = null;
   /** Planned start time (ms) shared with the invite link; null = no schedule. */
   scheduledFor: number | null = null;
+  /** Group actions in progress (see GroupPrompt). */
+  prompts: GroupPrompt[] = [];
+  /** God of Ug (Loric): who wears the Ug hat; their vote counts twice. */
+  ugHat: string | null = null;
+  /** Banshee: players who already used their second nomination today. */
+  extraNominations = new Set<string>();
+  /** Secret words for the Mezepheles and the Yaggababble, and how often the phrase was said today. */
+  secretWords: { mezepheles: string; yaggababble: string } = { mezepheles: '', yaggababble: '' };
+  yaggababbleCount = 0;
+  /** Good players executed so far (Leviathan) and a rule-based win reminder for the Storyteller. */
+  executedGood = 0;
+  winNote: string | null = null;
   /** End-of-game MVP votes: voter id → player id. */
   mvpVotes: Record<string, string> = {};
   /** Private messages between each player and the Storyteller. */
@@ -483,6 +503,102 @@ export class Game {
     const t: Record<string, number> = {};
     for (const id of Object.values(this.mvpVotes)) if (this.maybePlayer(id)) t[id] = (t[id] ?? 0) + 1;
     return t;
+  }
+
+  // ------------------------------------------------------------ group actions
+  startPrompt(kind: GroupPrompt['kind'], playerIds: string[], title?: string) {
+    const ids = [...new Set(playerIds)].filter(id => this.maybePlayer(id));
+    const need = kind === 'rps' ? 2 : kind === 'livedie' ? 3 : 1;
+    if (ids.length < need || (kind === 'rps' && ids.length !== 2)) fail(kind === 'rps' ? 'Choose exactly two players.' : kind === 'livedie' ? 'Choose three players.' : 'Choose the players.');
+    const options = kind === 'rps' ? ['Rock', 'Paper', 'Scissors'] : kind === 'livedie' ? ['Live', 'Die'] : ids.map(id => this.nameOf(id));
+    const pr: GroupPrompt = {
+      id: nanoid(8), kind, playerIds: ids, options, answers: {}, public: kind === 'point', applied: false, result: null,
+      endsAt: kind === 'point' ? Date.now() + 10_000 : null,
+      title: title ?? (kind === 'rps' ? 'Rock, paper, scissors!' : kind === 'livedie' ? 'Do you choose to live or die?' : 'Point at a player: in 10 seconds, whoever most of you point at dies.'),
+    };
+    this.prompts.push(pr);
+    if (this.prompts.length > 20) this.prompts.shift();
+    if (pr.public) this.announce(`${ids.map(id => this.nameOf(id)).join(', ')}: point at a player! In 10 seconds, the one most of them point at dies.`, 'death');
+    this.emit(ids, 'alert', { text: pr.title, kind: 'vote' });
+    this.changed();
+    return pr;
+  }
+  answerPrompt(pid: string, promptId: string, answer: string) {
+    const pr = this.prompts.find(x => x.id === promptId) ?? fail('That question is over.');
+    if (pr.result) fail('That question is over.');
+    if (!pr.playerIds.includes(pid)) fail('This question is not for you.');
+    if (!pr.options.includes(answer)) fail('Choose one of the options.');
+    if (pr.kind !== 'point' && pr.answers[pid]) fail('You already answered.');
+    pr.answers[pid] = answer;
+    if (pr.kind !== 'point' && pr.playerIds.every(id => pr.answers[id])) this.resolvePrompt(pr);
+    this.changed();
+  }
+  private resolvePrompt(pr: GroupPrompt) {
+    const name = (id: string) => this.nameOf(id);
+    if (pr.kind === 'rps') {
+      const [a, b] = pr.playerIds, x = pr.answers[a], y = pr.answers[b];
+      const beats: Record<string, string> = { Rock: 'Scissors', Paper: 'Rock', Scissors: 'Paper' };
+      pr.result = x === y ? `${name(a)} and ${name(b)} both chose ${x}: a draw, play again.` : `${name(a)} chose ${x}, ${name(b)} chose ${y}: ${name(beats[x] === y ? a : b)} wins.`;
+      this.announce(pr.result, 'vote');
+    } else if (pr.kind === 'livedie') {
+      const live = pr.playerIds.filter(id => pr.answers[id] === 'Live');
+      pr.result = live.length === pr.playerIds.length
+        ? `All three chose to live, so all three die: ${pr.playerIds.map(name).join(', ')}.`
+        : `${pr.playerIds.map(id => `${name(id)}: ${pr.answers[id]}`).join(', ')}. Those who chose to die, die.`;
+    } else {
+      const counts: Record<string, number> = {};
+      for (const a of Object.values(pr.answers)) counts[a] = (counts[a] ?? 0) + 1;
+      const top = Math.max(0, ...Object.values(counts));
+      const leaders = Object.keys(counts).filter(k => counts[k] === top);
+      if (top && leaders.length === 1) {
+        const victim = this.players.find(p => p.name === leaders[0]);
+        pr.result = `${leaders[0]} was pointed at most (${top}) and dies.`;
+        if (victim?.alive) this.applyDeath(victim, `${victim.name} dies.`);
+        pr.applied = true;
+      } else pr.result = top ? `A tie (${leaders.join(', ')}): nobody dies.` : 'Nobody pointed: nobody dies.';
+      this.announce(pr.result, 'death');
+    }
+    this.addLog(`Group action (${pr.kind}): ${pr.result}`);
+  }
+  /** Who dies from a resolved Al-Hadikhia choice (the Storyteller applies it). */
+  applyPrompt(promptId: string) {
+    const pr = this.prompts.find(x => x.id === promptId) ?? fail('Not found.');
+    if (pr.kind !== 'livedie' || !pr.result || pr.applied) fail('Nothing to apply.');
+    const live = pr.playerIds.filter(id => pr.answers[id] === 'Live');
+    const dying = live.length === pr.playerIds.length ? pr.playerIds : pr.playerIds.filter(id => pr.answers[id] === 'Die');
+    for (const id of dying) { const p = this.player(id); if (p.alive) this.kill(id); }
+    pr.applied = true;
+    this.changed();
+  }
+  dismissPrompt(promptId: string) { this.prompts = this.prompts.filter(x => x.id !== promptId); this.changed(); }
+  promptTick(now: number): boolean {
+    let dirty = false;
+    for (const pr of this.prompts) if (pr.kind === 'point' && !pr.result && pr.endsAt && now >= pr.endsAt) { this.resolvePrompt(pr); dirty = true; }
+    return dirty;
+  }
+  /** Boomdandy: everyone except the three chosen survivors dies, then the survivors point. */
+  boomdandy(survivors: string[]) {
+    const keep = [...new Set(survivors)].filter(id => this.maybePlayer(id)?.alive);
+    if (keep.length !== 3) fail('Choose exactly three living players to survive.');
+    for (const p of this.players) if (p.alive && !keep.includes(p.id) && !p.traveller) this.applyDeath(p, `${p.name} dies in the explosion.`);
+    this.winNote = null;
+    this.startPrompt('point', keep);
+  }
+  setSecretWord(kind: 'mezepheles' | 'yaggababble', word: unknown) { this.secretWords[kind] = cleanText(word, 60); this.changed(); }
+  /** The Mezepheles' word was said by a good player: they turn evil tonight. */
+  mezephelesSaid(pid: string) {
+    const p = this.player(pid);
+    if (!p.reminders.includes('Turns evil')) p.reminders.push('Turns evil');
+    const m = this.holder('mezepheles');
+    if (m && !m.reminders.includes('No ability')) m.reminders.push('No ability');
+    this.addLog(`${p.name} said the Mezepheles' word${p.alignment === 'good' ? ' and turns evil tonight' : ' (not good: nothing happens)'}.`);
+    this.changed();
+  }
+  yaggababbleSaid(delta: number) { this.yaggababbleCount = Math.max(0, this.yaggababbleCount + (delta < 0 ? -1 : 1)); this.changed(); }
+  setUgHat(pid: string | null) {
+    this.ugHat = pid && this.maybePlayer(pid) ? pid : null;
+    if (this.ugHat) this.announce(`${this.nameOf(this.ugHat)} wears the Ug hat: one-syllable words only, and their vote counts twice.`, 'info');
+    this.changed();
   }
 
   /** A private note between one player and the Storyteller (either direction). */
@@ -798,6 +914,7 @@ export class Game {
       if (p.joining && now >= p.joinReadyAt) { p.joining = false; dirty = true; }
     }
     if (this.connectionTick(now)) dirty = true;
+    if (this.promptTick(now)) dirty = true;
     if (this.paused) { if (dirty) this.changed(); return; }
     // private-room time accounting + cap
     if (this.phase === 'day') {
@@ -847,6 +964,7 @@ export class Game {
     this.addLog(`Night ${this.night} begins.`);
     this.announce(`Night ${this.night} falls over the town. Everyone sleeps.`, 'phase');
     this.lastNightStart = Date.now();
+    this.winNote = null;
     this.emit('all', 'transition', { to: 'night' });
     this.changed();
   }
@@ -911,7 +1029,7 @@ export class Game {
     this.focusId = null;
     const deaths = this.pendingDawnDeaths.map(id => this.maybePlayer(id)).filter((p): p is Player => !!p);
     this.pendingDawnDeaths = [];
-    this.nominatedToday.clear(); this.nominatorsToday.clear(); this.abilityDeclarationsToday = 0;
+    this.nominatedToday.clear(); this.nominatorsToday.clear(); this.extraNominations.clear(); this.abilityDeclarationsToday = 0; this.yaggababbleCount = 0;
     this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null; this.lastExecutedId = null;
     for (const p of this.players) { p.privateMsToday = 0; p.whispersToday = 0; }
     this.addLog(`Day ${this.day} begins.`);
@@ -977,8 +1095,12 @@ export class Game {
     if (exile) {
       if (!nominee.traveller) fail('Only Travellers can be exiled.');
     } else {
-      if (!nominator.alive) fail('Dead players cannot nominate.');
-      if (this.nominatorsToday.has(nominator.id)) fail('You have already nominated today.');
+      const banshee = this.bansheeActive(nominator);
+      if (!nominator.alive && !banshee) fail('Dead players cannot nominate.');
+      if (this.nominatorsToday.has(nominator.id)) {
+        if (!banshee || this.extraNominations.has(nominator.id)) fail('You have already nominated today.');
+        this.extraNominations.add(nominator.id);
+      }
       if (this.nominatedToday.has(nominee.id)) fail(`${nominee.name} has already been nominated today.`);
       this.nominatorsToday.add(nominator.id);
       this.nominatedToday.add(nominee.id);
@@ -988,6 +1110,7 @@ export class Game {
     this.nomination = {
       nominatorId: nominator.id, nomineeId: nominee.id, exile, order, voteIndex: 0, hands: {}, locked: {},
       needed: exile ? Math.ceil(this.players.length / 2) : Math.ceil(this.alivePlayers.length / 2), done: false, result: null, deadline: Infinity,
+      secret: !exile && this.secretVoting(),
     };
     this.addLog(`${nominator.name} ${exile ? 'called for the exile of' : 'nominated'} ${nominee.name}.`);
     this.announce(`${nominator.name} ${exile ? 'calls for the exile of' : 'nominates'} ${nominee.name}!`, 'vote');
@@ -1025,7 +1148,21 @@ export class Game {
     this.setTimer(`${this.nameOf(this.speakerId)} defends`, this.settings.timers.defense, 'defense');
     this.changed();
   }
-  canVote(p: Player, exile: boolean) { return exile || p.alive || !p.ghostVoteUsed; }
+  /** Not drunk or poisoned (by reminder token). */
+  sober(p: Player) { return !p.reminders.some(r => /poison|drunk/i.test(r)); }
+  holder(charId: string) { return this.players.find(p => p.characterId === charId); }
+  /** A Banshee killed by the Demon (Storyteller marks "Has ability"): two votes, two nominations, even when dead. */
+  bansheeActive(p: Player) { return p.characterId === 'banshee' && p.reminders.includes('Has ability') && this.sober(p); }
+  voteWeight(p: Player) {
+    let w = this.bansheeActive(p) ? 2 : 1;
+    if (this.ugHat === p.id && this.settings.fabled.includes('godofug')) w *= 2;
+    return w;
+  }
+  /** Zealot: while 5 or more players live, must vote on every nomination. */
+  zealotMustVote(p: Player) { return p.characterId === 'zealot' && p.alive && this.sober(p) && this.alivePlayers.length >= 5; }
+  /** Organ Grinder alive and not choosing to be drunk: votes are secret. */
+  secretVoting() { const o = this.holder('organgrinder'); return !!o && o.alive && this.sober(o); }
+  canVote(p: Player, exile: boolean) { return exile || p.alive || !p.ghostVoteUsed || this.bansheeActive(p); }
   startVote() {
     const n = this.nomination;
     if (!n || n.done) fail('No nomination to vote on.');
@@ -1063,14 +1200,14 @@ export class Game {
     const n = this.nomination!;
     const id = n.order[n.voteIndex];
     const p = this.maybePlayer(id);
-    const yes = !!n.hands[id] && !!p && this.canVote(p, n.exile);
+    const yes = !!p && this.canVote(p, n.exile) && (!!n.hands[id] || (!n.exile && this.zealotMustVote(p)));
     n.locked[id] = yes;
-    if (yes && p && !p.alive && !n.exile) p.ghostVoteUsed = true;
+    if (yes && p && !p.alive && !n.exile && !this.bansheeActive(p)) p.ghostVoteUsed = true;
     n.voteIndex++;
     n.deadline = now + this.settings.timers.voteSeconds * 1000;
     this.skipIneligible(n);
   }
-  tally(n: Nomination) { return Object.values(n.locked).filter(Boolean).length; }
+  tally(n: Nomination) { return Object.entries(n.locked).filter(([, y]) => y).reduce((s, [id]) => s + (this.maybePlayer(id) ? this.voteWeight(this.maybePlayer(id)!) : 1), 0); }
   private finishVote(n: Nomination) {
     if (n.done) return;
     n.done = true;
@@ -1101,6 +1238,16 @@ export class Game {
     } else {
       result = `${nominee.name} receives ${votes} votes (${Math.max(n.needed, this.highestVotes + (this.highestVotes ? 1 : 0))} needed). Not enough.`;
     }
+    if (n.secret) {
+      // Organ Grinder: only the Storyteller learns the count; players hear that the votes were secret
+      this.addLog(`(secret vote) ${result}`);
+      this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: [], votes: -1, needed: n.needed, result: 'Secret vote (Organ Grinder)' });
+      n.result = `The votes on ${nominee.name} were cast in secret.`;
+      this.announce(n.result, 'vote');
+      this.stage = 'nominations';
+      this.setTimer('Nominations', this.settings.timers.nominations, 'nominations');
+      return;
+    }
     if (!this.settings.houseRules.anonymousVotes && votes > 0) {
       const names = n.order.filter(id => n.locked[id]).map(id => this.nameOf(id));
       result += ` Voted yes: ${names.join(', ')}.`;
@@ -1125,6 +1272,7 @@ export class Game {
     if (this.executedToday) fail('There has already been an execution today.');
     this.executedToday = true;
     this.lastExecutedId = p.id;
+    this.noteExecution(p);
     this.aboutToDie = null;
     this.addLog(`${p.name} was executed.`);
     this.emit('all', 'execution', { playerId: p.id });
@@ -1407,8 +1555,43 @@ export class Game {
     }
   }
   /** A hint for the Storyteller; the game never ends on its own (Scarlet Woman, Zombuul, Mastermind…). */
+  /** Rule-based win reminders when someone is executed (the Storyteller still decides). */
+  private noteExecution(p: Player) {
+    const n = this.nomination;
+    if (p.alignment === 'good') this.executedGood++;
+    const lev = this.holder('leviathan');
+    if (lev?.alive && p.alignment === 'good' && this.executedGood > 1) this.winNote = 'Leviathan: more than one good player has been executed, so evil wins.';
+    if (p.characterId === 'goblin' && p.reminders.includes('Claimed') && this.sober(p)) this.winNote = 'Goblin: the Goblin claimed when nominated and was executed, so evil wins.';
+    if (p.characterId === 'saint' && this.sober(p)) this.winNote = 'Saint executed: good loses.';
+    const fm = n && this.maybePlayer(n.nominatorId);
+    if (fm && fm.characterId === 'fearmonger' && this.sober(fm) && n!.nomineeId === p.id && p.reminders.includes('Fear')) this.winNote = `Fearmonger executed their chosen player: ${p.alignment === 'good' ? 'good' : 'evil'} loses.`;
+    if (p.characterId === 'psychopath' && this.sober(p)) this.winNote = 'Psychopath executed: they only die if they lose at rock-paper-scissors (start it from Group actions).';
+    if (p.characterId === 'boomdandy' && this.sober(p)) this.winNote = 'Boomdandy executed: all but three players die, then the three point (start it from Group actions).';
+  }
+  /** Characters in play whose win conditions the Storyteller should keep in mind. */
+  specialWinRules(): string[] {
+    const R: Record<string, string> = {
+      alsaahir: 'Alsaahir: if they publicly name every Minion and the Demon correctly, good wins.',
+      atheist: 'Atheist: if the Storyteller is executed, good wins (no evil players are in play).',
+      cultleader: 'Cult Leader: if every good player chooses to join the cult, the Cult Leader\'s team wins.',
+      damsel: 'Damsel: if a Minion publicly guesses the Damsel (once), good loses.',
+      fearmonger: 'Fearmonger: if they nominate and execute their chosen player, that player\'s team loses.',
+      goblin: 'Goblin: if they claim to be the Goblin when nominated and are executed that day, evil wins.',
+      heretic: 'Heretic: whoever wins loses, and whoever loses wins (even if the Heretic is dead). Swap the winner when you end the game.',
+      leviathan: 'Leviathan: if more than one good player is executed, or after day 5, evil wins.',
+      politician: 'Politician: if most responsible for their team losing, they change alignment and win.',
+      saint: 'Saint: if executed, good loses.',
+      mayor: 'Mayor: three alive and a day with no execution: good wins.',
+      vortox: 'Vortox: a day with no execution means evil wins.',
+      klutz: 'Klutz: when they learn they died, they choose a player; if evil, good loses.',
+    };
+    return [...new Set(this.players.map(p => p.characterId ?? ''))].filter(id => R[id]).map(id => R[id]);
+  }
   winHint(): string | null {
     if (!['night', 'day'].includes(this.phase)) return null;
+    if (this.winNote) return this.winNote;
+    const lev = this.holder('leviathan');
+    if (lev?.alive && this.day > 5) return 'Leviathan: it is after day 5, so evil wins.';
     const demonsAlive = this.players.some(p => p.alive && CHARACTER_BY_ID[p.characterId ?? '']?.type === 'demon');
     const living = this.players.filter(p => p.alive && !p.traveller).length;
     if (!demonsAlive) return 'No Demon is alive: good wins, unless a new Demon is created (Scarlet Woman, Imp self-kill) or the Mastermind/Zombuul applies.';
