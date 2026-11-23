@@ -617,6 +617,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
       </section>
       <JinxPanel settings={settings} save={save} />
       <CoStorytellers view={view} />
+      <BackupPanel view={view} />
       {self.availableRegions.length > 1 && <section>
         <h3>Voice region</h3>
         <select value={settings.region ?? ''} onChange={e => save({ region: e.target.value || null })}>
@@ -645,6 +646,27 @@ function CoStorytellers({ view }: { view: GameView }) {
         <button className="btn small" disabled={!name.trim()} onClick={invite}>Invite</button></div>}
       {link && <p className="small">Send this private link to them (anyone with it becomes a Storyteller): <input readOnly value={link} onFocus={e => e.target.select()} aria-label="Co-Storyteller link" />
         <button className="btn small" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button></p>}
+    </section>
+  );
+}
+
+function BackupPanel({ view }: { view: GameView }) {
+  const download = async () => {
+    const r = await act('st:backup');
+    if (!r.ok) return;
+    const blob = new Blob([r.file as string], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const safe = String(r.name ?? view.name).replace(/[^\w -]+/g, '').trim().replace(/\s+/g, '-') || 'game';
+    a.download = `clocktower-${safe}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  return (
+    <section>
+      <h3>💾 Game backup</h3>
+      <p className="muted small">Download the whole game (Grimoire, notes, log) as a file. If the server ever loses it, open the lobby and press <b>📂 Restore backup</b> to carry on; players rejoin with their usual links. Keep the file private: it contains everyone's characters and seat codes.</p>
+      <button className="btn small" onClick={() => void download()}>⬇ Download backup</button>
     </section>
   );
 }

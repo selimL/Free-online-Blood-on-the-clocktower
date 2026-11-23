@@ -18,7 +18,7 @@ export function syllables(word: string): number {
   return Math.max(1, n);
 }
 
-const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+export const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 
 export class GameError extends Error {}
 const fail = (msg: string): never => { throw new GameError(msg); };
@@ -197,6 +197,8 @@ export class Game {
   tutorial: TutorialState | null = null;
   /** Planned start time (ms) shared with the invite link; null = no schedule. */
   scheduledFor: number | null = null;
+  /** "Looking for players": shown in the public lobby until the game starts. */
+  lookingFor: { count: number; note: string } | null = null;
   /** Detections from word listening (who said what, when, where, with whom), for the Storyteller only. */
   wordLog: WordEvent[] = [];
   /** Detections that need the Storyteller to confirm (Mezepheles word, Ug-hat slip). */
@@ -245,7 +247,7 @@ export class Game {
   static fromJSON(data: Record<string, any>): Game {
     const g = new Game({ name: data.name, visibility: data.visibility, stName: data.storyteller?.name ?? 'Storyteller' });
     for (const [k, v] of Object.entries(data)) {
-      if (k === 'savedAt') continue;
+      if (k === 'savedAt' || !safeKey(k)) continue;
       (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
     g.storyteller.connected = !!g.tutorial; // a practice game's Storyteller is the server itself
@@ -259,6 +261,27 @@ export class Game {
       g.pausedAt = typeof data.savedAt === 'number' ? data.savedAt : Date.now(); // timers resume where they stopped
       g.pausedBySTDisconnect = true;
     }
+    return g;
+  }
+
+  /**
+   * Rebuild a game from a backup file the Storyteller uploaded. The file is untrusted: dangerous keys
+   * are stripped at every depth, methods can't be overwritten, and the basic shape is checked.
+   * The Storyteller gets a fresh secret; players and co-Storytellers keep theirs so they can rejoin.
+   */
+  static fromBackup(raw: unknown): Game {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('That is not a Clocktower Nights backup file.');
+    const data = stripUnsafe(raw) as Record<string, any>;
+    const okPlayer = (p: any) => p && typeof p === 'object' && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.token === 'string';
+    if (!Array.isArray(data.players) || !data.players.every(okPlayer) || data.players.length > 30
+      || !data.storyteller || typeof data.storyteller !== 'object' || typeof data.id !== 'string' || typeof data.code !== 'string'
+      || typeof data.phase !== 'string' || !data.settings || typeof data.settings !== 'object') fail('That backup file is damaged or from an unknown version.');
+    if (data.tutorial) fail('Practice games cannot be restored.');
+    const g = Game.fromJSON(data);
+    g.storyteller.token = nanoid(24);
+    g.storyteller.id = 'st';
+    g.lastActivity = Date.now();
+    g.addLog('The game was restored from a backup file.');
     return g;
   }
 
@@ -533,6 +556,12 @@ export class Game {
     this.emit(audience, 'emote', { id: fromId, kind: def!.id, ts: now });
   }
 
+  /** Advertise the game in the lobby as looking for N more players (0 or null turns it off). */
+  setLookingFor(count: unknown, note: unknown) {
+    const n = Math.round(Number(count));
+    this.lookingFor = Number.isFinite(n) && n > 0 ? { count: Math.min(20, n), note: cleanText(note, 80) } : null;
+    this.changed();
+  }
   setSchedule(when: unknown) {
     const t = Number(when);
     if (when === null || when === undefined || when === '' || !Number.isFinite(t) || t <= 0) { this.scheduledFor = null; this.changed(); return; }
@@ -1780,4 +1809,21 @@ export class Game {
     this.emit('all', 'transition', { to: 'ended' });
     this.changed();
   }
+}
+
+/** Keys that must never be copied from saved or uploaded data (prototype tricks, methods). */
+function safeKey(k: string) {
+  return k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && k !== 'onChange' && k !== 'emit' && k !== 'markDirty'
+    && typeof (Game.prototype as unknown as Record<string, unknown>)[k] !== 'function';
+}
+/** A deep copy of plain JSON data without prototype-polluting keys. */
+function stripUnsafe(v: unknown, depth = 0): unknown {
+  if (depth > 40) fail('That backup file is nested too deeply.');
+  if (Array.isArray(v)) return v.map(x => stripUnsafe(x, depth + 1));
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') out[k] = stripUnsafe(x, depth + 1);
+    return out;
+  }
+  return v;
 }

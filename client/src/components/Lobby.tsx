@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { rpc, saveSession, set, pushAlert } from '../net';
-import type { LobbyEntry, Avatar } from '../../../shared/types';
+import type { LobbyEntry, LobbyChatMsg, Avatar } from '../../../shared/types';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
@@ -32,8 +32,9 @@ export function Lobby() {
     setBuilder(saved);
   }, []);
   const [code, setCode] = useState('');
+  const [chat, setChat] = useState<LobbyChatMsg[]>([]);
   useEffect(() => {
-    const load = () => rpc('lobby:list').then(r => r.ok && setGames(r.games));
+    const load = () => rpc('lobby:list').then(r => { if (r.ok) { setGames(r.games); setChat(r.chat ?? []); } });
     load();
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
@@ -57,15 +58,16 @@ export function Lobby() {
           <table className="games">
             <thead><tr><th>Name</th><th>Players</th><th>Script</th><th>Status</th><th /></tr></thead>
             <tbody>
-              {games.map(g => (
+              {[...games].sort((a, b) => Number(!!b.lookingFor) - Number(!!a.lookingFor)).map(g => (
                 <tr key={g.id}>
-                  <td>{g.name}</td><td>{g.players}/{g.max}</td><td>{g.edition}</td>
+                  <td>{g.name}{g.lookingFor && <div className="looking-for small">🔎 Looking for {g.lookingFor.count} more{g.lookingFor.note ? `: ${g.lookingFor.note}` : ''}</div>}</td><td>{g.players}/{g.max}</td><td>{g.edition}</td>
                   <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span>{g.scheduledFor && g.status === 'waiting' && <div className="small"><Countdown at={g.scheduledFor} /></div>}</td>
                   <td className="row"><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join / Watch'}</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <LobbyChat chat={chat} onChat={setChat} />
         </section>
         <section className="panel glass">
           <h2>Private game</h2>
@@ -77,7 +79,8 @@ export function Lobby() {
           <h2>Host a game</h2>
           <p className="muted">Whoever creates the game is its Storyteller.</p>
           <div className="row"><button className="btn primary" onClick={() => setCreating(true)}>Create game</button>
-            <button className="btn ghost" onClick={() => setBuilder({})}>📜 Script builder</button></div>
+            <button className="btn ghost" onClick={() => setBuilder({})}>📜 Script builder</button>
+            <RestoreButton /></div>
           <hr />
           <h2>New to the game?</h2>
           <p className="muted">Play a short guided practice game with six computer players. The Guide explains each step.</p>
@@ -146,6 +149,57 @@ function HistoryDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+/** A small public chat for finding players. Kept in server memory only (the last 50 messages). */
+function LobbyChat({ chat, onChat }: { chat: LobbyChatMsg[]; onChat: (c: LobbyChatMsg[]) => void }) {
+  const [text, setText] = useState('');
+  const [name, setName] = useState(() => localStorage.getItem('botc:name') ?? '');
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollTo(0, box.current.scrollHeight); }, [chat.length]);
+  const send = async () => {
+    if (!text.trim()) return;
+    try { localStorage.setItem('botc:name', name); } catch { /* ignore */ }
+    const r = await rpc('lobby:chat', { name, text });
+    if (!r.ok) return pushAlert(r.error ?? 'Not sent', 'error');
+    setText('');
+    if (r.chat) onChat(r.chat);
+  };
+  return (
+    <div className="lobby-chat">
+      <h3>💬 Lobby chat <span className="muted small">(looking for a game? say hi)</span></h3>
+      <div className="lobby-chat-log" ref={box} aria-live="polite">
+        {chat.length === 0 && <p className="muted small">No messages yet.</p>}
+        {chat.map(m => <p key={m.id} className="small"><span className="muted">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> <b>{m.name}</b>: {m.text}</p>)}
+      </div>
+      <form className="row" onSubmit={e => { e.preventDefault(); void send(); }}>
+        <input aria-label="Your name" placeholder="Name" value={name} maxLength={24} onChange={e => setName(e.target.value)} style={{ maxWidth: '7rem' }} />
+        <input aria-label="Message" placeholder="Message everyone in the lobby" value={text} maxLength={200} onChange={e => setText(e.target.value)} />
+        <button className="btn small" disabled={!name.trim() || !text.trim()}>Send</button>
+      </form>
+      <p className="muted small">Public and not saved: it disappears after 50 messages or a server restart. Be kind (<a href="/terms">Terms</a>).</p>
+    </div>
+  );
+}
+
+/** Upload a backup file the Storyteller downloaded earlier and carry on that game. */
+function RestoreButton() {
+  const ref = useRef<HTMLInputElement>(null);
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > 2_000_000) return pushAlert('That file is too big to be a backup.', 'error');
+    const r = await rpc('game:restore', { file: await f.text() });
+    if (ref.current) ref.current.value = '';
+    if (!r.ok) return pushAlert(r.error ?? 'Could not restore the game.', 'error');
+    const s = { gameId: r.gameId, code: r.code, token: r.token, id: 'st' };
+    saveSession(s);
+    set({ session: s });
+    pushAlert('Game restored. Players can rejoin with their usual link; it is paused until you resume.', 'info');
+  };
+  return <>
+    <button className="btn ghost" onClick={() => ref.current?.click()} title="Carry on a game from a backup file you downloaded as its Storyteller">📂 Restore backup</button>
+    <input ref={ref} type="file" accept=".json,application/json" hidden onChange={e => void pick(e.target.files?.[0])} />
+  </>;
 }
 
 function PracticeDialog({ onClose }: { onClose: () => void }) {

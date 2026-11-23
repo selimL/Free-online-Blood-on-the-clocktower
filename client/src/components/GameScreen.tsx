@@ -12,7 +12,7 @@ import { localChanged } from '../syncBus';
 import { Countdown, downloadIcs, toLocalInput, fromLocalInput } from './Schedule';
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
-import { SQUASH, initial3D, save3D, webglAvailable } from '../three/support';
+import { SQUASH, initial3D, save3D, webglAvailable, getQuality, setQuality, onQualityChange, type Quality } from '../three/support';
 import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain, ping, useAlertPrefs, setAlertPrefs } from '../sound';
 
 const TownScene = lazy(() => import('../three/TownScene'));
@@ -46,6 +46,9 @@ export function GameScreen({ view }: { view: GameView }) {
   const night = view.phase === 'night';
   const asleep = night && !isST && !view.self.isStoryteller && !view.self.awake;
   const [use3D, setUse3D] = useState(initial3D);
+  // the 3D scenes are rebuilt when the quality changes
+  const [quality, setQ] = useState(getQuality);
+  useEffect(() => onQualityChange(() => setQ(getQuality())), []);
   const [failed3D, setFailed3D] = useState(false);
   const stageRef = useRef<HTMLElement>(null);
   const circleRef = useRef<HTMLDivElement>(null);
@@ -183,13 +186,13 @@ export function GameScreen({ view }: { view: GameView }) {
           {art && !show3DRoom && <><div className="room-art-layer" aria-hidden="true" /><div className="room-art-light" aria-hidden="true" /></>}
           {show3DRoom && art && (
             <Suspense fallback={null}>
-              <RoomScene art={art} occupants={roomOccupants} myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={!night && !spectating}
+              <RoomScene key={`room-${quality}`} art={art} occupants={roomOccupants} myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={!night && !spectating}
                 reducedMotion={reducedMotion} onFigureClick={onSeatClick} onFail={() => setFailed3D(true)} />
             </Suspense>
           )}
           {show3D && (
             <Suspense fallback={null}>
-              <TownScene key="town" anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
+              <TownScene key={`town-${quality}`} anchor={circleRef} container={stageRef} seatRadiusFrac={seatRadiusPct(view.players.length) / 100}
                 night={night} rooms={view.rooms} players={view.players} storyteller={view.storyteller} awakeIds={awakeIds}
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)}
                 myId={view.self.isStoryteller ? 'st' : view.self.id} canWalk={walkMode} onFigureClick={onSeatClick}
@@ -199,7 +202,7 @@ export function GameScreen({ view }: { view: GameView }) {
           )}
           {showSleep3D && (
             <Suspense fallback={null}>
-              <TownScene key="sleep" sleepView anchor={circleRef} container={stageRef} seatRadiusFrac={0.4}
+              <TownScene key={`sleep-${quality}`} sleepView anchor={circleRef} container={stageRef} seatRadiusFrac={0.4}
                 night rooms={[]} players={[]} storyteller={sleepStoryteller} awakeIds={[]}
                 reducedMotion={reducedMotion} onFail={() => setFailed3D(true)} myId="" canWalk={false}
                 onFigureClick={() => {}} onEnterRoom={() => {}} arrivedFrom={null} nomination={null} voting={false} sun={sun} weather={view.weather} />
@@ -307,6 +310,10 @@ function TopBar({ view, openAlerts, openAlmanac, openVoice, openList, openInvite
           <button className="icon-btn" onClick={openVoice} title="Voice settings: push-to-talk, volumes, microphone" aria-label="Voice settings">⚙</button>
         </> : <span className="voice-status none" title="Voice server not configured; text chat only">text only</span>}
         {webglAvailable() && <button className="btn small ghost" onClick={toggle3D} aria-pressed={use3D} title="Switch between the 3D town and the flat 2D view">{use3D ? '🗺 2D view' : '🏰 3D view'}</button>}
+        {webglAvailable() && use3D && <label className="quality-pick" title="Lower quality runs more smoothly on older phones and laptops">3D
+          <select value={getQuality()} onChange={e => setQuality(e.target.value as Quality)} aria-label="3D quality">
+            <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          </select></label>}
         {view.story && <button className="btn small primary" onClick={openStory}>📜 Game story</button>}
         {!view.self.isStoryteller && view.self.transcriptActive && view.self.transcriptConsent && <span className="voice-status transcribed" title={transcriptionSupported() ? 'Your speech is checked for secret words; only detections are kept, for the Storyteller. Change this in ⚙ Voice settings.' : 'You agreed, but this browser cannot turn speech into text: nothing is checked.'}>🗣 {transcriptionSupported() ? 'listening for words' : 'not supported'}</span>}
         {view.spectators.length > 0 && <span className="watchers" title={view.spectators.map(s => s.name).join(', ')}>👁 {view.spectators.length} watching</span>}
@@ -783,10 +790,25 @@ function InviteDialog({ view, onClose }: { view: GameView; onClose: () => void }
           {view.scheduledFor && <button type="button" className="btn small ghost" onClick={() => { setWhen(''); void act('st:schedule', { scheduledFor: null }); }}>Clear</button>}
         </form>
       )}
+      {canSchedule && view.visibility === 'public' && <LookingFor view={view} />}
       <p>Invite code: <b className="code">{view.code}</b></p>
       <p><input readOnly value={link} onFocus={e => e.target.select()} aria-label="Invite link" /></p>
       <button className="btn" onClick={() => navigator.clipboard?.writeText(link)}>Copy link</button>
     </Modal>
+  );
+}
+
+/** Advertise a public game in the lobby as looking for more players. */
+function LookingFor({ view }: { view: GameView }) {
+  const [count, setCount] = useState(view.lookingFor?.count ?? Math.max(1, 7 - view.players.length));
+  const [note, setNote] = useState(view.lookingFor?.note ?? '');
+  return (
+    <form className="row" onSubmit={e => { e.preventDefault(); void act('st:lookingFor', { count, note }); }}>
+      <label className="field">🔎 Looking for<input type="number" min={1} max={20} value={count} onChange={e => setCount(Number(e.target.value))} style={{ width: '4rem' }} /> more players</label>
+      <input placeholder="Note, e.g. beginners welcome" value={note} maxLength={80} onChange={e => setNote(e.target.value)} aria-label="Note for the lobby" />
+      <button className="btn small">{view.lookingFor ? 'Update' : 'Show in lobby'}</button>
+      {view.lookingFor && <button type="button" className="btn small ghost" onClick={() => void act('st:lookingFor', { count: 0 })}>Stop</button>}
+    </form>
   );
 }
 

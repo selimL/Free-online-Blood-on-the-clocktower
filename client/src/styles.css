@@ -793,3 +793,12 @@ footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
   .game .top-bar .tc { grid-area: tc; }
   .game .top-bar .tr.open { grid-area: auto; grid-row: 3; grid-column: 1 / -1; flex-wrap: wrap; }
 }
+.quality-pick { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: var(--muted); }
+.quality-pick select { font-size: .8rem; padding: .1rem .25rem; }
+.looking-for { color: var(--gold, #d8b45a); }
+.lobby-chat { margin-top: 1rem; }
+.lobby-chat h3 { margin: 0 0 .35rem; font-size: 1rem; }
+.lobby-chat-log { max-height: 11rem; overflow-y: auto; padding: .35rem .5rem; border-radius: 8px; background: rgba(0,0,0,.25); margin-bottom: .4rem; }
+.lobby-chat-log p { margin: .15rem 0; overflow-wrap: anywhere; }
+.lobby-chat form input { min-width: 0; flex: 1; }
+.admin-chat { max-height: 14rem; overflow-y: auto; }

@@ -26,7 +26,7 @@ const app = express();
 app.set('trust proxy', 1); // behind Render's proxy: real https URLs and client addresses
 app.use(express.json({ limit: '512kb' }));
 const http = createServer(app);
-const io = new Server(http, { cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? true } });
+const io = new Server(http, { cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? true }, maxHttpBufferSize: 2.5e6 }); // room for a game backup upload
 
 const voice = new VoiceManager(loadRegions(), (gameId, id, event, payload) => lobby.sendTo(gameId, [id], event, payload));
 const lobby = new Lobby(io, voice, createStore(process.env, path.resolve(__dirname, '../../.data')));
@@ -62,11 +62,13 @@ io.on('connection', (socket: Socket) => {
     }
   };
 
-  socket.on('lobby:list', guard(() => ({ games: lobby.publicList() })));
+  socket.on('lobby:list', guard(() => ({ games: lobby.publicList(), chat: lobby.lobbyChat })));
+  socket.on('lobby:chat', guard(d => lobby.postLobbyChat(socket, d)));
   socket.on('game:create', guard(d => lobby.create(socket, d)));
   socket.on('game:lookup', guard(d => lobby.lookup(String(d.code ?? ''))));
   socket.on('game:join', guard(d => lobby.join(socket, d)));
   socket.on('game:tutorial', guard(d => lobby.tutorial(socket, d)));
+  socket.on('game:restore', guard(d => lobby.restoreBackup(socket, d)));
   socket.on('game:spectate', guard(d => lobby.spectate(socket, d)));
   socket.on('game:rejoin', guard(d => lobby.rejoin(socket, d)));
   socket.on('game:leave', guard(() => lobby.leave(socket)));

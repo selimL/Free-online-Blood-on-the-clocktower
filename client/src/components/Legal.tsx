@@ -3,7 +3,7 @@
 
 /** The site owner's contact line. Fill this in yourself (an email address or a Discord name). */
 export const CONTACT = 'selimleventguvenilir@gmail.com';
-const UPDATED = '22 November 2026';
+const UPDATED = '23 November 2026';
 
 function Page({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -33,6 +33,7 @@ export function PrivacyPage() {
       <ul>
         <li><b>Your name and figure (avatar)</b>, so other players can see who you are.</li>
         <li><b>The game itself</b>: seats, characters, votes, deaths, timers, the Storyteller's notes and an event log, so the game can be played and survive a server restart.</li>
+        <li><b>Game backups</b>: a Storyteller can download a game as a file to their own device and upload it later to carry on. That file stays with them; the site keeps it only as a normal running game.</li>
         <li><b>Whispers to the Storyteller</b>: private messages between you and the Storyteller.</li>
         <li><b>Word listening detections</b> (only in games with a character such as the Mezepheles, and only if you agreed): who said a secret word, when, in which room and who else was there. <b>What you actually said is never kept.</b></li>
         <li>A secret <b>seat code</b> in your browser, so you can rejoin your seat after a reload.</li>
@@ -50,6 +51,7 @@ export function PrivacyPage() {
       <ul>
         <li><b>Voice audio.</b> Voice and video are live only and are never recorded.</li>
         <li><b>Room chat.</b> Messages are delivered to the people in the room and not kept; there is no chat history.</li>
+        <li><b>Lobby chat history.</b> The public lobby chat keeps only the last 50 messages (name, text, time) in the server's memory; they vanish on a restart and are never saved to the database. Anyone visiting the lobby can read them, and the site owner can remove them.</li>
         <li><b>Speech transcripts.</b> With word listening, your browser turns speech into text, the server checks it for the secret words and immediately throws it away.</li>
         <li>Payment details: the site is free and never asks for them.</li>
       </ul>

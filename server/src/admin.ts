@@ -47,6 +47,12 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
     const ok = lobby.closeGame(String(req.params.id), String(req.body?.reason ?? '') || 'This game was closed by the site admin.');
     res.json({ ok });
   }));
+  app.get('/api/admin/lobby-chat', guard((_req, res) => res.json({ ok: true, chat: lobby.lobbyChat })));
+  app.post('/api/admin/lobby-chat/clear', guard((req, res) => {
+    const id = req.body?.id ? String(req.body.id) : null;
+    lobby.lobbyChat = id ? lobby.lobbyChat.filter(m => m.id !== id) : [];
+    res.json({ ok: true });
+  }));
   app.get('/api/admin/accounts', guard(async (_req, res) => {
     res.json({ ok: true, accounts: (await accounts.list()).map(a => ({
       id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName,

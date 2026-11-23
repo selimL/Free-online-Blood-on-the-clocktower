@@ -314,6 +314,8 @@ export interface GameView {
   coStorytellers: { id: string; name: string; connected: boolean }[];
   /** Planned start time (ms), shown with a countdown. */
   scheduledFor: number | null;
+  /** The lobby advert (Storyteller's "looking for players"), or null. */
+  lookingFor: { count: number; note: string } | null;
   /** Group actions the viewer takes part in (or public ones); the Storyteller sees all. */
   prompts: PromptView[];
   /** God of Ug: who wears the Ug hat (public). */
@@ -395,7 +397,10 @@ export interface StorytellerSelf {
   lastExecutedId: string | null;
 }
 
-export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended'; scheduledFor: number | null }
+export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended'; scheduledFor: number | null; lookingFor: { count: number; note: string } | null }
+
+/** A message in the lobby chat. Kept in memory only (the last 50), never saved. */
+export interface LobbyChatMsg { id: string; name: string; text: string; ts: number }
 
 export interface VoteRecord { day: number; nominatorId: string; nomineeId: string; exile: boolean; yes: string[]; votes: number; needed: number; result: string }
 

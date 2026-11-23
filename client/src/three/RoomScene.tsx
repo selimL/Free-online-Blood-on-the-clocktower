@@ -9,6 +9,7 @@ import type { Occupant } from './occupants';
 import { buildCharacter, disposeCharacter, playGesture, CHARACTER_HEIGHT } from './character';
 import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { useVoice } from '../voice';
+import { QUALITY, getQuality, pixelRatioFor } from './support';
 import { socket } from '../net';
 
 // walkable floor (the server clamps to the same numbers)
@@ -242,9 +243,10 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
     const mount = mountRef.current!;
     const stage = mount.parentElement!;
     let renderer: THREE.WebGLRenderer;
-    try { renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' }); } catch { onFail(); return; }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
+    const Q = QUALITY[getQuality()];
+    try { renderer = new THREE.WebGLRenderer({ antialias: Q.antialias, powerPreference: 'low-power' }); } catch { onFail(); return; }
+    renderer.setPixelRatio(pixelRatioFor(getQuality()));
+    renderer.shadowMap.enabled = Q.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -301,7 +303,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
     // lights
     scene.add(new THREE.HemisphereLight(look.ambient, '#120c08', look.ambientI));
     const key = new THREE.DirectionalLight(look.key, look.keyI);
-    key.position.set(3, 7, 5); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+    key.position.set(3, 7, 5); key.castShadow = Q.shadows; key.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
     Object.assign(key.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
     scene.add(key);
     const flick = look.lights.map(l => { const p = new THREE.PointLight(l.c, l.i, 12, 1.6); p.position.set(...l.p); scene.add(p); return { p, l }; });
@@ -359,7 +361,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
     const frame = () => {
       raf = requestAnimationFrame(frame);
       const t = clock.getElapsedTime();
-      if (t - last < 1 / 30) return;
+      if (t - last < 1 / Q.fps) return;
       last = t;
       const dt = Math.min(0.25, t - prev); prev = t;
       const reduced = live.current.reducedMotion;

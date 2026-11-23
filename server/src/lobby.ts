@@ -1,14 +1,16 @@
 import type { Server, Socket } from 'socket.io';
-import { Game, GameError, cleanText, sanitizeAvatar, type Player } from './game';
+import { Game, GameError, cleanText, sanitizeAvatar, makeCode, type Player } from './game';
 import { playerView, storytellerView, spectatorView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
 import { encode, decode, type GameStore } from './persist';
 import { addBot, botTick } from './bots';
 import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from './tutorial';
+import type { LobbyChatMsg } from '../../shared/types';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
-export const UNDO_WINDOW_MS = 10 * 60_000;
+export const BACKUP_KIND = 'clocktower-nights-backup';
+const UNDO_WINDOW_MS = 10 * 60_000;
 /** Storyteller actions worth undoing, with a short label (null = not undoable). */
 function undoLabel(g: Game, type: string, d: any): string | null {
   const who = () => g.nameOf(String(d.playerId ?? ''));
@@ -49,6 +51,9 @@ export class Lobby {
   private pending = new Set<string>();
 
   private dirty = new Set<string>();
+  /** The lobby chat: in memory only, the last 50 messages. */
+  lobbyChat: LobbyChatMsg[] = [];
+  private lobbyChatAt = new Map<string, number>(); // socket id → last message time
   /** Undo history per game: snapshots taken just before important Storyteller actions. Not saved. */
   private undo = new Map<string, { label: string; at: number; json: string }[]>();
 
@@ -113,6 +118,19 @@ export class Lobby {
     void this.voice.reconcile(g);
   }
 
+  /** Post in the lobby chat (one message every 3 seconds per connection). */
+  postLobbyChat(socket: Socket, d: any) {
+    const now = Date.now();
+    if (now - (this.lobbyChatAt.get(socket.id) ?? 0) < 3000) fail('Slow down a little.');
+    const name = cleanText(d.name, 24), text = cleanText(d.text, 200);
+    if (!name) fail('Enter your name first.');
+    if (!text) return;
+    this.lobbyChatAt.set(socket.id, now);
+    if (this.lobbyChatAt.size > 5000) this.lobbyChatAt.clear();
+    this.lobbyChat.push({ id: `${now}-${Math.random().toString(36).slice(2, 7)}`, name, text, ts: now });
+    if (this.lobbyChat.length > 50) this.lobbyChat.shift();
+    return { chat: this.lobbyChat };
+  }
   publicList() {
     return [...this.games.values()].filter(g => g.visibility === 'public' && g.phase !== 'ended').map(lobbyEntry);
   }
@@ -120,6 +138,25 @@ export class Lobby {
     const g = new Game({ name: d.name, visibility: d.visibility, stName: d.stName, stAvatar: d.stAvatar });
     if (['tb', 'bmr', 'snv', 'custom'].includes(d.edition)) g.settings.edition = d.edition;
     g.setSchedule(d.scheduledFor);
+    this.games.set(g.id, g);
+    this.wire(g);
+    this.bind(socket, g, 'st');
+    g.storyteller.connected = true;
+    g.changed();
+    return { gameId: g.id, code: g.code, token: g.storyteller.token, id: 'st' };
+  }
+  /** Restore a game from a backup file. The game must not be running here already. */
+  restoreBackup(socket: Socket, d: any) {
+    const text = String(d.file ?? '');
+    if (text.length > 2_000_000) fail('That file is too big to be a backup.');
+    let data: any;
+    try { data = decode(text); } catch { fail('That is not a Clocktower Nights backup file.'); }
+    if (!data || data.kind !== BACKUP_KIND) fail('That is not a Clocktower Nights backup file.');
+    if (this.games.has(String(data.game?.id))) fail('That game is still running here: rejoin it instead of restoring it.');
+    const g = Game.fromBackup(data.game);
+    if ([...this.games.values()].some(x => x.code === g.code)) (g as unknown as { code: string }).code = makeCode();
+    try { storytellerView(g); for (const p of g.players) playerView(g, p); }
+    catch { fail('That backup file is damaged.'); }
     this.games.set(g.id, g);
     this.wire(g);
     this.bind(socket, g, 'st');
@@ -349,6 +386,7 @@ export class Lobby {
   private stActionInner(g: Game, type: string, d: any) {
     const pid = String(d.playerId ?? '');
     switch (type) {
+      case 'st:backup': return { file: encode({ kind: BACKUP_KIND, version: 1, savedAt: Date.now(), game: g.toJSON() }), name: g.name };
       case 'st:settings': return g.updateSettings(d.settings ?? {});
       case 'st:seat': return g.moveSeat(pid, Number(d.seat));
       case 'st:kick': {
@@ -357,6 +395,7 @@ export class Lobby {
         return;
       }
       case 'st:schedule': return g.setSchedule(d.scheduledFor);
+      case 'st:lookingFor': return g.setLookingFor(d.count, d.note);
       case 'st:mvp': return g.voteMvp('st', String(d.candidateId ?? ''));
       case 'st:addCo': { const c = g.addCoStoryteller(d.name); return { token: c.token, id: c.id }; }
       case 'st:removeCo': {

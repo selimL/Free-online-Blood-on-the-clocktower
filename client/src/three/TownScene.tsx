@@ -10,7 +10,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import type { RoomView } from '../../../shared/types';
 import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
 
-import { PITCH, SEAT_R, ST_Z, CHAR_SCALE } from './support';
+import { PITCH, SEAT_R, ST_Z, CHAR_SCALE, QUALITY, getQuality, pixelRatioFor } from './support';
 import { buildCharacter, disposeCharacter, setAsleep, playGesture, CHARACTER_HEIGHT } from './character';
 import type { PublicPlayer, Avatar, WalkPos, NominationView, Weather } from '../../../shared/types';
 import { thunder, setRain } from '../sound';
@@ -443,13 +443,14 @@ export default function TownScene(props: Props) {
     if (!mount) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+      renderer = new THREE.WebGLRenderer({ antialias: QUALITY[getQuality()].antialias, alpha: false, powerPreference: 'low-power' });
     } catch {
       onFail();
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.shadowMap.enabled = true;
+    const Q = QUALITY[getQuality()];
+    renderer.setPixelRatio(pixelRatioFor(getQuality()));
+    renderer.shadowMap.enabled = Q.shadows;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -637,7 +638,7 @@ export default function TownScene(props: Props) {
 
     // ---- weather: rain streaks and snowflakes falling in a box around the plaza
     const W_HALF = 30, W_TOP = 26;
-    const RAIN_N = 1800, SNOW_N = 1400;
+    const RAIN_N = Math.round(1800 * Q.particles), SNOW_N = Math.round(1400 * Q.particles);
     const rainPos = new Float32Array(RAIN_N * 6);
     for (let i = 0; i < RAIN_N; i++) { const x = rand(-W_HALF, W_HALF), y = rand(0, W_TOP), z = rand(-W_HALF, W_HALF); rainPos.set([x, y, z, x + 0.08, y + 0.9, z + 0.03], i * 6); }
     const rainGeo = new THREE.BufferGeometry();
@@ -692,7 +693,7 @@ export default function TownScene(props: Props) {
     const moonLight = new THREE.DirectionalLight('#b9c6ff', 1.6);
     moonLight.position.set(-30, 45, -25);
     moonLight.castShadow = true;
-    moonLight.shadow.mapSize.set(1024, 1024);
+    moonLight.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
     Object.assign(moonLight.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 140 });
     scene.add(moonLight);
     const warm = new THREE.PointLight('#ffb347', 30, 26, 1.6);
@@ -913,7 +914,7 @@ export default function TownScene(props: Props) {
     const frame = () => {
       raf = requestAnimationFrame(frame);
       const t = clock.getElapsedTime();
-      if (t - last < 1 / 30) return; // ~30 fps is plenty for an ambient backdrop and saves battery
+      if (t - last < 1 / Q.fps) return; // a modest frame rate is plenty for an ambient backdrop and saves battery
       last = t;
       const s = stateRef.current;
       // ---- sun and moon
