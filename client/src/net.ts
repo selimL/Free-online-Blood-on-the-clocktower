@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 import type { GameView, InfoCard, Announcement } from '../../shared/types';
 import { dawnBell, deathToll } from './sound';
 import { registerHomebrew } from '../../shared/characters';
+import { tr, bindLanguage } from './i18n';
 
 export const socket = io(import.meta.env.VITE_SERVER_URL ?? '/', { transports: ['websocket', 'polling'] });
 
@@ -54,7 +55,7 @@ export function forgetSession(code: string) {
 type Res = { ok: boolean; error?: string; [k: string]: any };
 export function rpc(event: string, data: unknown = {}): Promise<Res> {
   return new Promise(resolve => socket.timeout(8000).emit(event, data, (err: unknown, res: Res) => {
-    if (err) resolve({ ok: false, error: 'The server did not respond.' });
+    if (err) resolve({ ok: false, error: tr("The server did not respond.") });
     else resolve(res);
   }));
 }
@@ -72,6 +73,7 @@ export async function rejoin(s: Session) {
 }
 
 // ------------------------------------------------------------ server events
+bindLanguage(() => store.view?.language ?? 'en');
 socket.on('connect', () => {
   set({ connected: true });
   if (store.session) void rejoin(store.session); // automatic reconnection into the same seat

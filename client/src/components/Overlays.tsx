@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useStore, set, act } from '../net';
 import type { GameView, InfoCard } from '../../../shared/types';
 import { CHARACTER_BY_ID, DAY_ABILITIES, type Character } from '../../../shared/characters';
+import { tr, ability } from '../i18n';
 
 export function Alerts() {
   const alerts = useStore(s => s.alerts);
@@ -22,7 +23,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className={`modal parchment ${wide ? 'wide' : ''}`} role="dialog" aria-label={title} onClick={e => e.stopPropagation()}>
-        <div className="modal-head"><h2>{title}</h2>{onClose && <button className="icon-btn" aria-label="Close" onClick={onClose}>✕</button>}</div>
+        <div className="modal-head"><h2>{title}</h2>{onClose && <button className="icon-btn" aria-label={tr("Close")} onClick={onClose}>✕</button>}</div>
         {children}
       </div>
     </div>
@@ -40,8 +41,8 @@ export function CharacterToken({ ch, small, onClick }: { ch: Character; small?: 
         {art.has(ch.id) ? <img src={tokenUrl(ch.id)} alt="" loading="lazy" /> : <span>{ch.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</span>}
       </div>
       <div className="token-text">
-        <b>{ch.name}</b> <span className="type">{TYPE_LABEL[ch.type]}</span>
-        {!small && <p>{ch.ability}</p>}
+        <b>{ch.name}</b> <span className="type">{tr(TYPE_LABEL[ch.type])}</span>
+        {!small && <p>{ability(ch.id) || ch.ability}</p>}
       </div>
     </div>
   );
@@ -53,32 +54,32 @@ export function CharacterModal({ view, onClose }: { view: GameView; onClose: () 
   const ch = self.characterId ? CHARACTER_BY_ID[self.characterId] : null;
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
   return (
-    <Modal title="Your character" onClose={onClose}>
+    <Modal title={tr("Your character")} onClose={onClose}>
       {!ch && (view.torActive && view.phase !== 'lobby' && view.phase !== 'dealt'
-        ? <p>🌫 <b>Tor is in play:</b> your character and alignment are hidden from you until you die. The Storyteller still wakes you when your character acts.</p>
-        : <p>You have not been given a character yet.</p>)}
+        ? <p>🌫 <b>{tr("Tor is in play:")}</b> {tr("your character and alignment are hidden from you until you die. The Storyteller still wakes you when your character acts.")}</p>
+        : <p>{tr("You have not been given a character yet.")}</p>)}
       {ch && <>
         <CharacterToken ch={ch} />
-        <p className={`alignment ${self.alignment}`}>You are <b>{self.alignment === 'evil' ? 'Evil' : 'Good'}</b>.</p>
-        {DAY_ABILITIES[ch.id] && <p className="muted">This character has a daytime ability: use the <b>Use Ability</b> button.</p>}
+        <p className={`alignment ${self.alignment}`}>{tr("You are")}{' '}<b>{self.alignment === 'evil' ? tr("Evil") : tr("Good")}</b>.</p>
+        {DAY_ABILITIES[ch.id] && <p className="muted">{tr("This character has a daytime ability: use the")}{' '}<b>{tr("Use Ability")}</b> {tr("button.")}</p>}
       </>}
       {self.evilTeam && self.evilTeam.members.length > 1 && (
         <div className="evil-box">
-          <h3>Your evil team</h3>
-          <ul>{self.evilTeam.members.map(m => <li key={m.id}>{name(m.id)}{m.id === self.id ? ' (you)' : ''} — <span className="evil-mark">{m.role === 'evil' ? 'evil' : m.role === 'demon' ? 'Demon' : 'Minion'}</span></li>)}</ul>
+          <h3>{tr("Your evil team")}</h3>
+          <ul>{self.evilTeam.members.map(m => <li key={m.id}>{name(m.id)}{m.id === self.id ? tr(" (you)") : ''} — <span className="evil-mark">{m.role === 'evil' ? tr("evil") : m.role === 'demon' ? tr("Demon") : tr("Minion")}</span></li>)}</ul>
           {self.evilTeam.bluffs.length > 0 && <>
-            <h3>Not in play (safe bluffs)</h3>
+            <h3>{tr("Not in play (safe bluffs)")}</h3>
             <div className="token-row">{self.evilTeam.bluffs.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} small />)}</div>
           </>}
         </div>
       )}
-      <h3>Notes from the Storyteller</h3>
-      {self.notes.length === 0 ? <p className="muted">None yet.</p> : self.notes.map(n => <InfoCardView key={n.id} card={n} view={view} />)}
+      <h3>{tr("Notes from the Storyteller")}</h3>
+      {self.notes.length === 0 ? <p className="muted">{tr("None yet.")}</p> : self.notes.map(n => <InfoCardView key={n.id} card={n} view={view} />)}
       {self.revealedTo.length > 0 && <>
-        <h3>Characters shown to you</h3>
-        <ul>{self.revealedTo.map((r, i) => <li key={i}>{name(r.fromId)} showed: <b>{CHARACTER_BY_ID[r.characterId]?.name}</b></li>)}</ul>
+        <h3>{tr("Characters shown to you")}</h3>
+        <ul>{self.revealedTo.map((r, i) => <li key={i}>{name(r.fromId)} {tr("showed:")}{' '}<b>{CHARACTER_BY_ID[r.characterId]?.name}</b></li>)}</ul>
       </>}
-      <p className="muted small">Shortcut: press <kbd>P</kbd> to open this at any time.</p>
+      <p className="muted small">{tr("Shortcut: press")}{' '}<kbd>P</kbd> {tr("to open this at any time.")}</p>
     </Modal>
   );
 }
@@ -91,7 +92,7 @@ export function InfoCardView({ card, view }: { card: InfoCard; view: GameView })
       {card.text && <p>{card.text}</p>}
       {card.playerIds.length > 0 && <div className="chips">{card.playerIds.map(id => <span key={id} className="chip">{name(id)}</span>)}</div>}
       {card.characterIds.length > 0 && <div className="token-row">{card.characterIds.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} small />)}</div>}
-      {card.alignment && <p className={`alignment ${card.alignment}`}>{card.alignment === 'evil' ? 'Evil' : 'Good'}</p>}
+      {card.alignment && <p className={`alignment ${card.alignment}`}>{card.alignment === 'evil' ? tr("Evil") : tr("Good")}</p>}
     </div>
   );
 }
@@ -99,7 +100,7 @@ export function InfoCardView({ card, view }: { card: InfoCard; view: GameView })
 export function InfoPopup({ view }: { view: GameView }) {
   const card = useStore(s => s.infoPopup);
   if (!card) return null;
-  return <Modal title="The Storyteller shows you…" onClose={() => set({ infoPopup: null })}><InfoCardView card={card} view={view} /><p className="muted small">Saved in your notes (Character → Notes).</p></Modal>;
+  return <Modal title={tr("The Storyteller shows you…")} onClose={() => set({ infoPopup: null })}><InfoCardView card={card} view={view} /><p className="muted small">{tr("Saved in your notes (Character → Notes).")}</p></Modal>;
 }
 
 export function CharactersInPlay({ view, onClose, onPick }: { view: GameView; onClose: () => void; onPick?: (id: string) => void }) {
@@ -107,17 +108,17 @@ export function CharactersInPlay({ view, onClose, onPick }: { view: GameView; on
   if (!list) return null;
   const groups = ['townsfolk', 'outsider', 'minion', 'demon'];
   return (
-    <Modal title="Characters in play" onClose={onClose} wide>
+    <Modal title={tr("Characters in play")} onClose={onClose} wide>
       {groups.map(t => {
         const chars = list.characters.map(id => CHARACTER_BY_ID[id]).filter(c => c.type === t);
         if (!chars.length) return null;
-        return <div key={t}><h3>{TYPE_LABEL[t]}</h3>{chars.map(c => <CharacterToken key={c.id} ch={c} onClick={onPick ? () => onPick(c.id) : undefined} />)}</div>;
+        return <div key={t}><h3>{tr(TYPE_LABEL[t])}</h3>{chars.map(c => <CharacterToken key={c.id} ch={c} onClick={onPick ? () => onPick(c.id) : undefined} />)}</div>;
       })}
-      {onPick && <p className="muted small">Click a character for tips in the 📚 Almanac.</p>}
-      {list.hiddenExists && <p className="hidden-note">+ {list.hiddenCount ?? 'some'} hidden character{list.hiddenCount === 1 ? '' : 's'}</p>}
-      {list.fabled.length > 0 && <><h3>Fabled &amp; Loric</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
-      {list.bootleggerRules && <><h3>House rules (Bootlegger)</h3><p className="bootlegger">{list.bootleggerRules}</p></>}
-      {list.djinnRules && <><h3>Jinxes (Djinn)</h3><p className="bootlegger">{list.djinnRules}</p></>}
+      {onPick && <p className="muted small">{tr("Click a character for tips in the 📚 Almanac.")}</p>}
+      {list.hiddenExists && <p className="hidden-note">+ {list.hiddenCount ?? tr("some")} {tr("hidden character")}{list.hiddenCount === 1 ? '' : 's'}</p>}
+      {list.fabled.length > 0 && <><h3>{tr("Fabled & Loric")}</h3>{list.fabled.map(id => <CharacterToken key={id} ch={CHARACTER_BY_ID[id]} />)}</>}
+      {list.bootleggerRules && <><h3>{tr("House rules (Bootlegger)")}</h3><p className="bootlegger">{list.bootleggerRules}</p></>}
+      {list.djinnRules && <><h3>{tr("Jinxes (Djinn)")}</h3><p className="bootlegger">{list.djinnRules}</p></>}
     </Modal>
   );
 }
@@ -126,7 +127,7 @@ export function Confirm({ title, text, confirm, onYes, onNo }: { title: string; 
   return (
     <Modal title={title} onClose={onNo}>
       <div>{text}</div>
-      <div className="row end"><button className="btn ghost" onClick={onNo}>Cancel</button><button className="btn primary" autoFocus onClick={onYes}>{confirm}</button></div>
+      <div className="row end"><button className="btn ghost" onClick={onNo}>{tr("Cancel")}</button><button className="btn primary" autoFocus onClick={onYes}>{confirm}</button></div>
     </Modal>
   );
 }
@@ -134,11 +135,11 @@ export function Confirm({ title, text, confirm, onYes, onNo }: { title: string; 
 export function QuestionPrompt({ view }: { view: GameView }) {
   if (view.self.isStoryteller || view.phase !== 'questions' || view.self.questionAnswered) return null;
   return (
-    <Modal title="A word with the Storyteller?">
-      <p>Do you want to privately ask the Storyteller about your character or a rule?</p>
+    <Modal title={tr("A word with the Storyteller?")}>
+      <p>{tr("Do you want to privately ask the Storyteller about your character or a rule?")}</p>
       <div className="row end">
-        <button className="btn ghost" onClick={() => act('question', { yes: false })}>No thanks</button>
-        <button className="btn primary" onClick={() => act('question', { yes: true })}>Yes</button>
+        <button className="btn ghost" onClick={() => act('question', { yes: false })}>{tr("No thanks")}</button>
+        <button className="btn primary" onClick={() => act('question', { yes: true })}>{tr("Yes")}</button>
       </div>
     </Modal>
   );
@@ -170,23 +171,23 @@ export function VoteBar({ view }: { view: GameView }) {
   const raised = me ? !!nom.hands[me.id] : false;
   const current = !nom.done && view.stage === 'voting' ? nom.order[nom.voteIndex] : null;
   return (
-    <div className={`vote-bar ${nom.done ? 'done' : ''}`} role="region" aria-label="Vote">
+    <div className={`vote-bar ${nom.done ? 'done' : ''}`} role="region" aria-label={tr("Vote")}>
       <div className="vote-title">
-        {nom.exile ? 'Exile' : 'Nomination'}: <b>{name(nom.nominatorId)}</b> → <b>{name(nom.nomineeId)}</b>
-        <span className="tally">{nom.secret && !view.self.isStoryteller ? `🤫 secret vote · ${nom.needed} needed` : `${nom.tally} / ${nom.needed} needed`}</span>
-        {view.aboutToDie && <span className="block">On the block: {name(view.aboutToDie.playerId)} ({view.aboutToDie.votes})</span>}
+        {nom.exile ? tr("Exile") : tr("Nomination")}: <b>{name(nom.nominatorId)}</b> → <b>{name(nom.nomineeId)}</b>
+        <span className="tally">{nom.secret && !view.self.isStoryteller ? tr("🤫 secret vote · {needed} needed", { needed: nom.needed }) : tr("{tally} / {needed} needed", { tally: nom.tally, needed: nom.needed })}</span>
+        {view.aboutToDie && <span className="block">{tr("On the block:")}{' '}{name(view.aboutToDie.playerId)} ({view.aboutToDie.votes})</span>}
       </div>
-      {view.stage === 'accusation' && <div className="speech">🗣 {name(nom.nominatorId)} makes the accusation</div>}
-      {view.stage === 'defense' && <div className="speech">🛡 {name(nom.nomineeId)} defends</div>}
-      {current && <div className="speech">The clock hand points at <b>{name(current)}</b>{me?.id === current ? ' — that is YOU!' : ''}</div>}
+      {view.stage === 'accusation' && <div className="speech">🗣 {name(nom.nominatorId)} {tr("makes the accusation")}</div>}
+      {view.stage === 'defense' && <div className="speech">🛡 {name(nom.nomineeId)} {tr("defends")}</div>}
+      {current && <div className="speech">{tr("The clock hand points at")}{' '}<b>{name(current)}</b>{me?.id === current ? tr(" — that is YOU!") : ''}</div>}
       {nom.done && nom.result && <div className="speech">{nom.result}</div>}
       {canStillVote && (
         <div className="vote-buttons">
-          <button className={`btn ${raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: true })} aria-pressed={raised}>✋ Yes</button>
-          <button className={`btn ${!raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: false })} aria-pressed={!raised}>No</button>
-          {me && !me.alive && !nom.exile && <span className="muted small">Voting yes spends your ghost vote.</span>}
-          {!view.self.isStoryteller && view.self.characterId === 'zealot' && !nom.exile && <span className="muted small">As the Zealot, while 5 or more are alive, you must vote yes.</span>}
-          {nom.secret && <span className="muted small">🤫 Organ Grinder: nobody sees the hands or the count.</span>}
+          <button className={`btn ${raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: true })} aria-pressed={raised}>{tr("✋ Yes")}</button>
+          <button className={`btn ${!raised ? 'primary' : ''}`} onClick={() => act('vote', { raised: false })} aria-pressed={!raised}>{tr("No")}</button>
+          {me && !me.alive && !nom.exile && <span className="muted small">{tr("Voting yes spends your ghost vote.")}</span>}
+          {!view.self.isStoryteller && view.self.characterId === 'zealot' && !nom.exile && <span className="muted small">{tr("As the Zealot, while 5 or more are alive, you must vote yes.")}</span>}
+          {nom.secret && <span className="muted small">{tr("🤫 Organ Grinder: nobody sees the hands or the count.")}</span>}
         </div>
       )}
     </div>
@@ -196,7 +197,7 @@ export function VoteBar({ view }: { view: GameView }) {
 export function TransitionOverlay() {
   const t = useStore(s => s.transition);
   if (!t) return null;
-  const text = t === 'night' ? 'Dusk falls…' : t === 'day' ? 'Dawn breaks…' : 'The game is over';
+  const text = tr(t === 'night' ? 'Dusk falls…' : t === 'day' ? 'Dawn breaks…' : 'The game is over');
   return <div className={`transition ${t}`} aria-live="assertive"><span>{text}</span></div>;
 }
 
@@ -204,8 +205,8 @@ export function NightSleep({ view }: { view: GameView }) {
   return (
     <div className="night-sleep">
       <div className="moon" aria-hidden />
-      <h2>You are asleep</h2>
-      <p>Night {view.night}. You cannot see or hear anything until the Storyteller wakes you.</p>
+      <h2>{tr("You are asleep")}</h2>
+      <p>{tr("Night")}{' '}{view.night}{tr(". You cannot see or hear anything until the Storyteller wakes you.")}</p>
     </div>
   );
 }

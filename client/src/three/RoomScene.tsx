@@ -11,6 +11,7 @@ import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { useVoice } from '../voice';
 import { QUALITY, getQuality, pixelRatioFor } from './support';
 import { socket } from '../net';
+import { tr } from '../i18n';
 
 // walkable floor (the server clamps to the same numbers)
 const HALF_W = 5.2, Z_MIN = -2.6, Z_MAX = 4.6, SPEED = 3.4;
@@ -501,7 +502,7 @@ export default function RoomScene({ art, occupants, myId, reducedMotion, onFigur
 
   return <>
     <div ref={mountRef} className="room3d" />
-    {canWalk && <div className="walk-help room"><span>Click the floor or use WASD to walk around the room</span></div>}
+    {canWalk && <div className="walk-help room"><span>{tr("Click the floor or use WASD to walk around the room")}</span></div>}
   </>;
 }
 

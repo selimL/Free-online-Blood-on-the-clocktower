@@ -6,6 +6,7 @@ import type { Avatar as AvatarT } from '../../../shared/types';
 import { AVATAR_LIMITS } from '../../../shared/types';
 
 import { SKINS, HAIR_COLORS, OUTFIT_COLORS, LABELS } from '../avatarStyle';
+import { tr } from '../i18n';
 export { SKINS, HAIR_COLORS, OUTFIT_COLORS, LABELS };
 
 interface Props {
@@ -28,7 +29,7 @@ export function Avatar({ avatar, size = 72, sleeping, ghost, speaking, video, ti
   const skin = SKINS[avatar.skin] ?? SKINS[0];
   const hairC = HAIR_COLORS[avatar.hairColor] ?? HAIR_COLORS[0];
   const cloth = OUTFIT_COLORS[avatar.outfitColor] ?? OUTFIT_COLORS[0];
-  const cls = ['avatar', ghost ? 'ghost' : '', speaking ? 'speaking' : '', className ?? ''].join(' ');
+  const cls = ['avatar', ghost ? tr("ghost") : '', speaking ? tr("speaking") : '', className ?? ''].join(' ');
   if (video) return <VideoFace track={video} size={size} className={cls} title={title} />;
   const eyes = () => {
     if (sleeping) return <g stroke="#2a1a12" strokeWidth="2.2" fill="none"><path d="M46 60 q5 4 10 0" /><path d="M64 60 q5 4 10 0" /></g>;
@@ -93,21 +94,21 @@ export function AvatarCreator({ value, onChange }: { value: AvatarT; onChange: (
       <div className="avatar-preview">
         {webglAvailable()
           ? <>
-            <Suspense fallback={<Avatar avatar={value} size={140} title="Your avatar" />}><AvatarPreview3D avatar={value} /></Suspense>
-            <div className="portrait"><Avatar avatar={value} size={56} title="Your portrait" /><span>Portrait</span></div>
+            <Suspense fallback={<Avatar avatar={value} size={140} title={tr("Your avatar")} />}><AvatarPreview3D avatar={value} /></Suspense>
+            <div className="portrait"><Avatar avatar={value} size={56} title={tr("Your portrait")} /><span>{tr("Portrait")}</span></div>
           </>
-          : <Avatar avatar={value} size={140} title="Your avatar" />}
+          : <Avatar avatar={value} size={140} title={tr("Your avatar")} />}
       </div>
       <div className="avatar-options">
         {keys.map(k => (
           <div key={k} className="avatar-row">
-            <span className="label">{LABELS[k].name}</span>
-            <button type="button" className="icon-btn" aria-label={`Previous ${LABELS[k].name}`} onClick={() => step(k, -1)}>‹</button>
-            <span className="value">{LABELS[k].options[value[k]]}</span>
-            <button type="button" className="icon-btn" aria-label={`Next ${LABELS[k].name}`} onClick={() => step(k, 1)}>›</button>
+            <span className="label">{tr(LABELS[k].name)}</span>
+            <button type="button" className="icon-btn" aria-label={tr("Previous {name}", { name: LABELS[k].name })} onClick={() => step(k, -1)}>‹</button>
+            <span className="value">{tr(LABELS[k].options[value[k]])}</span>
+            <button type="button" className="icon-btn" aria-label={tr("Next {name}", { name: LABELS[k].name })} onClick={() => step(k, 1)}>›</button>
           </div>
         ))}
-        <button type="button" className="btn small" onClick={randomize}>🎲 Randomise</button>
+        <button type="button" className="btn small" onClick={randomize}>{tr("🎲 Randomise")}</button>
       </div>
     </div>
   );

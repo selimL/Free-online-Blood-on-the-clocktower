@@ -256,6 +256,7 @@ export function lobbyEntry(g: Game): LobbyEntry {
     edition: g.settings.edition === 'custom' ? 'Custom script' : ({ tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets' } as const)[g.settings.edition],
     status: g.phase === 'lobby' ? 'waiting' : g.phase === 'ended' ? 'ended' : 'in progress',
     scheduledFor: g.scheduledFor ?? null,
+    language: g.settings.language ?? 'en',
     lookingFor: g.phase === 'lobby' && g.lookingFor ? { count: g.lookingFor.count, note: g.lookingFor.note } : null,
   };
 }

@@ -3,6 +3,7 @@
 // These are suggestions only: the Storyteller can always change them (e.g. to lie to a drunk player).
 import { CHARACTER_BY_ID } from '../../shared/characters';
 import type { GameView, StorytellerSelf, GrimoireSeat } from '../../shared/types';
+import { tr } from './i18n';
 
 export interface Suggestion {
   /** What the card will say; null when there is nothing sensible to suggest. */
@@ -49,41 +50,41 @@ export function suggestInfo(step: string, recipient: string, view: GameView): Su
     if (!y) return null;
     const [a, b] = shuffle2(x, y);
     const c = grim[x].characterId!;
-    return { card: { text: 'One of these two players is this character:', playerIds: [a, b], characterIds: [c] }, pair: { a, b, c }, why: `${name(x)} really is the ${ch(c)}; ${name(y)} is a random other player.` };
+    return { card: { text: tr("One of these two players is this character:"), playerIds: [a, b], characterIds: [c] }, pair: { a, b, c }, why: tr("{x} really is the {x2}; {x3} is a random other player.", { x: name(x), x2: ch(c), x3: name(y) }) };
   };
 
   switch (step) {
     case 'washerwoman': return pairOf('townsfolk');
     case 'investigator': return pairOf('minion');
-    case 'librarian': return pairOf('outsider') ?? { card: { text: 'There are no Outsiders in play.' }, why: 'No Outsiders are in play.' };
+    case 'librarian': return pairOf('outsider') ?? { card: { text: tr("There are no Outsiders in play.") }, why: tr("No Outsiders are in play.") };
     case 'chef': {
       let pairs = 0;
       for (let i = 0; i < n; i++) if (evil(view.players[i].id) && evil(view.players[(i + 1) % n].id)) pairs++;
-      return { card: { text: `You learn: ${pairs}` }, value: pairs, why: `${pairs} pair${pairs === 1 ? '' : 's'} of evil players sit next to each other.` };
+      return { card: { text: tr("You learn: {pairs}", { pairs }) }, value: pairs, why: tr(pairs === 1 ? "1 pair of evil players sit next to each other." : "{pairs} pairs of evil players sit next to each other.", { pairs }) };
     }
     case 'empath': {
       const living = (dir: 1 | -1) => { for (let k = 1; k < n; k++) { const p = view.players[(idx(recipient) + dir * k + n * k) % n]; if (p.id !== recipient && p.alive) return p.id; } return null; };
       const ns = [...new Set([living(-1), living(1)].filter((x): x is string => !!x))];
       const count = ns.filter(evil).length;
-      return { card: { text: `You learn: ${count}` }, value: count, why: `Living neighbours: ${ns.map(name).join(' and ')} (${count} evil).` };
+      return { card: { text: tr("You learn: {count}", { count }) }, value: count, why: tr("Living neighbours: {x} ({count} evil).", { x: ns.map(name).join(tr(' and ')), count }) };
     }
     case 'fortuneteller': {
       const chosen = grim[recipient]?.nightChoice ?? [];
-      if (chosen.length < 2) return { card: null, why: 'Waiting for the Fortune Teller to choose two players.' };
+      if (chosen.length < 2) return { card: null, why: tr("Waiting for the Fortune Teller to choose two players.") };
       const hit = chosen.slice(0, 2).filter(id => typeOf(grim[id]) === 'demon' || grim[id]?.reminders.some(r => r.toLowerCase() === 'red herring'));
-      return { card: { text: hit.length ? 'Yes' : 'No' }, value: hit.length ? 'yes' : 'no', why: hit.length ? `${hit.map(name).join(', ')} ${hit.length > 1 ? 'are' : 'is'} the Demon or the red herring.` : 'Neither is the Demon or the red herring.' };
+      return { card: { text: tr(hit.length ? 'Yes' : 'No') }, value: hit.length ? 'yes' : 'no', why: hit.length ? tr(hit.length > 1 ? '{names} are the Demon or the red herring.' : '{names} is the Demon or the red herring.', { names: hit.map(name).join(', ') }) : tr('Neither is the Demon or the red herring.') };
     }
     case 'undertaker': {
       const ex = self.lastExecutedId;
-      if (!ex) return { card: null, why: 'Nobody was executed today: the Undertaker learns nothing.' };
+      if (!ex) return { card: null, why: tr("Nobody was executed today: the Undertaker learns nothing.") };
       const c = grim[ex]?.characterId;
-      return { card: { text: 'The executed player was:', playerIds: [ex], characterIds: c ? [c] : [] }, why: `${name(ex)} was executed; they are the ${ch(c)}.` };
+      return { card: { text: tr("The executed player was:"), playerIds: [ex], characterIds: c ? [c] : [] }, why: tr("{x} was executed; they are the {x2}.", { x: name(ex), x2: ch(c) }) };
     }
     case 'ravenkeeper': {
       const chosen = grim[recipient]?.nightChoice?.[0];
-      if (!chosen) return { card: null, why: 'Waiting for the Ravenkeeper to choose a player.' };
+      if (!chosen) return { card: null, why: tr("Waiting for the Ravenkeeper to choose a player.") };
       const c = grim[chosen]?.characterId;
-      return { card: { text: 'You learn this character:', playerIds: [chosen], characterIds: c ? [c] : [] }, why: `${name(chosen)} is the ${ch(c)}.` };
+      return { card: { text: tr("You learn this character:"), playerIds: [chosen], characterIds: c ? [c] : [] }, why: tr("{x} is the {x2}.", { x: name(chosen), x2: ch(c) }) };
     }
     case 'clockmaker': {
       const demons = view.players.filter(p => typeOf(grim[p.id]) === 'demon').map(p => idx(p.id));
@@ -91,7 +92,7 @@ export function suggestInfo(step: string, recipient: string, view: GameView): Su
       if (!demons.length || !minions.length) return null;
       let best = n;
       for (const d of demons) for (const m of minions) best = Math.min(best, Math.abs(d - m), n - Math.abs(d - m));
-      return { card: { text: `You learn: ${best}` }, value: best, why: `The Demon is ${best} step${best === 1 ? '' : 's'} from the nearest Minion.` };
+      return { card: { text: tr("You learn: {best}", { best }) }, value: best, why: tr(best === 1 ? "The Demon is 1 step from the nearest Minion." : "The Demon is {best} steps from the nearest Minion.", { best }) };
     }
     default: return null;
   }
@@ -113,10 +114,10 @@ export function killWarnings(targetId: string, view: GameView): string[] {
   const out: string[] = [];
   const r = seat.reminders.map(x => x.toLowerCase());
   const impaired = !!impairment(seat);
-  if (r.includes('protected')) out.push('is protected tonight (Monk/Innkeeper)');
-  if (r.includes('safe')) out.push('is safe from execution (Devil\'s Advocate)');
-  if (seat.characterId === 'soldier' && !impaired) out.push('is the Soldier: the Demon cannot kill them');
-  if (seat.characterId === 'mayor' && !impaired && view.phase === 'night') out.push('is the Mayor: you may kill someone else instead');
-  if (seat.characterId === 'tealady' && !impaired) out.push('may be protected by the Tea Lady');
+  if (r.includes('protected')) out.push(tr('is protected tonight (Monk/Innkeeper)'));
+  if (r.includes('safe')) out.push(tr('is safe from execution (Devil\'s Advocate)'));
+  if (seat.characterId === 'soldier' && !impaired) out.push(tr('is the Soldier: the Demon cannot kill them'));
+  if (seat.characterId === 'mayor' && !impaired && view.phase === 'night') out.push(tr('is the Mayor: you may kill someone else instead'));
+  if (seat.characterId === 'tealady' && !impaired) out.push(tr('may be protected by the Tea Lady'));
   return out;
 }

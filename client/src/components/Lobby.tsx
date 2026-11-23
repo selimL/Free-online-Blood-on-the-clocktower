@@ -5,6 +5,7 @@ import { useAccount, fetchLeaderboard, setHideFromFriends, type FriendRow } from
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
+import { LANGUAGES } from '../../../shared/i18n';
 import { LegalLinks } from './Legal';
 import { useInstall, installNow } from '../install';
 import { ScriptBuilder } from './ScriptBuilder';
@@ -62,7 +63,7 @@ export function Lobby() {
             <tbody>
               {[...games].sort((a, b) => Number(!!b.lookingFor) - Number(!!a.lookingFor)).map(g => (
                 <tr key={g.id}>
-                  <td>{g.name}{g.lookingFor && <div className="looking-for small">🔎 Looking for {g.lookingFor.count} more{g.lookingFor.note ? `: ${g.lookingFor.note}` : ''}</div>}</td><td className="og-players">{g.players}/{g.max}</td><td className="og-script">{g.edition}</td>
+                  <td>{g.name}{g.lookingFor && <div className="looking-for small">🔎 Looking for {g.lookingFor.count} more{g.lookingFor.note ? `: ${g.lookingFor.note}` : ''}</div>}</td><td className="og-players">{g.players}/{g.max}</td><td className="og-script">{g.edition}{g.language !== 'en' && <span className="lang-tag" title="Played in this language"> · 🌐 {LANGUAGES.find(l => l.id === g.language)?.name ?? g.language}</span>}</td>
                   <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span>{g.scheduledFor && g.status === 'waiting' && <div className="small"><Countdown at={g.scheduledFor} /></div>}</td>
                   <td className="row"><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join / Watch'}</button></td>
                 </tr>

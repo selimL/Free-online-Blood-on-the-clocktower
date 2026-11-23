@@ -4,6 +4,7 @@
 import { Room, RoomEvent, Track, type RemoteTrack, type RemoteAudioTrack, type Participant } from 'livekit-client';
 import { useSyncExternalStore } from 'react';
 import { socket, act } from './net';
+import { tr } from './i18n';
 
 interface VoiceState {
   connectedRoom: string | null;
@@ -120,7 +121,7 @@ async function applyLocalMedia() {
     if (cam && state.camOn) video[lp.identity] = cam; else delete video[lp.identity];
     set({ video, error: null });
   } catch (e) {
-    set({ error: 'Microphone/camera permission denied.' });
+    set({ error: tr("Microphone/camera permission denied.") });
   }
 }
 
@@ -173,7 +174,7 @@ async function join(url: string, token: string, roomName: string, location: stri
     socket.emit('voice:connected', { room: roomName }, () => {});
     void applyLocalMedia();
   } catch (e) {
-    set({ error: 'Could not connect to voice server.' });
+    set({ error: tr("Could not connect to voice server.") });
   }
 }
 

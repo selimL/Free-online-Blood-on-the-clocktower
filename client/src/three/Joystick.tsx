@@ -1,5 +1,6 @@
 // On-screen joystick for phones and tablets: drag the knob to walk in the 3D town.
 import { useRef, useState } from 'react';
+import { tr } from '../i18n';
 
 /** True on touch-first devices (phones, tablets). */
 export function touchDevice() {
@@ -28,7 +29,7 @@ export function Joystick({ onChange }: { onChange: (x: number, y: number) => voi
     onChange(0, 0);
   };
   return (
-    <div ref={base} className="joystick" role="application" aria-label="Walk joystick"
+    <div ref={base} className="joystick" role="application" aria-label={tr("Walk joystick")}
       onPointerDown={e => { active.current = e.pointerId; e.currentTarget.setPointerCapture(e.pointerId); move(e); }}
       onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
       <div className="joystick-knob" style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />

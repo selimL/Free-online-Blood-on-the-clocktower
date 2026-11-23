@@ -16,6 +16,7 @@ import type { PublicPlayer, Avatar, WalkPos, NominationView, Weather } from '../
 import { thunder, setRain } from '../sound';
 import { onEmote, EMOTE_ICON, EMOTE_MS } from '../emotes';
 import { Joystick, touchDevice } from './Joystick';
+import { tr } from '../i18n';
 const PLAZA_R = 10.2;
 const BUILDING_R = 14.2;
 const FOV = 32;
@@ -778,7 +779,7 @@ export default function TownScene(props: Props) {
     const enter = (i: number) => {
       const P = live.current.props;
       const roomId = `r${i}`;
-      if (!P.rooms.some(r => r.id === roomId)) { pushAlert(`${ROOM_NAMES[i]} is closed in this game.`, 'error'); return; }
+      if (!P.rooms.some(r => r.id === roomId)) { pushAlert(tr("{x} is closed in this game.", { x: ROOM_NAMES[i] }), 'error'); return; }
       P.onEnterRoom(roomId);
     };
     enterRef.current = enter;
@@ -1115,8 +1116,8 @@ export default function TownScene(props: Props) {
       {walkMode && (
         <div className="walk-help" aria-live="polite">
           {doorPrompt
-            ? <><b>{doorPrompt.name}</b> <button className="btn small primary" onClick={() => enterRef.current(doorPrompt.i)}>Enter (E)</button></>
-            : <span>{touch ? 'Drag the joystick or tap the ground to walk · tap a building to go inside' : 'Click the ground to walk · WASD / arrow keys · click a building to go inside'}</span>}
+            ? <><b>{doorPrompt.name}</b> <button className="btn small primary" onClick={() => enterRef.current(doorPrompt.i)}>{tr("Enter (E)")}</button></>
+            : <span>{touch ? tr("Drag the joystick or tap the ground to walk · tap a building to go inside") : tr("Click the ground to walk · WASD / arrow keys · click a building to go inside")}</span>}
         </div>
       )}
       {walkMode && touch && <Joystick onChange={(x, y) => { ctrl.current.joy = { x, y }; if (x || y) { ctrl.current.target = null; ctrl.current.door = null; } }} />}

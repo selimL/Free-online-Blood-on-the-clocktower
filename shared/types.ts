@@ -406,7 +406,7 @@ export interface StorytellerSelf {
   lastExecutedId: string | null;
 }
 
-export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended'; scheduledFor: number | null; lookingFor: { count: number; note: string } | null }
+export interface LobbyEntry { id: string; code: string; name: string; players: number; max: number; edition: string; status: 'waiting' | 'in progress' | 'ended'; scheduledFor: number | null; lookingFor: { count: number; note: string } | null; language: Lang }
 
 /** A message in the lobby chat. Kept in memory only (the last 50), never saved. */
 export interface LobbyChatMsg { id: string; name: string; text: string; ts: number }

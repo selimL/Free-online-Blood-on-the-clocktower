@@ -1,6 +1,7 @@
 // Atmosphere, synthesised live with the Web Audio API (no audio files, nothing to license):
 // a church bell at dawn, wind and crickets at night, a heartbeat during votes, a toll for deaths.
 import { useSyncExternalStore } from 'react';
+import { tr } from './i18n';
 
 const KEY = 'botc:volume';
 let volume = (() => { try { const v = Number(localStorage.getItem(KEY)); return Number.isFinite(v) && localStorage.getItem(KEY) !== null ? v : 0.6; } catch { return 0.6; } })();
@@ -317,6 +318,6 @@ export function ping(kind: PingKind) {
   }
   if (alertPrefs.vibrate && typeof navigator !== 'undefined' && 'vibrate' in navigator) { try { navigator.vibrate(p.vib); } catch { /* ignore */ } }
   if (alertPrefs.notify && typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-    try { new Notification('Clocktower Nights', { body: p.text, tag: kind }); } catch { /* ignore */ }
+    try { new Notification('Clocktower Nights', { body: tr(p.text), tag: kind }); } catch { /* ignore */ }
   }
 }

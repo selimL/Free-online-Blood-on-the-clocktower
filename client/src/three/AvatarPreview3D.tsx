@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { Avatar } from '../../../shared/types';
 import { buildCharacter, disposeCharacter } from './character';
+import { tr } from '../i18n';
 
 export default function AvatarPreview3D({ avatar, size = 220 }: { avatar: Avatar; size?: number }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -84,5 +85,5 @@ export default function AvatarPreview3D({ avatar, size = 220 }: { avatar: Avatar
 
   useEffect(() => { api.current?.setAvatar(avatar); }, [avatar]);
 
-  return <div ref={mountRef} className="avatar3d" title="Drag to turn your figure" aria-label="3D preview of your figure" role="img" />;
+  return <div ref={mountRef} className="avatar3d" title={tr("Drag to turn your figure")} aria-label={tr("3D preview of your figure")} role="img" />;
 }

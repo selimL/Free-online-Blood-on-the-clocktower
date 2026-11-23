@@ -7,6 +7,7 @@ import { SEAT_R, ST_Z } from '../three/support';
 import { useEmotes, EMOTE_ICON } from '../emotes';
 import { useRef, useState } from 'react';
 import { usePlayerNotes, setPlayerNote, MARKS, MARK_ICON } from '../playerNotes';
+import { tr } from '../i18n';
 
 export function Clocktower({ className }: { className?: string }) {
   return (
@@ -32,15 +33,15 @@ function NoteEditor({ gameId, playerId, name, note, onClose }: { gameId: string;
   const [text, setText] = useState(note?.text ?? '');
   const save = (mark?: string) => { setPlayerNote(gameId, playerId, { text, ...(mark !== undefined ? { mark: mark as '' } : {}) }); };
   return (
-    <div className="note-editor parchment" role="dialog" aria-label={`Note on ${name}`} onClick={e => e.stopPropagation()}>
-      <div className="ne-head"><b>📝 {name}</b><button className="icon-btn" aria-label="Close" onClick={() => { save(); onClose(); }}>✕</button></div>
+    <div className="note-editor parchment" role="dialog" aria-label={tr("Note on {name}", { name })} onClick={e => e.stopPropagation()}>
+      <div className="ne-head"><b>📝 {name}</b><button className="icon-btn" aria-label={tr("Close")} onClick={() => { save(); onClose(); }}>✕</button></div>
       <div className="ne-marks">
-        {MARKS.map(m => <button key={m.id} className={`chip ${note?.mark === m.id ? 'on' : ''}`} onClick={() => save(note?.mark === m.id ? '' : m.id)}>{m.icon} {m.label}</button>)}
+        {MARKS.map(m => <button key={m.id} className={`chip ${note?.mark === m.id ? 'on' : ''}`} onClick={() => save(note?.mark === m.id ? '' : m.id)}>{m.icon} {tr(m.label)}</button>)}
       </div>
       <form onSubmit={e => { e.preventDefault(); save(); onClose(); }}>
-        <input autoFocus value={text} maxLength={80} placeholder="e.g. claims Chef, said 2" onChange={e => setText(e.target.value)} onBlur={() => save()} />
+        <input autoFocus value={text} maxLength={80} placeholder={tr("e.g. claims Chef, said 2")} onChange={e => setText(e.target.value)} onBlur={() => save()} />
       </form>
-      <p className="muted small">Only you can see this. It is saved in this browser.</p>
+      <p className="muted small">{tr("Only you can see this. It is saved in this browser.")}</p>
     </div>
   );
 }
@@ -98,42 +99,42 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
     const g = grim[p.id];
     const asleep = night && (sleepingView || (isST ? !g?.awake : p.id !== view.self.id || !(!isST && view.self.awake)));
     const classes = ['seat',
-      p.alive ? 'alive' : 'dead', away ? 'away' : '', selected.includes(p.id) ? 'selected' : '',
-      view.aboutToDie?.playerId === p.id ? 'on-block' : '', nom?.nomineeId === p.id ? 'nominee' : '',
-      nom?.nominatorId === p.id ? 'nominator' : '', view.speakerId === p.id ? 'spotlight' : '',
-      view.ability?.targetId === p.id ? 'ability-target' : '', view.ability?.playerId === p.id ? 'ability-user' : '',
-      isCurrentVoter ? 'current-voter' : '', deathFlash === p.id ? 'death-flash' : '', !p.connected ? 'disconnected' : '',
-      onSeatClick ? 'clickable' : '',
+      p.alive ? tr("alive") : tr("dead"), away ? tr("away") : '', selected.includes(p.id) ? tr("selected") : '',
+      view.aboutToDie?.playerId === p.id ? tr("on-block") : '', nom?.nomineeId === p.id ? tr("nominee") : '',
+      nom?.nominatorId === p.id ? tr("nominator") : '', view.speakerId === p.id ? tr("spotlight") : '',
+      view.ability?.targetId === p.id ? tr("ability-target") : '', view.ability?.playerId === p.id ? tr("ability-user") : '',
+      isCurrentVoter ? tr("current-voter") : '', deathFlash === p.id ? tr("death-flash") : '', !p.connected ? tr("disconnected") : '',
+      onSeatClick ? tr("clickable") : '',
     ].join(' ');
     const label = `${p.name}${p.alive ? '' : ' (dead)'}${p.claim ? `, claims ${CHARACTER_BY_ID[p.claim]?.name ?? p.claim}` : ''}`;
     return (
       <div key={p.id} className={classes} style={{ left: `${x}%`, top: `${y}%` }}>
         <button className="seat-btn" onClick={() => { if (editing !== p.id) onSeatClick?.(p.id); }} disabled={!onSeatClick && !notesOn} aria-label={label} {...noteHandlers(p.id)}>
           <Avatar avatar={p.avatar} size={64} ghost={!p.alive} sleeping={asleep} speaking={voice.speaking.includes(p.id)} video={night ? undefined : voice.video[p.id]} title={p.name} />
-          {(hand || locked) && <span className="hand" aria-label="hand raised">✋</span>}
+          {(hand || locked) && <span className="hand" aria-label={tr("hand raised")}>✋</span>}
           {emotes[p.id] && <span key={emotes[p.id].ts} className="emote-bubble" role="img" aria-label={`${p.name}: ${emotes[p.id].kind}`}>{EMOTE_ICON[emotes[p.id].kind]}</span>}
           {locked === false && nom?.done === false && <span className="hand down" aria-hidden>·</span>}
-          {p.muted && <span className="badge muted" title="Muted by Storyteller">🔇</span>}
-          {p.joining && <span className="badge joining" title="Joining…">⏳</span>}
-          {p.bot && <span className="badge bot" title="Computer player">🤖</span>}
-          {view.ugHat === p.id && <span className="badge ughat" title="Wears the Ug hat: one-syllable words only; their vote counts twice">🎩</span>}
-          {p.offlineSince && <span className="badge offline" title={`Lost connection ${Math.max(1, Math.round((Date.now() - p.offlineSince) / 60000))} min ago. Their seat is kept.`}>📶✕</span>}
+          {p.muted && <span className="badge muted" title={tr("Muted by Storyteller")}>🔇</span>}
+          {p.joining && <span className="badge joining" title={tr("Joining…")}>⏳</span>}
+          {p.bot && <span className="badge bot" title={tr("Computer player")}>🤖</span>}
+          {view.ugHat === p.id && <span className="badge ughat" title={tr("Wears the Ug hat: one-syllable words only; their vote counts twice")}>🎩</span>}
+          {p.offlineSince && <span className="badge offline" title={tr("Lost connection {x} min ago. Their seat is kept.", { x: Math.max(1, Math.round((Date.now() - p.offlineSince) / 60000)) })}>📶✕</span>}
           {away && room && <span className="badge room" title={room.name}>{room.icon}</span>}
-          {!p.alive && <span className={`badge ghostvote ${p.ghostVoteUsed ? 'used' : ''}`} title={p.ghostVoteUsed ? 'Ghost vote used' : 'Ghost vote available'}>{p.ghostVoteUsed ? '◌' : '●'}</span>}
+          {!p.alive && <span className={`badge ghostvote ${p.ghostVoteUsed ? 'used' : ''}`} title={p.ghostVoteUsed ? tr("Ghost vote used") : tr("Ghost vote available")}>{p.ghostVoteUsed ? '◌' : '●'}</span>}
         </button>
         <div className={`nameplate ${p.alive ? 'alive' : 'dead'}`}>
           {p.name}
-          {p.evilMark && <span className="evil-mark"> (evil{evilRoles[p.id] && evilRoles[p.id] !== 'evil' ? ` · ${ROLE_LABEL[evilRoles[p.id] as 'demon' | 'minion']}` : ''})</span>}
+          {p.evilMark && <span className="evil-mark"> {tr("(evil")}{evilRoles[p.id] && evilRoles[p.id] !== 'evil' ? ` · ${ROLE_LABEL[evilRoles[p.id] as 'demon' | 'minion']}` : ''})</span>}
         </div>
         {p.claim && <div className="claim">“{CHARACTER_BY_ID[p.claim]?.name ?? p.claim}”</div>}
-        {notesOn && pnotes[p.id] && <button className="pnote" onClick={() => setEditing(p.id)} title="Your private note (only you can see it)">{MARK_ICON[pnotes[p.id].mark] ?? '📝'} {pnotes[p.id].text}</button>}
+        {notesOn && pnotes[p.id] && <button className="pnote" onClick={() => setEditing(p.id)} title={tr("Your private note (only you can see it)")}>{MARK_ICON[pnotes[p.id].mark] ?? '📝'} {pnotes[p.id].text}</button>}
         {editing === p.id && <NoteEditor gameId={view.id} playerId={p.id} name={p.name} onClose={() => setEditing(null)} note={pnotes[p.id]} />}
-        {p.traveller && p.travellerCharacter && <div className="claim traveller">Traveller: {CHARACTER_BY_ID[p.travellerCharacter]?.name}</div>}
+        {p.traveller && p.travellerCharacter && <div className="claim traveller">{tr("Traveller:")}{' '}{CHARACTER_BY_ID[p.travellerCharacter]?.name}</div>}
         {p.revealedCharacter && <div className="claim revealed">{CHARACTER_BY_ID[p.revealedCharacter]?.name}{p.revealedGrimoire ? ` · ${p.revealedGrimoire.alignment}` : ''}</div>}
         {p.revealedGrimoire && (p.revealedGrimoire.shownCharacterId !== p.revealedCharacter || p.revealedGrimoire.reminders.length > 0) && (
-          <div className="claim">{p.revealedGrimoire.shownCharacterId !== p.revealedCharacter ? `thought: ${CHARACTER_BY_ID[p.revealedGrimoire.shownCharacterId ?? '']?.name ?? '—'}` : ''}{p.revealedGrimoire.reminders.length ? ` ${p.revealedGrimoire.reminders.join(', ')}` : ''}</div>
+          <div className="claim">{p.revealedGrimoire.shownCharacterId !== p.revealedCharacter ? tr("thought: {x}", { x: CHARACTER_BY_ID[p.revealedGrimoire.shownCharacterId ?? '']?.name ?? '—' }) : ''}{p.revealedGrimoire.reminders.length ? ` ${p.revealedGrimoire.reminders.join(', ')}` : ''}</div>
         )}
-        {g && <div className={`grim-tag ${g.alignment}`}>{CHARACTER_BY_ID[g.characterId ?? '']?.name ?? '—'}{g.shownCharacterId !== g.characterId && g.shownCharacterId ? ` (thinks ${CHARACTER_BY_ID[g.shownCharacterId]?.name})` : ''}{g.reminders.length ? ` · ${g.reminders.join(', ')}` : ''}</div>}
+        {g && <div className={`grim-tag ${g.alignment}`}>{CHARACTER_BY_ID[g.characterId ?? '']?.name ?? '—'}{g.shownCharacterId !== g.characterId && g.shownCharacterId ? tr(" (thinks {name})", { name: CHARACTER_BY_ID[g.shownCharacterId]?.name }) : ''}{g.reminders.length ? ` · ${g.reminders.join(', ')}` : ''}</div>}
       </div>
     );
   };
@@ -144,19 +145,19 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
       <div className="center">
         {!three && <Clocktower className="tower" />}
         {!three && (!night || isST) && view.storyteller.location === (myLoc ?? 'square') && (
-          <div className="st-mini" title="Storyteller">
+          <div className="st-mini" title={tr("Storyteller")}>
             <Avatar avatar={view.storyteller.avatar} size={44} speaking={voice.speaking.includes('st')} video={voice.video.st} />
-            {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={`Storyteller: ${emotes.st.kind}`}>{EMOTE_ICON[emotes.st.kind]}</span>}
+            {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={tr("Storyteller: {kind}", { kind: emotes.st.kind })}>{EMOTE_ICON[emotes.st.kind]}</span>}
             <span>{view.storyteller.name}</span>
           </div>
         )}
       </div>
       {three && !night && view.storyteller.location === 'square' && (
         // the Storyteller's 3D figure stands in front of the clocktower; this is just the name label at its feet
-        <div className={`st-mini three ${voice.speaking.includes('st') ? 'speaking' : ''}`} title="Storyteller"
+        <div className={`st-mini three ${voice.speaking.includes('st') ? 'speaking' : ''}`} title={tr("Storyteller")}
           style={{ left: '50%', top: `${50 + (ST_Z / SEAT_R) * radius * (squash ?? 1)}%` }}>
-          {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={`Storyteller: ${emotes.st.kind}`}>{EMOTE_ICON[emotes.st.kind]}</span>}
-          <span>{view.storyteller.name} · Storyteller</span>
+          {emotes.st && <span key={emotes.st.ts} className="emote-bubble" role="img" aria-label={tr("Storyteller: {kind}", { kind: emotes.st.kind })}>{EMOTE_ICON[emotes.st.kind]}</span>}
+          <span>{view.storyteller.name} {tr("· Storyteller")}</span>
         </div>
       )}
       {view.players.map(seat)}
@@ -172,17 +173,17 @@ export function TownMap({ view }: { view: GameView }) {
   const name = (id: string) => (id === 'st' ? `${view.storyteller.name} (Storyteller)` : view.players.find(p => p.id === id)?.name ?? '?');
   const pl = (id: string) => view.players.find(p => p.id === id);
   if (night && !isST) {
-    return <nav className="town-map" aria-label="Town map"><h3>The Town</h3><p className="muted">The town sleeps. Every door is shut.</p></nav>;
+    return <nav className="town-map" aria-label={tr("Town map")}><h3>{tr("The Town")}</h3><p className="muted">{tr("The town sleeps. Every door is shut.")}</p></nav>;
   }
   return (
-    <nav className="town-map" aria-label="Town map">
-      <h3>The Town</h3>
+    <nav className="town-map" aria-label={tr("Town map")}>
+      <h3>{tr("The Town")}</h3>
       {view.rooms.filter(r => r.kind !== 'study' || r.occupants.length > 0).map(r => {
         const here = r.occupants.includes(myId);
         const full = r.capacity !== null && r.occupants.filter(o => o !== 'st').length >= r.capacity;
         return (
           <div key={r.id} className={`room-card ${r.kind} ${here ? 'here' : ''}`}>
-            <button className="room-head" onClick={() => act('move', { room: r.id })} disabled={here || r.kind === 'study'} aria-label={`Go to ${r.name}`}>
+            <button className="room-head" onClick={() => act('move', { room: r.id })} disabled={here || r.kind === 'study'} aria-label={tr("Go to {r}", { r: r.name })}>
               <span className="room-icon" aria-hidden>{r.icon}</span>
               <span className="room-name">{r.name}</span>
               {r.capacity !== null && <span className={`cap ${full ? 'full' : ''}`}>{r.occupants.filter(o => o !== 'st').length}/{r.capacity}</span>}
@@ -191,14 +192,14 @@ export function TownMap({ view }: { view: GameView }) {
               {r.occupants.map(id => (
                 <li key={id} className={`${pl(id)?.alive === false ? 'dead' : ''} ${pl(id)?.joining ? 'joining' : ''}`}>
                   <span className={`dot ${voice.speaking.includes(id) && here ? 'speaking' : ''}`} />
-                  {name(id)}{pl(id)?.joining ? ' — joining…' : ''}{pl(id)?.muted ? ' 🔇' : ''}
+                  {name(id)}{pl(id)?.joining ? tr(" — joining…") : ''}{pl(id)?.muted ? ' 🔇' : ''}
                 </li>
               ))}
             </ul>
           </div>
         );
       })}
-      {isST && night && <p className="muted small">Night: players are in their beds. Click an avatar to wake them.</p>}
+      {isST && night && <p className="muted small">{tr("Night: players are in their beds. Click an avatar to wake them.")}</p>}
     </nav>
   );
 }

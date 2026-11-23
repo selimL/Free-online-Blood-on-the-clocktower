@@ -22,8 +22,8 @@ const DICTS: Record<Lang, Record<string, string>> = { en: {}, tr: TR };
 const ABILITIES: Record<Lang, Record<string, string>> = { en: {}, tr: ABILITIES_TR };
 const ALMANAC: Record<Lang, Record<string, string>> = { en: {}, tr: ALMANAC_TR };
 
-export type Vars = Record<string, string | number>;
-const fill = (s: string, vars?: Vars) => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s);
+export type Vars = Record<string, string | number | null | undefined>;
+const fill = (s: string, vars?: Vars) => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k] ?? '') : m)) : s);
 
 /** Translate an English text (with optional {placeholders}) into a language. */
 export function translate(lang: Lang | null | undefined, text: string, vars?: Vars): string {
