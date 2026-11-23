@@ -15,6 +15,7 @@ import { loadHistory, stats } from '../history';
 import { CHARACTER_BY_ID } from '../../../shared/characters';
 
 export function Lobby() {
+  const { account } = useAccount();
   const [games, setGames] = useState<LobbyEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [practice, setPractice] = useState(false);
@@ -46,7 +47,7 @@ export function Lobby() {
     <div className="lobby-page">
     <div className="lobby">
       <header className="lobby-hero">
-        <div className="account-corner"><AccountButton /></div>
+        <div className="account-corner">{account?.isAdmin && <a className="btn small ghost" href="/admin" title="Admin page: games, lobby chat and accounts">🛠 Admin</a>}<AccountButton /></div>
         <div>
           <h1>Clocktower Nights</h1>
           <p className="subtitle">An unofficial, voice-first fan table for <i>Blood on the Clocktower</i>, for private play among friends.</p>

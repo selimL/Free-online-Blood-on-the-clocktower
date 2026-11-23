@@ -9,18 +9,36 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
   const sessions = new Map<string, number>(); // admin token → expiry
   const fails = new Map<string, { n: number; at: number }>();
   const same = (a: string, b: string) => { const x = createHash('sha256').update(a).digest(), y = createHash('sha256').update(b).digest(); return timingSafeEqual(x, y); };
-  const authed = (req: Request) => {
+  /** Who is asking: the owner (signed in with ADMIN_PASSWORD) or an account made an admin. */
+  type Who = { kind: 'owner' } | { kind: 'account'; id: string };
+  const who = async (req: Request): Promise<Who | null> => {
     const t = (req.get('authorization') ?? '').replace(/^Bearer /, '');
     const exp = sessions.get(t);
-    return !!exp && exp > Date.now();
+    if (exp && exp > Date.now() && env.ADMIN_PASSWORD) return { kind: 'owner' };
+    const a = await accounts.fromRequest(req);
+    return a?.isAdmin ? { kind: 'account', id: a.id } : null;
   };
-  const guard = (fn: (req: Request, res: Response) => unknown) => async (req: Request, res: Response) => {
-    if (!env.ADMIN_PASSWORD) return res.status(404).json({ ok: false, error: 'The admin page is off. Set ADMIN_PASSWORD to turn it on.' });
-    if (!authed(req)) return res.status(401).json({ ok: false, error: 'Please sign in again.' });
-    try { await fn(req, res); } catch (e) { res.status(400).json({ ok: false, error: (e as Error).message }); }
+  const guard = (fn: (req: Request, res: Response, w: Who) => unknown) => async (req: Request, res: Response) => {
+    const w = await who(req).catch(() => null);
+    if (!w) return res.status(env.ADMIN_PASSWORD ? 401 : 404).json({ ok: false, error: env.ADMIN_PASSWORD ? 'Please sign in again.' : 'The admin page is off. Set ADMIN_PASSWORD to turn it on.' });
+    try { await fn(req, res, w); } catch (e) { res.status(400).json({ ok: false, error: (e as Error).message }); }
+  };
+  /** Admin accounts can't take over each other: only the owner can change another admin's password or delete them. */
+  const protectAdmins = async (w: Who, id: string) => {
+    if (w.kind === 'owner') return;
+    if ((await accounts.get(id))?.isAdmin) throw new Error('Only the site owner (admin password) can do that to another admin.');
   };
 
   app.get('/api/admin/enabled', (_req, res) => res.json({ enabled: !!env.ADMIN_PASSWORD }));
+  /** Am I an admin? (used by the admin page and the lobby's Admin button) */
+  app.get('/api/admin/me', guard((_req, res, w) => res.json({ ok: true, kind: w.kind, id: w.kind === 'account' ? w.id : null })));
+  app.post('/api/admin/accounts/:id/admin', guard(async (req, res, w) => {
+    const id = String(req.params.id);
+    if (w.kind === 'account' && w.id === id) throw new Error('You cannot change your own admin status.');
+    await protectAdmins(w, id);
+    await accounts.setAdmin(id, !!req.body?.admin);
+    res.json({ ok: true });
+  }));
   app.post('/api/admin/login', (req, res) => {
     if (!env.ADMIN_PASSWORD) return res.status(404).json({ ok: false, error: 'The admin page is off. Set ADMIN_PASSWORD to turn it on.' });
     const f = fails.get(req.ip ?? '') ?? { n: 0, at: Date.now() };
@@ -56,14 +74,21 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
   app.get('/api/admin/accounts', guard(async (_req, res) => {
     res.json({ ok: true, accounts: (await accounts.list()).map(a => ({
       id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName,
-      createdAt: a.createdAt, games: a.history.length,
+      createdAt: a.createdAt, games: a.history.length, isAdmin: !!a.isAdmin,
     })) });
   }));
-  app.post('/api/admin/accounts/:id/password', guard(async (req, res) => {
+  app.post('/api/admin/accounts/:id/password', guard(async (req, res, w) => {
+    await protectAdmins(w, String(req.params.id));
     const pw = String(req.body?.password ?? '');
     if (pw.length < 8) throw new Error('Use at least 8 characters.');
     await accounts.setPassword(String(req.params.id), pw);
     res.json({ ok: true });
   }));
-  app.delete('/api/admin/accounts/:id', guard(async (req, res) => { await accounts.remove(String(req.params.id)); res.json({ ok: true }); }));
+  app.delete('/api/admin/accounts/:id', guard(async (req, res, w) => {
+    const id = String(req.params.id);
+    if (w.kind === 'account' && w.id === id) throw new Error('You cannot delete your own account here.');
+    await protectAdmins(w, id);
+    await accounts.remove(id);
+    res.json({ ok: true });
+  }));
 }

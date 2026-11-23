@@ -5,7 +5,7 @@ import { loadHistory, type HistoryEntry } from './history';
 import { loadScripts, type SavedScript } from './scripts';
 import { onLocalChange } from './syncBus';
 
-export interface AccountInfo { id: string; username: string | null; email: string | null; google: boolean; displayName: string; avatar: unknown; history: HistoryEntry[]; scripts: SavedScript[]; hideFromFriends?: boolean }
+export interface AccountInfo { id: string; username: string | null; email: string | null; google: boolean; displayName: string; avatar: unknown; history: HistoryEntry[]; scripts: SavedScript[]; hideFromFriends?: boolean; isAdmin?: boolean }
 export interface FriendRow { id: string; name: string; you: boolean; together: number; games: number; wins: number; evilWins: number; mvps: number; storytold: number }
 interface State { token: string | null; account: AccountInfo | null; config: { google: boolean; email: boolean } }
 

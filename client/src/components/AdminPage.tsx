@@ -1,11 +1,17 @@
 // /admin: running games (close abandoned or misused ones) and accounts (reset passwords).
 import { useEffect, useState } from 'react';
+import { useAccount } from '../account';
 
 type Game = { id: string; code: string; name: string; visibility: string; phase: string; day: number; players: number; bots: number; online: number; storyteller: string; storytellerOnline: boolean; spectators: number; createdAt: number; lastActivity: number; scheduledFor: number | null; practice: boolean; paused: boolean };
-type Acct = { id: string; username: string | null; email: string | null; google: boolean; displayName: string; createdAt: number; games: number };
+type Acct = { id: string; username: string | null; email: string | null; google: boolean; displayName: string; createdAt: number; games: number; isAdmin: boolean };
 
 export function AdminPage() {
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('botc:admin'));
+  const acct = useAccount();
+  // the owner signs in with the admin password; an account made an admin just uses its own sign-in
+  const [ownerToken, setToken] = useState<string | null>(() => sessionStorage.getItem('botc:admin'));
+  const token = ownerToken ?? (acct.account?.isAdmin ? acct.token : null);
+  const [meId, setMeId] = useState<string | null>(null);
+  useEffect(() => { if (token) void call('/api/admin/me').then(r => setMeId(r.ok ? r.id : null)); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   const [pw, setPw] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -15,7 +21,7 @@ export function AdminPage() {
   const call = async (path: string, method = 'GET', body?: unknown) => {
     const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({ ok: false, error: 'Server error' }));
-    if (r.status === 401) { sessionStorage.removeItem('botc:admin'); setToken(null); }
+    if (r.status === 401 && ownerToken) { sessionStorage.removeItem('botc:admin'); setToken(null); }
     return j;
   };
   const load = async () => {
@@ -27,7 +33,7 @@ export function AdminPage() {
   useEffect(() => { if (!token) return; void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
 
-  if (enabled === false) return <div className="center-card parchment"><h2>Admin page is off</h2><p>Set <code>ADMIN_PASSWORD</code> in the server's environment (Render → Environment) to turn it on.</p><a className="btn" href="/">Back</a></div>;
+  if (enabled === false && !token) return <div className="center-card parchment"><h2>Admin page is off</h2><p>Set <code>ADMIN_PASSWORD</code> in the server's environment (Render → Environment) to turn it on.</p><a className="btn" href="/">Back</a></div>;
   if (!token) return (
     <div className="center-card parchment">
       <h2>🛠 Admin</h2>
@@ -40,7 +46,8 @@ export function AdminPage() {
   );
   return (
     <div className="admin parchment">
-      <div className="row"><h2>🛠 Admin</h2><a className="btn small ghost" href="/">Back to the lobby</a><button className="btn small ghost" onClick={() => { sessionStorage.removeItem('botc:admin'); setToken(null); }}>Sign out</button></div>
+      <div className="row"><h2>🛠 Admin</h2><a className="btn small ghost" href="/">Back to the lobby</a>{ownerToken ? <button className="btn small ghost" onClick={() => { sessionStorage.removeItem('botc:admin'); setToken(null); }}>Sign out</button>
+        : <span className="muted small">Signed in as admin account {acct.account?.displayName}</span>}</div>
       <h3>Games ({games.length})</h3>
       <table className="games admin-table"><thead><tr><th>Game</th><th>Status</th><th>People</th><th>Storyteller</th><th>Activity</th><th /></tr></thead><tbody>
         {games.sort((a, b) => b.lastActivity - a.lastActivity).map(g => (
@@ -62,13 +69,17 @@ export function AdminPage() {
       <table className="games admin-table"><thead><tr><th>Name</th><th>Sign-in</th><th>Created</th><th>Games</th><th /></tr></thead><tbody>
         {accts.map(a => (
           <tr key={a.id}>
-            <td>{a.displayName}</td>
+            <td>{a.displayName}{a.isAdmin && <span className="admin-badge" title="Can open the admin page"> 👑 admin</span>}</td>
             <td className="small">{a.username ? `name: ${a.username}` : ''}{a.google ? ' Google' : ''}{a.email ? ` ${a.email}` : ''}</td>
             <td className="small">{new Date(a.createdAt).toLocaleDateString()}</td>
             <td>{a.games}</td>
             <td className="row">
+              {a.id !== meId && <button className="btn small ghost" onClick={async () => {
+                if (!confirm(a.isAdmin ? `Remove admin rights from ${a.displayName}?` : `Make ${a.displayName} an admin? They can then open this page from the lobby: close games, moderate the lobby chat, and manage accounts (but not other admins).`)) return;
+                const r = await call(`/api/admin/accounts/${a.id}/admin`, 'POST', { admin: !a.isAdmin }); if (!r.ok) alert(r.error); void load();
+              }}>{a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button>}
               {a.username && <button className="btn small" onClick={async () => { const p = prompt(`New password for ${a.username} (at least 8 characters):`); if (p) { const r = await call(`/api/admin/accounts/${a.id}/password`, 'POST', { password: p }); alert(r.ok ? 'Password changed. Tell them the new one privately.' : r.error); } }}>Reset password</button>}
-              <button className="btn small danger ghost" onClick={async () => { if (confirm(`Delete the account of ${a.displayName}? Their saved games and scripts on the server are removed.`)) { await call(`/api/admin/accounts/${a.id}`, 'DELETE'); void load(); } }}>Delete</button>
+              <button className="btn small danger ghost" onClick={async () => { if (confirm(`Delete the account of ${a.displayName}? Their saved games and scripts on the server are removed.`)) { const r = await call(`/api/admin/accounts/${a.id}`, 'DELETE'); if (!r.ok) alert(r.error); void load(); } }}>Delete</button>
             </td>
           </tr>
         ))}

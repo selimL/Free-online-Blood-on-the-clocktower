@@ -26,6 +26,8 @@ export interface Account {
   history: unknown[];
   scripts: unknown[];
   createdAt: number;
+  /** Can open the admin page (made an admin on the admin page). */
+  isAdmin?: boolean;
   /** Leave me off other people's friends' leaderboards. */
   hideFromFriends?: boolean;
 }
@@ -84,6 +86,12 @@ export class Accounts {
     await this.kv.set(`sess:${t}`, accountId, SESSION_DAYS * 86400);
     return t;
   }
+  async setAdmin(id: string, admin: boolean) {
+    const a = await this.get(id);
+    if (!a) throw new Error('No such account.');
+    a.isAdmin = admin;
+    await this.save(a);
+  }
   async fromRequest(req: Request): Promise<Account | null> {
     const h = req.get('authorization') ?? '';
     const t = h.startsWith('Bearer ') ? h.slice(7) : '';
@@ -121,7 +129,7 @@ export class Accounts {
     };
     const bad = (res: Response, status: number, error: string) => res.status(status).json({ ok: false, error });
     const publicUrl = (req: Request) => (this.env.PUBLIC_URL?.replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`);
-    const me = (a: Account) => ({ id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName, avatar: a.avatar, history: a.history, scripts: a.scripts, hideFromFriends: !!a.hideFromFriends });
+    const me = (a: Account) => ({ id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName, avatar: a.avatar, history: a.history, scripts: a.scripts, hideFromFriends: !!a.hideFromFriends, isAdmin: !!a.isAdmin });
 
     app.get('/api/auth/config', (_req, res) => res.json(this.config()));
 

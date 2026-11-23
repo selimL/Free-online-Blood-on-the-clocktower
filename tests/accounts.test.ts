@@ -70,3 +70,26 @@ describe('admin', () => {
     expect((await call('/api/auth/login', 'POST', { username: 'mortimer', password: 'brand new pw' })).ok).toBe(true);
   });
 });
+
+describe('admin accounts', () => {
+  it('the owner can make an account an admin, who can then use the admin page but not take over other admins', async () => {
+    const { token: owner } = await call('/api/admin/login', 'POST', { password: 'letmein-admin' });
+    const a = await call('/api/auth/register', 'POST', { username: 'helper1', password: 'helper password' });
+    const b = await call('/api/auth/register', 'POST', { username: 'helper2', password: 'helper password' });
+    expect((await call('/api/admin/games', 'GET', undefined, a.token)).status).toBe(401);
+    expect((await call(`/api/admin/accounts/${a.account.id}/admin`, 'POST', { admin: true }, b.token)).status).toBe(401);
+    expect((await call(`/api/admin/accounts/${a.account.id}/admin`, 'POST', { admin: true }, owner)).ok).toBe(true);
+    expect((await call('/api/account', 'GET', undefined, a.token)).account.isAdmin).toBe(true);
+    expect((await call('/api/admin/games', 'GET', undefined, a.token)).ok).toBe(true);
+    expect((await call('/api/admin/me', 'GET', undefined, a.token))).toMatchObject({ kind: 'account', id: a.account.id });
+    // the admin account can promote someone else, but not demote itself
+    expect((await call(`/api/admin/accounts/${b.account.id}/admin`, 'POST', { admin: true }, a.token)).ok).toBe(true);
+    expect((await call(`/api/admin/accounts/${a.account.id}/admin`, 'POST', { admin: false }, a.token)).error).toMatch(/own/);
+    // …and can't reset another admin's password or delete them
+    expect((await call(`/api/admin/accounts/${b.account.id}/password`, 'POST', { password: 'stolen password' }, a.token)).error).toMatch(/site owner/);
+    expect((await call(`/api/admin/accounts/${b.account.id}`, 'DELETE', undefined, a.token)).error).toMatch(/site owner/);
+    // the owner can remove admin rights
+    expect((await call(`/api/admin/accounts/${a.account.id}/admin`, 'POST', { admin: false }, owner)).ok).toBe(true);
+    expect((await call('/api/admin/games', 'GET', undefined, a.token)).status).toBe(401);
+  });
+});

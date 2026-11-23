@@ -128,6 +128,8 @@ Set these in the server's environment (Render → your service → Environment).
 
 Name + password accounts work with no settings at all. Passwords are stored hashed (scrypt).
 
+**Admin accounts:** sign in to `/admin` with `ADMIN_PASSWORD`, then press **👑 Make admin** next to an account. That account sees a **🛠 Admin** button in the lobby and opens the admin page with its normal sign-in (no password to share). Admin accounts can close games, moderate the lobby chat and manage ordinary accounts; only the owner (admin password) can change another admin's password, delete an admin or remove admin rights from one.
+
 ## Tests
 
 ```bash
