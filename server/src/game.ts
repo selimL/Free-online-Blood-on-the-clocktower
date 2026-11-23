@@ -449,12 +449,12 @@ export class Game {
       ...(this.storyteller.location === id ? ['st'] : []),
     ];
     return [
-      { id: SQUARE, name: 'Town Square', icon: '🕯️', kind: 'square' as const, capacity: null, occupants: occ(SQUARE) },
+      { id: SQUARE, name: this.t('Town Square'), icon: '🕯️', kind: 'square' as const, capacity: null, occupants: occ(SQUARE) },
       ...this.privateRoomIds().map(id => Number(id.slice(1))).map(i => ({
-        id: `r${i}`, name: ROOM_NAMES[i], icon: ROOM_ICONS[i],
+        id: `r${i}`, name: this.t(ROOM_NAMES[i]), icon: ROOM_ICONS[i],
         kind: 'private' as const, capacity: this.roomCapacity, occupants: occ(`r${i}`),
       })),
-      { id: STUDY, name: "Storyteller's Study", icon: '📜', kind: 'study' as const, capacity: null, occupants: occ(STUDY) },
+      { id: STUDY, name: this.t("Storyteller's Study"), icon: '📜', kind: 'study' as const, capacity: null, occupants: occ(STUDY) },
     ];
   }
   isPrivateRoom(id: string | null) { return !!id && /^r\d+$/.test(id); }

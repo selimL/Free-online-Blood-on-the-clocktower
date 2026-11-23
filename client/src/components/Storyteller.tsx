@@ -29,7 +29,7 @@ export function StorytellerControls({ view }: { view: GameView }) {
   const name = (id: string) => view.players.find(p => p.id === id)?.name ?? '?';
   const timerBtns = view.timer && <>
     <button className="btn small ghost" onClick={() => act('st:skipTimer')}>{tr("⏭ End timer")}</button>
-    <button className="btn small ghost" onClick={() => act('st:addTime', { seconds: 30 })}>+30s</button>
+    <button className="btn small ghost" onClick={() => act('st:addTime', { seconds: 30 })}>{tr('+30s')}</button>
   </>;
   const pause = view.phase !== 'lobby' && view.phase !== 'ended' &&
     <button className="btn small ghost" onClick={() => act('st:pause', { paused: !view.paused })}>{view.paused ? tr("▶ Resume") : tr("⏸ Pause")}</button>;
@@ -425,7 +425,7 @@ function ClearNightly({ view }: { view: GameView }) {
   const stale = self.grimoire.filter(g => g.reminders.some(r => NIGHTLY_REMINDERS.includes(r)));
   if (!stale.length) return null;
   const clear = () => { for (const g of stale) void act('st:reminders', { playerId: g.id, reminders: g.reminders.filter(r => !NIGHTLY_REMINDERS.includes(r)) }); };
-  return <p className="small">🧹 {stale.length} {tr("player")}{stale.length > 1 ? tr("s have") : tr(" has")} {tr("last night's markers (Poisoned, Protected…).")}{' '}<button className="btn small ghost" onClick={clear}>{tr("Clear them")}</button></p>;
+  return <p className="small">🧹 {tr(stale.length > 1 ? "{n} players have last night's markers (Poisoned, Protected…)." : "1 player has last night's markers (Poisoned, Protected…).", { n: stale.length })}{' '}<button className="btn small ghost" onClick={clear}>{tr("Clear them")}</button></p>;
 }
 
 function HelperCard({ step, view, send, suggestion }: { step: string; view: GameView; send: (c: { text?: string; playerIds?: string[]; characterIds?: string[] }, to?: string | null) => unknown; suggestion?: Suggestion | null }) {
@@ -850,7 +850,7 @@ function OpenBuildings({ view, settings }: { view: GameView; settings: Settings 
       <div className="char-grid">
         {ROOM_NAMES.map((name, i) => (
           <label key={name} className={`char-pick ${open.has(i) ? 'on' : ''}`}>
-            <span><input type="checkbox" checked={open.has(i)} onChange={() => toggle(i)} /> {ROOM_ICONS[i]} {name.replace(/^The /, '')}</span>
+            <span><input type="checkbox" checked={open.has(i)} onChange={() => toggle(i)} /> {ROOM_ICONS[i]} {tr(name.replace(/^The /, ''))}</span>
             {open.has(i) && chosen.length > 0 && !chosen.includes(i) && <span className="hide-toggle">{tr("auto")}</span>}
           </label>
         ))}

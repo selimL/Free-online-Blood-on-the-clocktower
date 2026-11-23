@@ -104,8 +104,9 @@ function suspicion(g: Game, bot: Player, target: Player, m: Memory): number {
   for (const n of bot.notes) {
     if (!n.playerIds?.includes(target.id)) continue;
     const t = n.text.toLowerCase();
-    if (/\b(demon|minion|evil)\b/.test(t)) s += 1.2;
-    if (/\bgood\b|\btownsfolk\b/.test(t) && !/\bevil\b/.test(t)) s -= 1;
+    // the card is in the game's language (English or Turkish)
+    if (/\b(demon|minion|evil)\b|iblis|yardakçı|kötü/.test(t)) s += 1.2;
+    if ((/\bgood\b|\btownsfolk\b|\biyi\b|kasabalı/.test(t)) && !/\bevil\b|kötü/.test(t)) s -= 1;
   }
   return s;
 }

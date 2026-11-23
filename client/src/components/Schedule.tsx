@@ -23,12 +23,12 @@ export function downloadIcs(name: string, at: number, link: string) {
   const fmt = (t: number) => new Date(t).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const esc = (s: string) => s.replace(/[\;,]/g, m => `\\${m}`).replace(/\n/g, '\\n');
   const ics = [
-    tr("BEGIN:VCALENDAR"), tr("VERSION:2.0"), tr("PRODID:-//Clocktower Nights//EN"), tr("BEGIN:VEVENT"),
-    tr("UID:{at}-{x}@clocktower-nights", { at, x: Math.random().toString(36).slice(2) }), tr("DTSTAMP:{x}", { x: fmt(Date.now()) }),
-    tr("DTSTART:{x}", { x: fmt(at) }), tr("DTEND:{x}", { x: fmt(at + 3 * 3600_000) }),
-    tr("SUMMARY:{x}", { x: esc(`Blood on the Clocktower: ${name}`) }), tr("DESCRIPTION:{x}", { x: esc(`Join the game: ${link}`) }), tr("URL:{link}", { link }),
-    tr("BEGIN:VALARM"), tr("TRIGGER:-PT15M"), tr("ACTION:DISPLAY"), tr("DESCRIPTION:{x} starts in 15 minutes", { x: esc(name) }), tr("END:VALARM"),
-    tr("END:VEVENT"), tr("END:VCALENDAR"),
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Clocktower Nights//EN', 'BEGIN:VEVENT',
+    `UID:${at}-${Math.random().toString(36).slice(2)}@clocktower-nights`, `DTSTAMP:${fmt(Date.now())}`,
+    `DTSTART:${fmt(at)}`, `DTEND:${fmt(at + 3 * 3600_000)}`,
+    `SUMMARY:${esc(`Blood on the Clocktower: ${name}`)}`, `DESCRIPTION:${esc(`Join the game: ${link}`)}`, `URL:${link}`,
+    'BEGIN:VALARM', 'TRIGGER:-PT15M', 'ACTION:DISPLAY', `DESCRIPTION:${esc(name)} starts in 15 minutes`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR',
   ].join('\r\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));

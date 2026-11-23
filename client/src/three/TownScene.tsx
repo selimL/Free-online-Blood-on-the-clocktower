@@ -8,7 +8,7 @@ import { useVoice } from '../voice';
 import * as THREE from 'three';
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { RoomView } from '../../../shared/types';
-import { ROOM_NAMES, ROOM_ICONS } from '../../../shared/characters';
+import { ROOM_NAMES, ROOM_ICONS, CHARACTER_BY_ID } from '../../../shared/characters';
 
 import { PITCH, SEAT_R, ST_Z, CHAR_SCALE, QUALITY, getQuality, pixelRatioFor } from './support';
 import { buildCharacter, disposeCharacter, setAsleep, playGesture, CHARACTER_HEIGHT } from './character';
@@ -64,7 +64,7 @@ function setLabel(el: HTMLDivElement, p: { name: string; alive?: boolean; muted?
   el.className = `fig-label ${mine ? 'mine' : ''} ${p.alive === false ? 'dead' : ''}`;
   el.textContent = `${p.alive === false ? '👻 ' : ''}${p.name}${p.muted ? ' 🔇' : ''}${p.joining ? ' ⏳' : ''}`;
   if (p.evilMark) { const e = document.createElement('span'); e.className = 'evil-mark'; e.textContent = ' (evil)'; el.appendChild(e); }
-  if (p.claim) { const c = document.createElement('div'); c.className = 'fig-claim'; c.textContent = `“${p.claim}”`; el.appendChild(c); }
+  if (p.claim) { const c = document.createElement('div'); c.className = 'fig-claim'; c.textContent = `“${CHARACTER_BY_ID[p.claim]?.name ?? p.claim}”`; el.appendChild(c); }
 }
 
 // ------------------------------------------------------------ procedural textures
@@ -779,7 +779,7 @@ export default function TownScene(props: Props) {
     const enter = (i: number) => {
       const P = live.current.props;
       const roomId = `r${i}`;
-      if (!P.rooms.some(r => r.id === roomId)) { pushAlert(tr("{x} is closed in this game.", { x: ROOM_NAMES[i] }), 'error'); return; }
+      if (!P.rooms.some(r => r.id === roomId)) { pushAlert(tr("{x} is closed in this game.", { x: tr(ROOM_NAMES[i]) }), 'error'); return; }
       P.onEnterRoom(roomId);
     };
     enterRef.current = enter;
@@ -822,7 +822,7 @@ export default function TownScene(props: Props) {
           let near: number | null = null;
           doors.forEach((d, i) => { if (Math.hypot(d.x - m!.x, d.z - m!.z) < DOOR_REACH) near = i; });
           if (c.door !== null && near === c.door && !c.target) { const i = c.door; c.door = null; enter(i); }
-          if (near !== c.nearDoor) { c.nearDoor = near; setDoorPrompt(near === null ? null : { i: near, name: ROOM_NAMES[near] }); }
+          if (near !== c.nearDoor) { c.nearDoor = near; setDoorPrompt(near === null ? null : { i: near, name: tr(ROOM_NAMES[near]) }); }
         } else {
           // -- everyone else (and me while seats matter): live position, else the seat
           const rp = !P.night && !asleep ? remotePos.current.get(id) : undefined;
@@ -1101,10 +1101,10 @@ export default function TownScene(props: Props) {
     labelsRef.current.forEach((el, i) => {
       if (!el) return;
       const r = rooms.find(x => x.id === `r${i}`); // room rN is always building N
-      const name = ROOM_NAMES[i].replace(/^The /, '');
+      const name = tr(ROOM_NAMES[i].replace(/^The /, ''));
       const count = r ? r.occupants.filter(o => o !== 'st').length : 0;
       el.className = `town3d-label ${r ? '' : 'closed'}`;
-      el.textContent = r ? `${ROOM_ICONS[i]} ${name} · ${count}/${r.capacity}` : `${name} · closed`;
+      el.textContent = r ? `${ROOM_ICONS[i]} ${name} · ${count}/${r.capacity}` : tr('{name} · closed', { name });
     });
   }, [rooms]);
 

@@ -161,11 +161,11 @@ export function GameScreen({ view }: { view: GameView }) {
       if (target.traveller) {
         setConfirm({
           title: tr("Nominate {target}?", { target: target.name }), confirm: tr("Call for exile"),
-          text: <p>{target.name} {tr("is a Traveller. You can call for their")}{' '}<b>{tr("exile")}</b> {tr("(anyone may, alive or dead; half of all players must vote).")}{canNominate && <> <button className="btn small" onClick={() => { setConfirm(null); void act('nominate', { nomineeId: id }); }}>{tr("Nominate for execution instead")}</button></>}</p>,
+          text: <p>{tr("{name} is a Traveller. You can call for their exile (anyone may, alive or dead; half of all players must vote).", { name: target.name })}{canNominate && <> <button className="btn small" onClick={() => { setConfirm(null); void act('nominate', { nomineeId: id }); }}>{tr("Nominate for execution instead")}</button></>}</p>,
           onYes: () => act('nominate', { nomineeId: id, exile: true }),
         });
       } else if (canNominate) {
-        setConfirm({ title: tr("Nominate?"), text: <p>{tr("Nominate")}{' '}<b>{target.name}</b> {tr("for execution")}{target.id === me.id ? tr(" (yourself)") : ''}{tr("? You can only nominate once per day.")}</p>, confirm: tr("Nominate"), onYes: () => act('nominate', { nomineeId: id }) });
+        setConfirm({ title: tr("Nominate?"), text: <p>{tr(target.id === me.id ? "Nominate yourself ({name}) for execution?" : "Nominate {name} for execution?", { name: target.name })} {tr("You can only nominate once per day.")}</p>, confirm: tr("Nominate"), onYes: () => act('nominate', { nomineeId: id }) });
       }
     }
   };
@@ -546,7 +546,7 @@ function VoiceSettings({ view, onClose }: { view: GameView; onClose: () => void 
   const voice = useVoice();
   const [mics, setMics] = useState<{ deviceId: string; label: string }[]>([]);
   useEffect(() => { void listMics().then(setMics); }, []);
-  const nameOf = (identity: string, fallback: string) => identity === 'st' ? `${view.storyteller.name} (Storyteller)` : view.players.find(p => p.id === identity)?.name ?? fallback;
+  const nameOf = (identity: string, fallback: string) => identity === 'st' ? `${view.storyteller.name} (${tr('Storyteller')})` : view.players.find(p => p.id === identity)?.name ?? fallback;
   const peers = voice.peers.filter(p => !p.identity.startsWith('spec:'));
   return (
     <Modal title={tr("Voice settings")} onClose={onClose}>

@@ -60,7 +60,7 @@ export function CharacterModal({ view, onClose }: { view: GameView; onClose: () 
         : <p>{tr("You have not been given a character yet.")}</p>)}
       {ch && <>
         <CharacterToken ch={ch} />
-        <p className={`alignment ${self.alignment}`}>{tr("You are")}{' '}<b>{self.alignment === 'evil' ? tr("Evil") : tr("Good")}</b>.</p>
+        <p className={`alignment ${self.alignment}`}><b>{self.alignment === 'evil' ? tr("You are Evil.") : tr("You are Good.")}</b></p>
         {DAY_ABILITIES[ch.id] && <p className="muted">{tr("This character has a daytime ability: use the")}{' '}<b>{tr("Use Ability")}</b> {tr("button.")}</p>}
       </>}
       {self.evilTeam && self.evilTeam.members.length > 1 && (

@@ -99,12 +99,12 @@ export function TownCircle({ view, onSeatClick, selected = [], sleepingView, squ
     const g = grim[p.id];
     const asleep = night && (sleepingView || (isST ? !g?.awake : p.id !== view.self.id || !(!isST && view.self.awake)));
     const classes = ['seat',
-      p.alive ? tr("alive") : tr("dead"), away ? tr("away") : '', selected.includes(p.id) ? tr("selected") : '',
-      view.aboutToDie?.playerId === p.id ? tr("on-block") : '', nom?.nomineeId === p.id ? tr("nominee") : '',
-      nom?.nominatorId === p.id ? tr("nominator") : '', view.speakerId === p.id ? tr("spotlight") : '',
-      view.ability?.targetId === p.id ? tr("ability-target") : '', view.ability?.playerId === p.id ? tr("ability-user") : '',
-      isCurrentVoter ? tr("current-voter") : '', deathFlash === p.id ? tr("death-flash") : '', !p.connected ? tr("disconnected") : '',
-      onSeatClick ? tr("clickable") : '',
+      p.alive ? 'alive' : 'dead', away ? 'away' : '', selected.includes(p.id) ? 'selected' : '',
+      view.aboutToDie?.playerId === p.id ? 'on-block' : '', nom?.nomineeId === p.id ? 'nominee' : '',
+      nom?.nominatorId === p.id ? 'nominator' : '', view.speakerId === p.id ? 'spotlight' : '',
+      view.ability?.targetId === p.id ? 'ability-target' : '', view.ability?.playerId === p.id ? 'ability-user' : '',
+      isCurrentVoter ? 'current-voter' : '', deathFlash === p.id ? 'death-flash' : '', !p.connected ? 'disconnected' : '',
+      onSeatClick ? 'clickable' : '',
     ].join(' ');
     const label = `${p.name}${p.alive ? '' : ' (dead)'}${p.claim ? `, claims ${CHARACTER_BY_ID[p.claim]?.name ?? p.claim}` : ''}`;
     return (
@@ -170,7 +170,7 @@ export function TownMap({ view }: { view: GameView }) {
   const myId = isST ? 'st' : view.self.id;
   const night = view.phase === 'night';
   const voice = useVoice();
-  const name = (id: string) => (id === 'st' ? `${view.storyteller.name} (Storyteller)` : view.players.find(p => p.id === id)?.name ?? '?');
+  const name = (id: string) => (id === 'st' ? `${view.storyteller.name} (${tr('Storyteller')})` : view.players.find(p => p.id === id)?.name ?? '?');
   const pl = (id: string) => view.players.find(p => p.id === id);
   if (night && !isST) {
     return <nav className="town-map" aria-label={tr("Town map")}><h3>{tr("The Town")}</h3><p className="muted">{tr("The town sleeps. Every door is shut.")}</p></nav>;

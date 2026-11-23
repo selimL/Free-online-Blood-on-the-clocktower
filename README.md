@@ -20,6 +20,16 @@ A browser-based, real-time, voice-first table for *Blood on the Clocktower*. It 
 - **Storyteller tools:** Grimoire, night helper with pre-worked-out information, reminder suggestions, kill warnings, undo, script builder (save, export, share), homebrew characters (announced by the Bootlegger), co-Storytellers and handing the role over, bots that claim, bluff, share info, nominate and vote, game backups you can download and restore, saved games that survive restarts, scheduled games with a countdown and calendar file.
 - **Learning:** a guided practice game (skippable), the Almanac with tips for every character, private notes on other players, and a personal game history with stats, plus a friends' leaderboard for signed-in players.
 
+## Languages
+
+The Storyteller picks the game's language in **Setup → 🌐 Language** before the game starts (English or Türkçe). Everyone in that game then sees the game screens, announcements, Storyteller messages, character abilities, Almanac tips and bot chat in that language; character names stay in English. The lobby, accounts and admin pages stay English.
+
+Every text is written in English in the code, and each language is a dictionary from that English to its translation (`shared/i18n/`). Anything missing falls back to English. To add a language:
+
+1. Copy `shared/i18n/tr.ts`, `abilities.tr.ts` and `almanac.tr.ts` to e.g. `es.ts`, `abilities.es.ts`, `almanac.es.ts` and translate the right-hand sides, keeping `{placeholders}`.
+2. Add the language to `LANGUAGES` and the dictionaries in `shared/i18n/index.ts`.
+3. Run `npm test`: `tests/i18n.test.ts` lists any text still missing a translation.
+
 ## Quick start (local, text chat only)
 
 Requires Node 20 or later.

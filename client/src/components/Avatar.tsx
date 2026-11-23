@@ -29,7 +29,7 @@ export function Avatar({ avatar, size = 72, sleeping, ghost, speaking, video, ti
   const skin = SKINS[avatar.skin] ?? SKINS[0];
   const hairC = HAIR_COLORS[avatar.hairColor] ?? HAIR_COLORS[0];
   const cloth = OUTFIT_COLORS[avatar.outfitColor] ?? OUTFIT_COLORS[0];
-  const cls = ['avatar', ghost ? tr("ghost") : '', speaking ? tr("speaking") : '', className ?? ''].join(' ');
+  const cls = ['avatar', ghost ? 'ghost' : '', speaking ? 'speaking' : '', className ?? ''].join(' ');
   if (video) return <VideoFace track={video} size={size} className={cls} title={title} />;
   const eyes = () => {
     if (sleeping) return <g stroke="#2a1a12" strokeWidth="2.2" fill="none"><path d="M46 60 q5 4 10 0" /><path d="M64 60 q5 4 10 0" /></g>;
