@@ -8,6 +8,7 @@ import {
   type Avatar, type Phase, type DayStage, type Settings, type InfoCard, type Announcement,
   type RoomView, type PendingAbility, type WordEvent, type WordHit, VOICE_CHARACTERS, type HouseRules, type Timers, type VoteRecord, NUMERIC_HOUSE_RULES, EMOTES, WEATHERS,
 } from '../../shared/types';
+import { translate, isLang, type Vars } from '../../shared/i18n';
 
 /** Rough English syllable count: vowel groups, minus a silent final e. */
 export function syllables(word: string): number {
@@ -46,8 +47,11 @@ export function sanitizeHomebrew(raw: unknown, ownIds: Set<string>): Homebrew[] 
   return out;
 }
 
-export class GameError extends Error {}
-const fail = (msg: string): never => { throw new GameError(msg); };
+/** A refusal shown to the player. The message is an English template, translated when it is sent. */
+export class GameError extends Error {
+  constructor(public template: string, public vars?: Vars) { super(translate('en', template, vars)); }
+}
+const fail = (msg: string, vars?: Vars): never => { throw new GameError(msg, vars); };
 
 export interface Player {
   id: string;
@@ -276,6 +280,7 @@ export class Game {
       if (k === 'savedAt' || !safeKey(k)) continue;
       (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
+    if (!isLang(g.settings.language)) g.settings.language = 'en'; // saves from before languages existed
     g.settings.homebrew = sanitizeHomebrew(g.settings?.homebrew, new Set(Array.isArray(g.settings?.homebrew) ? g.settings.homebrew.map((h: Homebrew) => h?.id) : []));
     registerHomebrew(g.settings.homebrew);
     g.storyteller.connected = !!g.tutorial; // a practice game's Storyteller is the server itself
@@ -311,7 +316,7 @@ export class Game {
     g.storyteller.token = nanoid(24);
     g.storyteller.id = 'st';
     g.lastActivity = Date.now();
-    g.addLog('The game was restored from a backup file.');
+    g.addLog(g.t('The game was restored from a backup file.'));
     return g;
   }
 
@@ -340,11 +345,13 @@ export class Game {
       if (this.ability && Number.isFinite(this.ability.stageEndsAt)) this.ability.stageEndsAt += ageMs;
       for (const p of this.players) if (p.joining) p.joinReadyAt += ageMs;
     }
-    this.addLog('The Storyteller undid an action.');
+    this.addLog(this.t('The Storyteller undid an action.'));
     this.changed();
   }
 
   // ------------------------------------------------------------ helpers
+  /** Text in the game's language (an English template with {placeholders}). */
+  t(text: string, vars?: Vars) { return translate(this.settings?.language, text, vars); }
   changed() { this.lastActivity = Date.now(); this.onChange(); }
   player(id: string): Player { return this.players.find(p => p.id === id) ?? fail('No such player'); }
   maybePlayer(id: string | null | undefined) { return this.players.find(p => p.id === id); }
@@ -358,7 +365,7 @@ export class Game {
     if ((this.coStorytellers ??= []).length >= 2) fail('At most two co-Storytellers.');
     const c = { id: `co:${nanoid(8)}`, token: nanoid(24), name: cleanText(name, 24) || 'Co-Storyteller', connected: false };
     this.coStorytellers.push(c);
-    this.addLog(`${c.name} was invited as a co-Storyteller.`);
+    this.addLog(this.t('{name} was invited as a co-Storyteller.', { name: c.name }));
     this.changed();
     return c;
   }
@@ -375,7 +382,7 @@ export class Game {
       [st.name, co.name] = [co.name, st.name];
       [st.token, co.token] = [co.token, st.token];
       [st.connected, co.connected] = [co.connected, st.connected];
-      this.addLog(`${co.name} handed the Storyteller role to ${st.name}.`);
+      this.addLog(this.t('{co} handed the Storyteller role to {st}.', { co: co.name, st: st.name }));
       this.changed();
       return co.id;
     }
@@ -388,7 +395,7 @@ export class Game {
     [st.connected, p.connected] = [p.connected, st.connected];
     p.offlineSince = p.connected ? null : Date.now();
     p.transcriptConsent = null; // a different person now sits here: ask again
-    this.addLog(`${p.name} handed the Storyteller role to ${st.name} and took a seat.`);
+    this.addLog(this.t('{name} handed the Storyteller role to {st} and took a seat.', { name: p.name, st: st.name }));
     this.changed();
     return p.id;
   }
@@ -400,7 +407,7 @@ export class Game {
   get residents() { return this.players.filter(p => !p.traveller); }
   get alivePlayers() { return this.players.filter(p => p.alive); }
   get started() { return this.phase !== 'lobby'; }
-  when() { return this.phase === 'night' ? `Night ${this.night}` : this.phase === 'day' ? `Day ${this.day}` : 'Setup'; }
+  when() { return this.phase === 'night' ? this.t('Night {n}', { n: this.night }) : this.phase === 'day' ? this.t('Day {n}', { n: this.day }) : this.t('Setup'); }
   addLog(s: string) {
     this.log.push(`[${this.when()}] ${s}`);
     if (this.log.length > 500) this.log.shift();
@@ -414,7 +421,7 @@ export class Game {
     if (this.announcements.length > 30) this.announcements.shift();
     this.emit('all', 'announcement', a);
   }
-  private requireST(phase?: Phase[]) { if (phase && !phase.includes(this.phase)) fail(`Not allowed during ${this.phase}`); }
+  private requireST(phase?: Phase[]) { if (phase && !phase.includes(this.phase)) fail('Not allowed during {phase}', { phase: this.phase }); }
 
   // ------------------------------------------------------------ rooms
   /** Minimum number of side rooms: half the players, rounded up, and never fewer than 3. */
@@ -432,7 +439,7 @@ export class Game {
     const open = new Set([SQUARE, STUDY, ...this.privateRoomIds()]);
     for (const p of this.players) if (p.location && !p.location.startsWith('night:') && !open.has(p.location)) {
       this.movePlayer(p, SQUARE);
-      this.emit([p.id], 'alert', { text: 'That building has been closed. You are back in the Town Square.', kind: 'info' });
+      this.emit([p.id], 'alert', { text: this.t('That building has been closed. You are back in the Town Square.'), kind: 'info' });
     }
   }
 
@@ -454,27 +461,27 @@ export class Game {
 
   /** Returns an error message, or null if the player may enter. */
   canEnter(p: Player, roomId: string): string | null {
-    if (this.phase === 'night') return 'Everyone is asleep.';
+    if (this.phase === 'night') return this.t('Everyone is asleep.');
     if (this.phase === 'ended') return null;
-    if (p.location === roomId) return 'You are already here.';
-    if (roomId === STUDY) return 'Only the Storyteller can invite you to the Study.';
-    if (p.location === STUDY) return 'You are with the Storyteller.';
-    if (this.ability && this.ability.stage !== 'resolved') return 'An ability is being used in the Town Square.';
+    if (p.location === roomId) return this.t('You are already here.');
+    if (roomId === STUDY) return this.t('Only the Storyteller can invite you to the Study.');
+    if (p.location === STUDY) return this.t('You are with the Storyteller.');
+    if (this.ability && this.ability.stage !== 'resolved') return this.t('An ability is being used in the Town Square.');
     if (roomId === SQUARE) return null;
-    if (!this.privateRoomIds().includes(roomId)) return 'No such room.';
+    if (!this.privateRoomIds().includes(roomId)) return this.t('No such room.');
     if (this.phase === 'day') {
-      if (this.stage === 'discussion') return 'Side rooms are closed during the opening discussion.';
-      if (this.stage === 'speedround') return 'Side rooms are closed during the speed round.';
-      if (['accusation', 'defense', 'voting'].includes(this.stage ?? '')) return 'A nomination is in progress.';
-      if ((this.stage === 'nominations' || this.stage === 'closed') && !this.settings.houseRules.privateRoomsDuringNominations) return 'Side rooms are closed during nominations.';
+      if (this.stage === 'discussion') return this.t('Side rooms are closed during the opening discussion.');
+      if (this.stage === 'speedround') return this.t('Side rooms are closed during the speed round.');
+      if (['accusation', 'defense', 'voting'].includes(this.stage ?? '')) return this.t('A nomination is in progress.');
+      if ((this.stage === 'nominations' || this.stage === 'closed') && !this.settings.houseRules.privateRoomsDuringNominations) return this.t('Side rooms are closed during nominations.');
       const cap = this.settings.houseRules.privateRoomCapMinutes;
-      if (cap && p.privateMsToday >= cap * 60000) return 'You have used all your private-room time today.';
+      if (cap && p.privateMsToday >= cap * 60000) return this.t('You have used all your private-room time today.');
     }
-    if (!p.alive && !this.settings.houseRules.ghostsInPrivateRooms) return 'Ghosts may not enter side rooms (house rule).';
+    if (!p.alive && !this.settings.houseRules.ghostsInPrivateRooms) return this.t('Ghosts may not enter side rooms (house rule).');
     const wl = this.settings.houseRules.maxWhispersPerDay;
-    if (this.phase === 'day' && wl && p.whispersToday >= wl) return `You have used all ${wl} side-room visits for today.`;
+    if (this.phase === 'day' && wl && p.whispersToday >= wl) return this.t('You have used all {wl} side-room visits for today.', { wl });
     const count = this.players.filter(o => o.location === roomId).length; // includes joining players
-    if (count >= this.roomCapacity) return `This room is full (max ${this.roomCapacity}).`;
+    if (count >= this.roomCapacity) return this.t('This room is full (max {roomCapacity}).', { roomCapacity: this.roomCapacity });
     return null;
   }
 
@@ -488,7 +495,7 @@ export class Game {
     p.joinReadyAt = Date.now() + JOIN_DELAY_MS;
     if (!opts.silentAlert) {
       const audience = this.occupantsHearing(roomId).filter(id => id !== p.id);
-      if (audience.length) this.emit(audience, 'alert', { text: `${p.name} is joining…`, kind: 'join' });
+      if (audience.length) this.emit(audience, 'alert', { text: this.t('{name} is joining…', { name: p.name }), kind: 'join' });
     }
   }
   /** Ids (players + 'st') settled in a room and able to hear. */
@@ -512,7 +519,7 @@ export class Game {
     this.storyteller.location = roomId;
     if (roomId) {
       const audience = this.occupantsHearing(roomId).filter(id => id !== 'st');
-      if (audience.length) this.emit(audience, 'alert', { text: `The Storyteller is joining…`, kind: 'join' });
+      if (audience.length) this.emit(audience, 'alert', { text: this.t('The Storyteller is joining…'), kind: 'join' });
     }
   }
 
@@ -656,11 +663,11 @@ export class Game {
     const pr: GroupPrompt = {
       id: nanoid(8), kind, playerIds: ids, options, answers: {}, public: kind === 'point', applied: false, result: null,
       endsAt: kind === 'point' ? Date.now() + 10_000 : null,
-      title: title ?? (kind === 'rps' ? 'Rock, paper, scissors!' : kind === 'livedie' ? 'Do you choose to live or die?' : 'Point at a player: in 10 seconds, whoever most of you point at dies.'),
+      title: title ?? this.t(kind === 'rps' ? 'Rock, paper, scissors!' : kind === 'livedie' ? 'Do you choose to live or die?' : 'Point at a player: in 10 seconds, whoever most of you point at dies.'),
     };
     this.prompts.push(pr);
     if (this.prompts.length > 20) this.prompts.shift();
-    if (pr.public) this.announce(`${ids.map(id => this.nameOf(id)).join(', ')}: point at a player! In 10 seconds, the one most of them point at dies.`, 'death');
+    if (pr.public) this.announce(this.t('{names}: point at a player! In 10 seconds, the one most of them point at dies.', { names: ids.map(id => this.nameOf(id)).join(', ') }), 'death');
     this.emit(ids, 'alert', { text: pr.title, kind: 'vote' });
     this.changed();
     return pr;
@@ -680,13 +687,14 @@ export class Game {
     if (pr.kind === 'rps') {
       const [a, b] = pr.playerIds, x = pr.answers[a], y = pr.answers[b];
       const beats: Record<string, string> = { Rock: 'Scissors', Paper: 'Rock', Scissors: 'Paper' };
-      pr.result = x === y ? `${name(a)} and ${name(b)} both chose ${x}: a draw, play again.` : `${name(a)} chose ${x}, ${name(b)} chose ${y}: ${name(beats[x] === y ? a : b)} wins.`;
+      pr.result = x === y ? this.t('{a} and {b} both chose {choice}: a draw, play again.', { a: name(a), b: name(b), choice: this.t(x) })
+        : this.t('{a} chose {x}, {b} chose {y}: {winner} wins.', { a: name(a), x: this.t(x), b: name(b), y: this.t(y), winner: name(beats[x] === y ? a : b) });
       this.announce(pr.result, 'vote');
     } else if (pr.kind === 'livedie') {
       const live = pr.playerIds.filter(id => pr.answers[id] === 'Live');
       pr.result = live.length === pr.playerIds.length
-        ? `All three chose to live, so all three die: ${pr.playerIds.map(name).join(', ')}.`
-        : `${pr.playerIds.map(id => `${name(id)}: ${pr.answers[id]}`).join(', ')}. Those who chose to die, die.`;
+        ? this.t('All three chose to live, so all three die: {names}.', { names: pr.playerIds.map(name).join(', ') })
+        : this.t('{choices}. Those who chose to die, die.', { choices: pr.playerIds.map(id => `${name(id)}: ${this.t(pr.answers[id])}`).join(', ') });
     } else {
       const counts: Record<string, number> = {};
       for (const a of Object.values(pr.answers)) counts[a] = (counts[a] ?? 0) + 1;
@@ -694,13 +702,13 @@ export class Game {
       const leaders = Object.keys(counts).filter(k => counts[k] === top);
       if (top && leaders.length === 1) {
         const victim = this.players.find(p => p.name === leaders[0]);
-        pr.result = `${leaders[0]} was pointed at most (${top}) and dies.`;
-        if (victim?.alive) this.applyDeath(victim, `${victim.name} dies.`);
+        pr.result = this.t('{name} was pointed at most ({top}) and dies.', { name: leaders[0], top });
+        if (victim?.alive) this.applyDeath(victim, this.t('{victim} dies.', { victim: victim.name }));
         pr.applied = true;
-      } else pr.result = top ? `A tie (${leaders.join(', ')}): nobody dies.` : 'Nobody pointed: nobody dies.';
+      } else pr.result = top ? this.t('A tie ({names}): nobody dies.', { names: leaders.join(', ') }) : this.t('Nobody pointed: nobody dies.');
       this.announce(pr.result, 'death');
     }
-    this.addLog(`Group action (${pr.kind}): ${pr.result}`);
+    this.addLog(this.t('Group action ({kind}): {result}', { kind: pr.kind, result: pr.result }));
   }
   /** Who dies from a resolved Al-Hadikhia choice (the Storyteller applies it). */
   applyPrompt(promptId: string) {
@@ -722,7 +730,7 @@ export class Game {
   boomdandy(survivors: string[]) {
     const keep = [...new Set(survivors)].filter(id => this.maybePlayer(id)?.alive);
     if (keep.length !== 3) fail('Choose exactly three living players to survive.');
-    for (const p of this.players) if (p.alive && !keep.includes(p.id) && !p.traveller) this.applyDeath(p, `${p.name} dies in the explosion.`);
+    for (const p of this.players) if (p.alive && !keep.includes(p.id) && !p.traveller) this.applyDeath(p, this.t('{name} dies in the explosion.', { name: p.name }));
     this.winNote = null;
     this.startPrompt('point', keep);
   }
@@ -733,13 +741,13 @@ export class Game {
     if (!p.reminders.includes('Turns evil')) p.reminders.push('Turns evil');
     const m = this.holder('mezepheles');
     if (m && !m.reminders.includes('No ability')) m.reminders.push('No ability');
-    this.addLog(`${p.name} said the Mezepheles' word${p.alignment === 'good' ? ' and turns evil tonight' : ' (not good: nothing happens)'}.`);
+    this.addLog(this.t(p.alignment === 'good' ? '{name} said the Mezepheles\' word and turns evil tonight.' : '{name} said the Mezepheles\' word (not good: nothing happens).', { name: p.name }));
     this.changed();
   }
   yaggababbleSaid(delta: number) { this.yaggababbleCount = Math.max(0, this.yaggababbleCount + (delta < 0 ? -1 : 1)); this.changed(); }
   setUgHat(pid: string | null) {
     this.ugHat = pid && this.maybePlayer(pid) ? pid : null;
-    if (this.ugHat) this.announce(`${this.nameOf(this.ugHat)} wears the Ug hat: one-syllable words only, and their vote counts twice.`, 'info');
+    if (this.ugHat) this.announce(this.t('{name} wears the Ug hat: one-syllable words only, and their vote counts twice.', { name: this.nameOf(this.ugHat) }), 'info');
     this.changed();
   }
 
@@ -779,7 +787,7 @@ export class Game {
   }
   private requireConsent() {
     const missing = this.awaitingConsent();
-    if (missing.length) fail(`A character in this game needs word listening, so everyone must allow it first. Waiting for: ${missing.map(p => p.name).join(', ')}.`);
+    if (missing.length) fail('A character in this game needs word listening, so everyone must allow it first. Waiting for: {names}.', { names: missing.map(p => p.name).join(', ') });
   }
   /** Check one spoken sentence; nothing of it is stored unless it triggers a character. */
   checkSpeech(pid: string, text: unknown) {
@@ -808,9 +816,9 @@ export class Game {
     let changed = false;
     const mez = this.holder('mezepheles');
     if (mez && this.secretWords.mezepheles && p.id !== mez.id && !mez.reminders.includes('No ability') && count(this.secretWords.mezepheles)) {
-      const e = this.logWord('mezepheles', p, room, `said “${this.secretWords.mezepheles}”`);
-      this.wordHits.push({ id: e.id, kind: 'mezepheles', playerId: p.id, text: `said “${this.secretWords.mezepheles}”`, ts: e.ts });
-      this.emit(['st'], 'alert', { text: `🗣 ${p.name} said the Mezepheles' word. Confirm it under Special rules.`, kind: 'ability' });
+      const e = this.logWord('mezepheles', p, room, this.t('said “{word}”', { word: this.secretWords.mezepheles }));
+      this.wordHits.push({ id: e.id, kind: 'mezepheles', playerId: p.id, text: this.t('said “{mezepheles}”', { mezepheles: this.secretWords.mezepheles }), ts: e.ts });
+      this.emit(['st'], 'alert', { text: this.t('🗣 {name} said the Mezepheles\' word. Confirm it under Special rules.', { name: p.name }), kind: 'ability' });
       changed = true;
     }
     const yag = this.holder('yaggababble');
@@ -818,24 +826,24 @@ export class Game {
       const n = count(this.secretWords.yaggababble);
       if (n) {
         this.yaggababbleCount += n;
-        this.logWord('yaggababble', p, room, `said the phrase ${n === 1 ? 'once' : `${n} times`} (${this.yaggababbleCount} today)`);
-        this.emit(['st'], 'alert', { text: `🗣 The Yaggababble said the phrase (${this.yaggababbleCount} today).`, kind: 'ability' });
+        this.logWord('yaggababble', p, room, this.t(n === 1 ? 'said the phrase once ({count} today)' : 'said the phrase {n} times ({count} today)', { n, count: this.yaggababbleCount }));
+        this.emit(['st'], 'alert', { text: this.t('🗣 The Yaggababble said the phrase ({yaggababbleCount} today).', { yaggababbleCount: this.yaggababbleCount }), kind: 'ability' });
         changed = true;
       }
     }
     const nom = this.nomination;
     if (p.characterId === 'goblin' && nom && !nom.done && nom.nomineeId === p.id && count('goblin') && !p.reminders.includes('Claimed')) {
       p.reminders.push('Claimed');
-      this.logWord('goblin', p, room, 'claimed to be the Goblin while nominated');
-      this.emit(['st'], 'alert', { text: `🗣 ${p.name} claimed to be the Goblin while nominated (marked "Claimed").`, kind: 'ability' });
+      this.logWord('goblin', p, room, this.t('claimed to be the Goblin while nominated'));
+      this.emit(['st'], 'alert', { text: this.t('🗣 {name} claimed to be the Goblin while nominated (marked "Claimed").', { name: p.name }), kind: 'ability' });
       changed = true;
     }
     if (this.ugHat === p.id && this.settings.fabled.includes('godofug')) {
       const long = [...new Set(said.split(' ').filter(w => syllables(w) > 1))];
       if (long.length) {
-        const e = this.logWord('ug', p, room, `used: ${long.slice(0, 4).join(', ')}`);
+        const e = this.logWord('ug', p, room, this.t('used: {words}', { words: long.slice(0, 4).join(', ') }));
         this.wordHits.push({ id: e.id, kind: 'ug', playerId: p.id, text: e.detail, ts: e.ts });
-        this.emit(['st'], 'alert', { text: `🎩 ${p.name} (Ug hat) may have used a long word: ${long.slice(0, 3).join(', ')}.`, kind: 'ability' });
+        this.emit(['st'], 'alert', { text: this.t('🎩 {name} (Ug hat) may have used a long word: {words}.', { name: p.name, words: long.slice(0, 3).join(', ') }), kind: 'ability' });
         changed = true;
       }
     }
@@ -871,17 +879,17 @@ export class Game {
       const gone = now - p.offlineSince;
       if (!p.offlineNoticed && gone >= OFFLINE_NOTICE_MS) {
         p.offlineNoticed = 1; dirty = true;
-        this.emit('all', 'alert', { text: `📶 ${p.name} lost connection. Their seat is kept.`, kind: 'info' });
+        this.emit('all', 'alert', { text: this.t('📶 {name} lost connection. Their seat is kept.', { name: p.name }), kind: 'info' });
       } else if (p.offlineNoticed === 1 && gone >= OFFLINE_NUDGE_MS && this.started && this.phase !== 'ended') {
         p.offlineNoticed = 2;
-        this.emit(['st'], 'alert', { text: `📶 ${p.name} has been offline for 2 minutes. You can pause the game, or carry on and let them catch up.`, kind: 'info' });
+        this.emit(['st'], 'alert', { text: this.t('📶 {name} has been offline for 2 minutes. You can pause the game, or carry on and let them catch up.', { name: p.name }), kind: 'info' });
       }
     }
     return dirty;
   }
   setConnected(p: Player, on: boolean) {
     if (on) {
-      if (p.offlineNoticed) this.emit('all', 'alert', { text: `📶 ${p.name} is back.`, kind: 'info' });
+      if (p.offlineNoticed) this.emit('all', 'alert', { text: this.t('📶 {name} is back.', { name: p.name }), kind: 'info' });
       p.offlineSince = null; p.offlineNoticed = 0;
     } else if (p.connected || !p.offlineSince) {
       p.offlineSince = Date.now(); p.offlineNoticed = 0;
@@ -892,7 +900,7 @@ export class Game {
   // ------------------------------------------------------------ lobby
   join(name: string, avatar: Partial<Avatar> | undefined, opts: { bot?: boolean; listeningConsent?: boolean } = {}): Player {
     if (this.phase === 'ended') fail('This game has ended.');
-    if (this.players.length >= MAX_PLAYERS) fail(`The game is full (${MAX_PLAYERS} players).`);
+    if (this.players.length >= MAX_PLAYERS) fail('The game is full ({MAX_PLAYERS} players).', { MAX_PLAYERS });
     const traveller = this.started;
     if (traveller && !this.settings.houseRules.allowTravellers) fail('This game is in progress and is not accepting Travellers.');
     // a running game with a word character: Travellers must agree to listening before they can join
@@ -910,8 +918,8 @@ export class Game {
     this.players.push(p);
     if (this.phase !== 'night') this.movePlayer(p, SQUARE, { silentAlert: !!opts.bot });
     if (opts.bot) p.joining = false;
-    this.addLog(`${p.name} joined${traveller ? ' as a Traveller' : ''}.`);
-    if (traveller) this.announce(`${p.name} has arrived as a Traveller.`);
+    this.addLog(this.t(traveller ? '{name} joined as a Traveller.' : '{name} joined.', { name: p.name }));
+    if (traveller) this.announce(this.t('{name} has arrived as a Traveller.', { name: p.name }));
     this.changed();
     return p;
   }
@@ -920,7 +928,7 @@ export class Game {
     if (this.spectators.length >= MAX_SPECTATORS) fail('Too many spectators already.');
     const s: Spectator = { id: `spec:${nanoid(8)}`, token: nanoid(24), name: cleanText(name, 24) || 'Spectator', avatar: sanitizeAvatar(avatar), connected: true };
     this.spectators.push(s);
-    this.addLog(`${s.name} is watching.`);
+    this.addLog(this.t('{name} is watching.', { name: s.name }));
     this.changed();
     return s;
   }
@@ -939,9 +947,9 @@ export class Game {
     this.banned.add(p.token);
     this.players = this.players.filter(o => o.id !== id);
     this.reseat();
-    this.emit([id], 'kicked', { reason: 'The Storyteller removed you from the game.' });
-    this.addLog(`${p.name} was kicked.`);
-    this.announce(`${p.name} has left the town.`);
+    this.emit([id], 'kicked', { reason: this.t('The Storyteller removed you from the game.') });
+    this.addLog(this.t('{name} was kicked.', { name: p.name }));
+    this.announce(this.t('{name} has left the town.', { name: p.name }));
     // Rooms may have shrunk.
     this.evictFromClosedRooms();
     this.changed();
@@ -960,6 +968,10 @@ export class Game {
     const known = (ids: unknown, filter: (c: Character) => boolean) =>
       Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && !!CHARACTER_BY_ID[id] && filter(CHARACTER_BY_ID[id])) : undefined;
     if (patch.edition && ['tb', 'bmr', 'snv', 'custom'].includes(patch.edition)) s.edition = patch.edition;
+    if (patch.language !== undefined) {
+      if (this.started) fail('The language can only be changed before the game starts.');
+      if (isLang(patch.language)) s.language = patch.language;
+    }
     if (patch.homebrew !== undefined) {
       if (this.started) fail('Homebrew characters can only be changed before the game starts.');
       const before = new Set((s.homebrew ?? []).map(h => h.id));
@@ -1012,7 +1024,7 @@ export class Game {
     if (Array.isArray(patch.customJinxes)) {
       s.customJinxes = patch.customJinxes
         .filter(j => j && CHARACTER_BY_ID[String(j.a)] && CHARACTER_BY_ID[String(j.b)] && j.a !== j.b)
-        .map(j => ({ a: String(j.a), b: String(j.b), text: cleanText(j.text, 300) || 'Special ruling (see the Storyteller).' }))
+        .map(j => ({ a: String(j.a), b: String(j.b), text: cleanText(j.text, 300) || this.t('Special ruling (see the Storyteller).') }))
         .slice(0, 50);
     }
     if (patch.region !== undefined) s.region = typeof patch.region === 'string' ? patch.region : null;
@@ -1027,10 +1039,10 @@ export class Game {
   deal() {
     this.requireST(['lobby', 'dealt']);
     const residents = this.residents;
-    if (residents.length < MIN_PLAYERS) fail(`Need at least ${MIN_PLAYERS} players (have ${residents.length}).`);
-    if (residents.length > MAX_PLAYERS) fail(`At most ${MAX_PLAYERS} players.`);
+    if (residents.length < MIN_PLAYERS) fail('Need at least {MIN_PLAYERS} players (have {length}).', { MIN_PLAYERS, length: residents.length });
+    if (residents.length > MAX_PLAYERS) fail('At most {MAX_PLAYERS} players.', { MAX_PLAYERS });
     const bag = this.settings.characters;
-    if (bag.length !== residents.length) fail(`Select exactly ${residents.length} characters (selected ${bag.length}).`);
+    if (bag.length !== residents.length) fail('Select exactly {length} characters (selected {length2}).', { length: residents.length, length2: bag.length });
     this.requireConsent();
     // a Demon is needed, except with the Summoner (who makes one on night 3) or the Atheist (no evil at all)
     if (!bag.some(id => CHARACTER_BY_ID[id].type === 'demon') && !bag.includes('summoner') && !bag.includes('atheist')) fail('The bag needs a Demon.');
@@ -1064,7 +1076,7 @@ export class Game {
     this.demonBluffs = goodPool.slice(0, 3).map(ch => ch.id);
     this.lunaticBluffs = shuffle(goodPool).slice(0, 3).map(ch => ch.id);
     this.phase = 'dealt';
-    this.addLog('Characters dealt (not yet revealed to players).');
+    this.addLog(this.t('Characters dealt (not yet revealed to players).'));
     this.changed();
   }
   reveal() {
@@ -1075,8 +1087,8 @@ export class Game {
     for (const p of this.players) { p.wantsQuestion = null; }
     this.questionQueue = [];
     this.questionsDone = 0;
-    for (const l of this.players.filter(x => x.characterId === 'lunatic')) this.tellDemons(`The Lunatic is ${l.name}. They believe they are the Demon.`, [l.id], ['lunatic']);
-    this.announce('Characters have been dealt. Check your character with the [Character] button (P).', 'phase');
+    for (const l of this.players.filter(x => x.characterId === 'lunatic')) this.tellDemons(this.t('The Lunatic is {l}. They believe they are the Demon.', { l: l.name }), [l.id], ['lunatic']);
+    this.announce(this.t('Characters have been dealt. Check your character with the [Character] button (P).'), 'phase');
     this.changed();
   }
   answerQuestion(p: Player, yes: boolean) {
@@ -1084,7 +1096,7 @@ export class Game {
     p.wantsQuestion = !!yes;
     if (yes) {
       this.questionQueue.push(p.id);
-      this.emit(['st'], 'alert', { text: `${p.name} would like to ask a question.`, kind: 'info' });
+      this.emit(['st'], 'alert', { text: this.t('{name} would like to ask a question.', { name: p.name }), kind: 'info' });
     }
     this.changed();
   }
@@ -1095,7 +1107,7 @@ export class Game {
     if (next) {
       this.startStudy(next);
       const t = this.settings.timers.question;
-      this.setTimer('Private question', t, 'question');
+      this.setTimer(this.t('Private question'), t, 'question');
     } else {
       this.clearTimer();
     }
@@ -1161,14 +1173,14 @@ export class Game {
     const now = Date.now();
     if (paused) {
       this.paused = true; this.pausedAt = now;
-      this.announce('The game is paused.', 'phase');
+      this.announce(this.t('The game is paused.'), 'phase');
     } else {
       const delta = now - this.pausedAt;
       if (this.timer?.endsAt) this.timer.endsAt += delta;
       if (this.nomination) this.nomination.deadline += delta;
       if (this.ability) this.ability.stageEndsAt += delta;
       this.paused = false;
-      this.announce('The game resumes.', 'phase');
+      this.announce(this.t('The game resumes.'), 'phase');
     }
     this.changed();
   }
@@ -1190,7 +1202,7 @@ export class Game {
           p.privateMsToday += 250;
           if (cap && p.privateMsToday >= cap * 60000) {
             this.movePlayer(p, SQUARE);
-            this.emit([p.id], 'alert', { text: 'Your private-room time for today is used up.', kind: 'info' });
+            this.emit([p.id], 'alert', { text: this.t('Your private-room time for today is used up.'), kind: 'info' });
             dirty = true;
           }
         }
@@ -1227,8 +1239,8 @@ export class Game {
     this.clearPositions();
     for (const p of this.players) { p.awake = false; p.nightChoice = []; this.movePlayer(p, null); }
     this.moveST(null);
-    this.addLog(`Night ${this.night} begins.`);
-    this.announce(`Night ${this.night} falls over the town. Everyone sleeps.`, 'phase');
+    this.addLog(this.t('Night {night} begins.', { night: this.night }));
+    this.announce(this.t('Night {night} falls over the town. Everyone sleeps.', { night: this.night }), 'phase');
     this.lastNightStart = Date.now();
     this.winNote = null;
     this.emit('all', 'transition', { to: 'night' });
@@ -1242,7 +1254,7 @@ export class Game {
       p.nightChoice = [];
       this.focusId = p.id;
       this.storyteller.location = nightRoom(p.id);
-      this.emit([p.id], 'alert', { text: 'You have been woken by the Storyteller.', kind: 'wake' });
+      this.emit([p.id], 'alert', { text: this.t('You have been woken by the Storyteller.'), kind: 'wake' });
     } else if (this.focusId === p.id) {
       const other = this.players.find(o => o.awake);
       this.focusId = other?.id ?? null;
@@ -1266,9 +1278,9 @@ export class Game {
   nightChoose(p: Player, ids: string[]) {
     if (this.phase !== 'night' || !p.awake) fail('You are asleep.');
     p.nightChoice = ids.filter(id => this.maybePlayer(id)).slice(0, 5);
-    this.emit(['st'], 'alert', { text: `${p.name} chose: ${p.nightChoice.map(id => this.nameOf(id)).join(', ') || 'nobody'}`, kind: 'info' });
+    this.emit(['st'], 'alert', { text: this.t('{name} chose: {targets}', { name: p.name, targets: p.nightChoice.map(id => this.nameOf(id)).join(', ') || this.t('nobody') }), kind: 'info' });
     if (p.characterId === 'butler') p.butlerMaster = p.nightChoice[0] ?? null;
-    if (p.characterId === 'lunatic') this.tellDemons(`Night ${this.night}: the Lunatic (${p.name}) chose ${p.nightChoice.map(id => this.nameOf(id)).join(', ') || 'nobody'}.`, p.nightChoice, []);
+    if (p.characterId === 'lunatic') this.tellDemons(this.t('Night {night}: the Lunatic ({name}) chose {targets}.', { night: this.night, name: p.name, targets: p.nightChoice.map(id => this.nameOf(id)).join(', ') || this.t('nobody') }), p.nightChoice, []);
     this.changed();
   }
   sendInfoCard(pid: string, card: { text?: string; playerIds?: string[]; characterIds?: string[]; alignment?: Alignment }) {
@@ -1282,7 +1294,7 @@ export class Game {
     if (!info.text && !info.playerIds.length && !info.characterIds.length && !info.alignment) fail('Empty info card.');
     p.notes.push(info);
     this.emit([p.id], 'infoCard', info);
-    this.addLog(`Info to ${p.name}: ${info.text} ${info.playerIds.map(i => this.nameOf(i)).join('/')} ${info.characterIds.join('/')} ${info.alignment ?? ''}`);
+    this.addLog(this.t('Info to {name}: {text} {players} {characters} {alignment}', { name: p.name, text: info.text, players: info.playerIds.map(i => this.nameOf(i)).join('/'), characters: info.characterIds.map(c => CHARACTER_BY_ID[c]?.name ?? c).join('/'), alignment: info.alignment ? this.t(info.alignment) : '' }));
     this.changed();
   }
 
@@ -1304,11 +1316,11 @@ export class Game {
     this.nominatedToday.clear(); this.nominatorsToday.clear(); this.extraNominations.clear(); this.abilityDeclarationsToday = 0; this.yaggababbleCount = 0;
     this.aboutToDie = null; this.highestVotes = 0; this.executedToday = false; this.nomination = null; this.lastExecutedId = null;
     for (const p of this.players) { p.privateMsToday = 0; p.whispersToday = 0; }
-    this.addLog(`Day ${this.day} begins.`);
+    this.addLog(this.t('Day {day} begins.', { day: this.day }));
     this.emit('all', 'transition', { to: 'day' });
-    this.announce(`Dawn breaks. Day ${this.day} begins.`, 'phase');
-    if (deaths.length === 0) this.announce('Nobody died in the night.', 'info');
-    for (const p of deaths) { this.applyDeath(p, `${p.name} died in the night.`); this.addLog(`${p.name} was found dead at dawn.`); }
+    this.announce(this.t('Dawn breaks. Day {day} begins.', { day: this.day }), 'phase');
+    if (deaths.length === 0) this.announce(this.t('Nobody died in the night.'), 'info');
+    for (const p of deaths) { this.applyDeath(p, this.t('{name} died in the night.', { name: p.name })); this.addLog(this.t('{name} was found dead at dawn.', { name: p.name })); }
     this.setStage('discussion');
   }
   setStage(stage: DayStage) {
@@ -1320,31 +1332,31 @@ export class Game {
     const t = this.settings.timers;
     switch (stage) {
       case 'discussion':
-        this.forceAllTo(SQUARE, 'Everyone is gathering in the Town Square…');
-        this.setTimer('Discussion', t.discussion, 'discussion');
+        this.forceAllTo(SQUARE, this.t('Everyone is gathering in the Town Square…'));
+        this.setTimer(this.t('Discussion'), t.discussion, 'discussion');
         break;
       case 'private':
-        this.announce('The side rooms are open for private conversations.', 'phase');
-        this.setTimer('Private conversations', t.privateRooms, 'private');
+        this.announce(this.t('The side rooms are open for private conversations.'), 'phase');
+        this.setTimer(this.t('Private conversations'), t.privateRooms, 'private');
         break;
       case 'nominations':
         this.clearPositions();
-        if (!this.settings.houseRules.privateRoomsDuringNominations) this.forceAllTo(SQUARE, 'Everyone is gathering for nominations…');
+        if (!this.settings.houseRules.privateRoomsDuringNominations) this.forceAllTo(SQUARE, this.t('Everyone is gathering for nominations…'));
         this.nomination = this.nomination?.done ? this.nomination : null;
-        this.announce('Nominations are open.', 'phase');
-        this.setTimer('Nominations', t.nominations, 'nominations');
+        this.announce(this.t('Nominations are open.'), 'phase');
+        this.setTimer(this.t('Nominations'), t.nominations, 'nominations');
         break;
       case 'speedround': {
         this.clearPositions();
         if (!this.settings.houseRules.speedRound) fail('The speed-round house rule is off.');
-        this.forceAllTo(SQUARE, 'Everyone is gathering for the speed round…');
+        this.forceAllTo(SQUARE, this.t('Everyone is gathering for the speed round…'));
         this.speedQueue = this.players.filter(p => p.alive).map(p => p.id);
-        this.announce('Speed round: each living player states their claim in seat order.', 'phase');
+        this.announce(this.t('Speed round: each living player states their claim in seat order.'), 'phase');
         this.nextSpeaker();
         return;
       }
       case 'closed':
-        this.announce('Nominations are closed.', 'phase');
+        this.announce(this.t('Nominations are closed.'), 'phase');
         this.clearTimer();
         break;
       default: fail('Use nominations to start speeches and votes.');
@@ -1356,7 +1368,7 @@ export class Game {
     const next = this.speedQueue.shift();
     if (!next) { this.speakerId = null; this.setStage('nominations'); return; }
     this.speakerId = next;
-    this.setTimer(`${this.nameOf(next)} states their claim`, this.settings.timers.speedRound, 'speaker');
+    this.setTimer(this.t('{name} states their claim', { name: this.nameOf(next) }), this.settings.timers.speedRound, 'speaker');
     this.changed();
   }
   nominate(nominatorId: string, nomineeId: string, exile = false) {
@@ -1373,7 +1385,7 @@ export class Game {
         if (!banshee || this.extraNominations.has(nominator.id)) fail('You have already nominated today.');
         this.extraNominations.add(nominator.id);
       }
-      if (this.nominatedToday.has(nominee.id)) fail(`${nominee.name} has already been nominated today.`);
+      if (this.nominatedToday.has(nominee.id)) fail('{nominee} has already been nominated today.', { nominee: nominee.name });
       this.nominatorsToday.add(nominator.id);
       this.nominatedToday.add(nominee.id);
     }
@@ -1384,13 +1396,13 @@ export class Game {
       needed: exile ? Math.ceil(this.players.length / 2) : Math.ceil(this.alivePlayers.length / 2), done: false, result: null, deadline: Infinity,
       secret: !exile && this.secretVoting(),
     };
-    this.addLog(`${nominator.name} ${exile ? 'called for the exile of' : 'nominated'} ${nominee.name}.`);
-    this.announce(`${nominator.name} ${exile ? 'calls for the exile of' : 'nominates'} ${nominee.name}!`, 'vote');
-    this.emit('all', 'alert', { text: `${nominator.name} ${exile ? 'calls for the exile of' : 'nominates'} ${nominee.name}!`, kind: 'nomination' });
+    this.addLog(this.t(exile ? '{nominator} called for the exile of {nominee}.' : '{nominator} nominated {nominee}.', { nominator: nominator.name, nominee: nominee.name }));
+    this.announce(this.t(exile ? '{nominator} calls for the exile of {nominee}!' : '{nominator} nominates {nominee}!', { nominator: nominator.name, nominee: nominee.name }), 'vote');
+    this.emit('all', 'alert', { text: this.t(exile ? '{nominator} calls for the exile of {nominee}!' : '{nominator} nominates {nominee}!', { nominator: nominator.name, nominee: nominee.name }), kind: 'nomination' });
     if (!exile && this.checkVirgin(nominator, nominee)) { this.changed(); return; }
     this.stage = 'accusation';
     this.speakerId = nominator.id;
-    this.setTimer(`${nominator.name} accuses`, this.settings.timers.accusation, 'accusation');
+    this.setTimer(this.t('{nominator} accuses', { nominator: nominator.name }), this.settings.timers.accusation, 'accusation');
     this.changed();
   }
   /** Virgin: on her first nomination, a Townsfolk nominator is executed immediately. Returns true if that happened. */
@@ -1399,25 +1411,25 @@ export class Game {
     nominee.reminders.push('No ability'); // the ability is spent on the first nomination either way
     const impaired = this.impairments(nominee);
     const nomType = CHARACTER_BY_ID[nominator.characterId ?? '']?.type;
-    if (impaired.length) { this.addLog(`Virgin nominated by ${nominator.name}, but the Virgin is impaired (${impaired.join(', ')}).`); return false; }
+    if (impaired.length) { this.addLog(this.t('Virgin nominated by {nominator}, but the Virgin is impaired ({reasons}).', { nominator: nominator.name, reasons: impaired.join(', ') })); return false; }
     if (nominator.characterId === 'spy') {
-      this.emit(['st'], 'alert', { text: `The Virgin was nominated by the Spy, who might register as a Townsfolk. Use "Execute now" on ${nominator.name} if so.`, kind: 'ability' });
+      this.emit(['st'], 'alert', { text: this.t('The Virgin was nominated by the Spy, who might register as a Townsfolk. Use "Execute now" on {nominator} if so.', { nominator: nominator.name }), kind: 'ability' });
       return false;
     }
-    if (nomType !== 'townsfolk') { this.addLog(`Virgin nominated by ${nominator.name} (not a Townsfolk): nothing happens.`); return false; }
+    if (nomType !== 'townsfolk') { this.addLog(this.t('Virgin nominated by {nominator} (not a Townsfolk): nothing happens.', { nominator: nominator.name })); return false; }
     this.nomination = null;
-    this.addLog(`Virgin triggered: ${nominator.name} is executed.`);
+    this.addLog(this.t('Virgin triggered: {nominator} is executed.', { nominator: nominator.name }));
     this.execute(nominator.id);
     this.stage = 'closed';
     this.clearTimer();
-    this.announce('Nominations are closed.', 'phase');
+    this.announce(this.t('Nominations are closed.'), 'phase');
     return true;
   }
   startDefense() {
     if (!this.nomination || this.stage !== 'accusation') fail('No accusation in progress.');
     this.stage = 'defense';
     this.speakerId = this.nomination!.nomineeId;
-    this.setTimer(`${this.nameOf(this.speakerId)} defends`, this.settings.timers.defense, 'defense');
+    this.setTimer(this.t('{name} defends', { name: this.nameOf(this.speakerId) }), this.settings.timers.defense, 'defense');
     this.changed();
   }
   /** Not drunk or poisoned (by reminder token). */
@@ -1446,7 +1458,7 @@ export class Game {
     n!.voteIndex = 0;
     n!.deadline = Date.now() + 1500 + this.settings.timers.voteSeconds * 1000;
     this.skipIneligible(n!);
-    this.emit('all', 'alert', { text: `Voting on ${this.nameOf(n!.nomineeId)} begins!`, kind: 'vote' });
+    this.emit('all', 'alert', { text: this.t('Voting on {name} begins!', { name: this.nameOf(n!.nomineeId) }), kind: 'vote' });
     this.changed();
   }
   private skipIneligible(n: Nomination) {
@@ -1489,7 +1501,7 @@ export class Game {
       if (!b || !n.locked[id] || n.exile || b.characterId !== 'butler' || !b.alive || this.impairments(b).length) continue;
       if (!b.butlerMaster || !n.locked[b.butlerMaster]) {
         n.locked[id] = false;
-        this.addLog(`${b.name}'s vote did not count (Butler; master ${b.butlerMaster ? this.nameOf(b.butlerMaster) : 'none'} did not vote).`);
+        this.addLog(this.t('{name}\'s vote did not count (Butler; master {master} did not vote).', { name: b.name, master: b.butlerMaster ? this.nameOf(b.butlerMaster) : this.t('none') }));
       }
     }
     const votes = this.tally(n);
@@ -1497,27 +1509,27 @@ export class Game {
     let result: string;
     if (n.exile) {
       if (votes >= n.needed) {
-        result = `${nominee.name} is exiled with ${votes} votes.`;
-        this.applyDeath(nominee, `${nominee.name} has been exiled.`);
-      } else result = `${nominee.name} is not exiled (${votes} of ${n.needed} needed).`;
+        result = this.t('{nominee} is exiled with {votes} votes.', { nominee: nominee.name, votes });
+        this.applyDeath(nominee, this.t('{nominee} has been exiled.', { nominee: nominee.name }));
+      } else result = this.t('{nominee} is not exiled ({votes} of {needed} needed).', { nominee: nominee.name, votes, needed: n.needed });
     } else if (votes >= n.needed && votes > this.highestVotes) {
       this.highestVotes = votes;
       this.aboutToDie = { playerId: nominee.id, votes };
-      result = `${nominee.name} is about to die with ${votes} votes.`;
+      result = this.t('{nominee} is about to die with {votes} votes.', { nominee: nominee.name, votes });
     } else if (votes >= n.needed && votes === this.highestVotes) {
       this.aboutToDie = null;
-      result = `Tied at ${votes} votes — nobody is about to die.`;
+      result = this.t('Tied at {votes} votes — nobody is about to die.', { votes });
     } else {
-      result = `${nominee.name} receives ${votes} votes (${Math.max(n.needed, this.highestVotes + (this.highestVotes ? 1 : 0))} needed). Not enough.`;
+      result = this.t('{nominee} receives {votes} votes ({x} needed). Not enough.', { nominee: nominee.name, votes, x: Math.max(n.needed, this.highestVotes + (this.highestVotes ? 1 : 0)) });
     }
     if (n.secret) {
       // Organ Grinder: only the Storyteller learns the count; players hear that the votes were secret
-      this.addLog(`(secret vote) ${result}`);
-      this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: [], votes: -1, needed: n.needed, result: 'Secret vote (Organ Grinder)' });
-      n.result = `The votes on ${nominee.name} were cast in secret.`;
+      this.addLog(this.t('(secret vote) {result}', { result }));
+      this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: [], votes: -1, needed: n.needed, result: this.t('Secret vote (Organ Grinder)') });
+      n.result = this.t('The votes on {nominee} were cast in secret.', { nominee: nominee.name });
       this.announce(n.result, 'vote');
       this.stage = 'nominations';
-      this.setTimer('Nominations', this.settings.timers.nominations, 'nominations');
+      this.setTimer(this.t('Nominations'), this.settings.timers.nominations, 'nominations');
       return;
     }
     if (!this.settings.houseRules.anonymousVotes && votes > 0) {
@@ -1529,13 +1541,13 @@ export class Game {
     this.voteHistory.push({ day: this.day, nominatorId: n.nominatorId, nomineeId: n.nomineeId, exile: n.exile, yes: n.order.filter(id => n.locked[id]), votes, needed: n.needed, result });
     this.announce(result, 'vote');
     this.stage = 'nominations';
-    this.setTimer('Nominations', this.settings.timers.nominations, 'nominations');
+    this.setTimer(this.t('Nominations'), this.settings.timers.nominations, 'nominations');
   }
   endDay() {
     this.requireST(['day']);
     if (this.nomination && !this.nomination.done && this.stage === 'voting') fail('A vote is in progress.');
     if (this.aboutToDie && !this.executedToday) this.execute(this.aboutToDie.playerId);
-    else if (!this.executedToday) this.announce('Nobody was executed today.', 'info');
+    else if (!this.executedToday) this.announce(this.t('Nobody was executed today.'), 'info');
     this.beginNight();
   }
   execute(pid: string) {
@@ -1547,9 +1559,9 @@ export class Game {
     this.noteExecution(p);
     this.aboutToDie = null;
     this.emit('all', 'execution', { playerId: p.id });
-    if (p.alive) this.applyDeath(p, `${p.name} has been executed.`);
-    else this.announce(`${p.name} has been executed (they were already dead).`, 'death');
-    this.addLog(`${p.name} was executed.`); // after the death, so the replay shows them dead
+    if (p.alive) this.applyDeath(p, this.t('{name} has been executed.', { name: p.name }));
+    else this.announce(this.t('{name} has been executed (they were already dead).', { name: p.name }), 'death');
+    this.addLog(this.t('{name} was executed.', { name: p.name })); // after the death, so the replay shows them dead
     this.changed();
   }
   applyDeath(p: Player, text: string) {
@@ -1563,11 +1575,11 @@ export class Game {
     const why = this.settings.houseRules.announceCauseOfDeath && cause ? ` (${cleanText(cause, 80)})` : '';
     if (this.phase === 'night') {
       if (!this.pendingDawnDeaths.includes(p.id)) this.pendingDawnDeaths.push(p.id);
-      this.addLog(`${p.name} will be found dead at dawn.`);
+      this.addLog(this.t('{name} will be found dead at dawn.', { name: p.name }));
     } else {
       if (!p.alive) fail('Already dead.');
-      this.applyDeath(p, `${p.name} has died${why}.`);
-      this.addLog(`${p.name} died${why}.`);
+      this.applyDeath(p, this.t('{name} has died{why}.', { name: p.name, why }));
+      this.addLog(this.t('{name} died{why}.', { name: p.name, why }));
     }
     this.changed();
   }
@@ -1578,7 +1590,7 @@ export class Game {
       p.alive = true; p.ghostVoteUsed = false;
       p.abilityUses = {}; p.claimUses = {}; // resurrected players regain their ability, even a used one
       if (this.phase !== 'ended') p.revealed = false;
-      this.announce(`${p.name} has returned to life!`, 'info');
+      this.announce(this.t('{name} has returned to life!', { name: p.name }), 'info');
     }
     this.changed();
   }
@@ -1624,9 +1636,9 @@ export class Game {
       // private abilities (Artist, Savant): request a Study visit
       const eventId = nanoid(8);
       this.privateRequests.push({ playerId: p.id, characterId: charId, eventId });
-      this.emit(['st'], 'alert', { text: `${p.name} wants to use the ${CHARACTER_BY_ID[charId].name} ability privately.`, kind: 'ability' });
-      this.emit([p.id], 'alert', { text: 'The Storyteller will call you to the Study.', kind: 'info' });
-      this.addLog(`${p.name} requested a private ${CHARACTER_BY_ID[charId].name} visit (${real ? 'real' : 'impaired: shown character'}).`);
+      this.emit(['st'], 'alert', { text: this.t('{name} wants to use the {character} ability privately.', { name: p.name, character: CHARACTER_BY_ID[charId].name }), kind: 'ability' });
+      this.emit([p.id], 'alert', { text: this.t('The Storyteller will call you to the Study.'), kind: 'info' });
+      this.addLog(this.t(real ? '{name} requested a private {character} visit (real).' : '{name} requested a private {character} visit (impaired: shown character).', { name: p.name, character: CHARACTER_BY_ID[charId].name }));
       this.changed();
       return;
     }
@@ -1637,16 +1649,16 @@ export class Game {
       prevTimerRemaining: this.timer?.endsAt ? Math.max(0, this.timer.endsAt - Date.now()) : null,
     };
     this.clearTimer();
-    this.forceAllTo(SQUARE, 'Everyone is being pulled to the Town Square…');
-    this.emit('all', 'alert', { text: `${p.name} is using an ability!`, kind: 'ability' });
-    this.announce(`${p.name} is using an ability! (${CHARACTER_BY_ID[charId].name})`, 'ability');
-    this.addLog(`${p.name} ${mode === 'real' ? 'uses' : 'BLUFFS'} the ${CHARACTER_BY_ID[charId].name} ability.`);
+    this.forceAllTo(SQUARE, this.t('Everyone is being pulled to the Town Square…'));
+    this.emit('all', 'alert', { text: this.t('{name} is using an ability!', { name: p.name }), kind: 'ability' });
+    this.announce(this.t('{name} is using an ability! ({character})', { name: p.name, character: CHARACTER_BY_ID[charId].name }), 'ability');
+    this.addLog(this.t(mode === 'real' ? '{name} uses the {character} ability.' : '{name} BLUFFS the {character} ability.', { name: p.name, character: CHARACTER_BY_ID[charId].name }));
     this.changed();
   }
   private checkDeclarationLimit(isPublic: boolean) {
     const lim = this.settings.houseRules.abilityDeclarationLimit;
     if (!isPublic) return;
-    if (lim && this.abilityDeclarationsToday >= lim) fail(`The Storyteller allows only ${lim} public ability declarations per day.`);
+    if (lim && this.abilityDeclarationsToday >= lim) fail('The Storyteller allows only {lim} public ability declarations per day.', { lim });
     this.abilityDeclarationsToday++;
   }
   abilityTarget(p: Player, targetId: string) {
@@ -1662,8 +1674,8 @@ export class Game {
     if (a!.needsTarget && !a!.targetId) fail('Choose a player first.');
     a!.stage = 'pending';
     this.pendingAbility = this.analyseAbility(a!);
-    if (a!.targetId) this.announce(`${p.name} chooses ${this.nameOf(a!.targetId)}.`, 'ability');
-    this.emit(['st'], 'alert', { text: `Resolve ${p.name}'s ability.`, kind: 'ability' });
+    if (a!.targetId) this.announce(this.t('{name} chooses {name2}.', { name: p.name, name2: this.nameOf(a!.targetId) }), 'ability');
+    this.emit(['st'], 'alert', { text: this.t('Resolve {name}\'s ability.', { name: p.name }), kind: 'ability' });
     this.changed();
   }
   impairments(p: Player): string[] {
@@ -1677,37 +1689,37 @@ export class Game {
     const p = this.player(a.playerId);
     const impaired = a.real ? this.impairments(p).filter(x => !(x === 'Dead' && DAY_ABILITIES[a.characterId].requiresDead)) : [];
     const base = { eventId: a.id, playerId: p.id, characterId: a.characterId, real: a.real, impaired, isPrivate: false, resolution: DAY_ABILITIES[a.characterId].resolution };
-    if (!a.real) return { ...base, suggestion: 'nothing', suggestionText: 'BLUFF — this player does not have this ability. Normally: nothing happens.' };
+    if (!a.real) return { ...base, suggestion: 'nothing', suggestionText: this.t('BLUFF — this player does not have this ability. Normally: nothing happens.') };
     const tgt = this.maybePlayer(a.targetId);
     if ((a.characterId === 'klutz' || a.characterId === 'moonchild') && tgt) {
-      if (impaired.length) return { ...base, suggestion: 'nothing', suggestionText: `Impaired (${impaired.join(', ')}) — no effect.` };
-      if (a.characterId === 'klutz') return { ...base, suggestion: 'decide', suggestionText: tgt.alignment === 'evil' ? `${tgt.name} is EVIL — good loses (end the game with "Evil wins").` : `${tgt.name} is good — nothing happens.` };
-      return { ...base, suggestion: 'decide', suggestionText: tgt.alignment === 'good' ? `${tgt.name} is good — they die tonight (kill them during the night).` : `${tgt.name} is evil — nothing happens.` };
+      if (impaired.length) return { ...base, suggestion: 'nothing', suggestionText: this.t('Impaired ({reasons}) — no effect.', { reasons: impaired.join(', ') }) };
+      if (a.characterId === 'klutz') return { ...base, suggestion: 'decide', suggestionText: this.t(tgt.alignment === 'evil' ? '{name} is EVIL — good loses (end the game with "Evil wins").' : '{name} is good — nothing happens.', { name: tgt.name }) };
+      return { ...base, suggestion: 'decide', suggestionText: this.t(tgt.alignment === 'good' ? '{name} is good — they die tonight (kill them during the night).' : '{name} is evil — nothing happens.', { name: tgt.name }) };
     }
-    if (a.characterId !== 'slayer') return { ...base, suggestion: 'nothing', suggestionText: impaired.length ? 'Real use, but impaired — the ability has no effect.' : 'Real use. Note the statement/guesses; resolve at night.' };
+    if (a.characterId !== 'slayer') return { ...base, suggestion: 'nothing', suggestionText: this.t(impaired.length ? 'Real use, but impaired — the ability has no effect.' : 'Real use. Note the statement/guesses; resolve at night.') };
     const t = this.maybePlayer(a.targetId);
-    if (!t) return { ...base, suggestion: 'nothing', suggestionText: 'No target.' };
-    if (impaired.length) return { ...base, suggestion: 'nothing', suggestionText: `Impaired (${impaired.join(', ')}) — nothing happens.` };
+    if (!t) return { ...base, suggestion: 'nothing', suggestionText: this.t('No target.') };
+    if (impaired.length) return { ...base, suggestion: 'nothing', suggestionText: this.t('Impaired ({reasons}) — nothing happens.', { reasons: impaired.join(', ') }) };
     const tType = CHARACTER_BY_ID[t.characterId ?? '']?.type;
-    if (t.characterId === 'recluse') return { ...base, suggestion: 'decide', suggestionText: 'Target is the Recluse — it might register as the Demon. Your call.' };
-    if (tType === 'demon') return { ...base, suggestion: 'kill', suggestionText: `${t.name} is the Demon (${CHARACTER_BY_ID[t.characterId!].name}) — they die.` };
-    return { ...base, suggestion: 'nothing', suggestionText: `${t.name} is not the Demon — nothing happens.` };
+    if (t.characterId === 'recluse') return { ...base, suggestion: 'decide', suggestionText: this.t('Target is the Recluse — it might register as the Demon. Your call.') };
+    if (tType === 'demon') return { ...base, suggestion: 'kill', suggestionText: this.t('{t} is the Demon ({x}) — they die.', { t: t.name, x: CHARACTER_BY_ID[t.characterId!].name }) };
+    return { ...base, suggestion: 'nothing', suggestionText: this.t('{t} is not the Demon — nothing happens.', { t: t.name }) };
   }
   resolveAbility(outcome: 'kill' | 'nothing') {
     const a = this.ability;
     if (!a || a.stage !== 'pending') fail('Nothing to resolve.');
     const t = this.maybePlayer(a!.targetId);
     if (outcome === 'kill' && t && t.alive && DAY_ABILITIES[a!.characterId].resolution === 'kill') {
-      a!.result = `${t.name} dies!`;
-      this.applyDeath(t, `${t.name} has died.`);
+      a!.result = this.t('{t} dies!', { t: t.name });
+      this.applyDeath(t, this.t('{t} has died.', { t: t.name }));
     } else {
-      a!.result = DAY_ABILITIES[a!.characterId].resolution === 'kill' ? 'Nothing happens.' : 'The Storyteller has noted it.';
+      a!.result = this.t(DAY_ABILITIES[a!.characterId].resolution === 'kill' ? 'Nothing happens.' : 'The Storyteller has noted it.');
       this.announce(a!.result, 'ability');
     }
     a!.stage = 'resolved';
     a!.stageEndsAt = Date.now() + 4000;
     this.pendingAbility = null;
-    this.addLog(`Ability resolved: ${a!.result}`);
+    this.addLog(this.t('Ability resolved: {result}', { result: a!.result }));
     this.changed();
   }
   finishAbility() {
@@ -1717,9 +1729,9 @@ export class Game {
     this.stage = a.prevStage;
     const t = this.settings.timers;
     const secs = a.prevTimerRemaining !== null ? Math.ceil(a.prevTimerRemaining / 1000) : null;
-    if (this.stage === 'discussion') this.setTimer('Discussion', secs ?? t.discussion, 'discussion');
-    else if (this.stage === 'private') this.setTimer('Private conversations', secs ?? t.privateRooms, 'private');
-    else if (this.stage === 'nominations') this.setTimer('Nominations', secs ?? t.nominations, 'nominations');
+    if (this.stage === 'discussion') this.setTimer(this.t('Discussion'), secs ?? t.discussion, 'discussion');
+    else if (this.stage === 'private') this.setTimer(this.t('Private conversations'), secs ?? t.privateRooms, 'private');
+    else if (this.stage === 'nominations') this.setTimer(this.t('Nominations'), secs ?? t.nominations, 'nominations');
   }
   takePrivateRequest(eventId: string) {
     const r = this.privateRequests.find(x => x.eventId === eventId) ?? fail('No such request.');
@@ -1728,7 +1740,7 @@ export class Game {
     this.pendingAbility = {
       eventId: r!.eventId, playerId: p.id, characterId: r!.characterId, real: p.characterId === r!.characterId,
       impaired: this.impairments(p), suggestion: 'decide', isPrivate: true, resolution: 'note',
-      suggestionText: this.impairments(p).length ? 'Impaired — you may give false or no information.' : 'Real, sober use.',
+      suggestionText: this.t(this.impairments(p).length ? 'Impaired — you may give false or no information.' : 'Real, sober use.'),
     };
     this.startStudy(p.id);
     this.changed();
@@ -1750,14 +1762,14 @@ export class Game {
     const to = this.player(toId);
     if (!p.shownCharacterId) fail('You have no character yet.');
     to.revealedTo.push({ fromId: p.id, characterId: p.shownCharacterId! });
-    this.emit([to.id], 'alert', { text: `${p.name} shows you their character card.`, kind: 'info' });
-    this.addLog(`${p.name} showed their (believed) character to ${to.name}.`);
+    this.emit([to.id], 'alert', { text: this.t('{name} shows you their character card.', { name: p.name }), kind: 'info' });
+    this.addLog(this.t('{name} showed their (believed) character to {to}.', { name: p.name, to: to.name }));
     this.changed();
   }
   toggleMute(pid: string) {
     const p = this.player(pid);
     p.muted = !p.muted;
-    this.emit([p.id], 'alert', { text: p.muted ? 'You have been muted by the Storyteller.' : 'The Storyteller unmuted you.', kind: 'info' });
+    this.emit([p.id], 'alert', { text: this.t(p.muted ? 'You have been muted by the Storyteller.' : 'The Storyteller unmuted you.'), kind: 'info' });
     this.changed();
   }
 
@@ -1774,7 +1786,7 @@ export class Game {
       p.alignment = p.traveller ? p.alignment : defaultAlignment(CHARACTER_BY_ID[charId].type);
       if (charId !== 'drunk' && charId !== 'lunatic') { p.shownCharacterId = charId; p.shownAlignment = null; }
     }
-    this.addLog(`${p.name} is now ${charId ?? 'nobody'}.`);
+    this.addLog(this.t('{name} is now {character}.', { name: p.name, character: charId ? CHARACTER_BY_ID[charId]?.name ?? charId : this.t('nobody') }));
     this.changed();
   }
   setShownCharacter(pid: string, charId: string | null) {
@@ -1788,8 +1800,8 @@ export class Game {
     const p = this.player(pid);
     p.alignment = a === 'evil' ? 'evil' : 'good';
     if (p.characterId !== 'lunatic') p.shownAlignment = null;
-    this.addLog(`${p.name}'s alignment is now ${p.alignment}.`);
-    if (p.traveller && this.settings.houseRules.succorForEvil) this.tellDemons(`Traveller ${p.name} is ${p.alignment}.`, [p.id], []);
+    this.addLog(this.t('{name}\'s alignment is now {alignment}.', { name: p.name, alignment: p.alignment }));
+    if (p.traveller && this.settings.houseRules.succorForEvil) this.tellDemons(this.t('Traveller {name} is {alignment}.', { name: p.name, alignment: p.alignment }), [p.id], []);
     this.changed();
   }
   setReminders(pid: string, reminders: string[]) {
@@ -1815,9 +1827,9 @@ export class Game {
     if (!ch || ch.type !== 'traveller') fail('Choose a Traveller.');
     if (this.players.some(o => o.characterId === charId)) fail('Another Traveller already has that character.');
     p.characterId = charId; p.shownCharacterId = charId; p.alignment = 'good';
-    this.announce(`${p.name} is the ${ch.name} (Traveller).`, 'info');
-    this.emit(['st'], 'alert', { text: `${p.name} chose the ${ch.name}. Set their alignment in the Grimoire.`, kind: 'info' });
-    if (this.settings.houseRules.succorForEvil) this.tellDemons(`Traveller ${p.name} is good.`, [p.id], []);
+    this.announce(this.t('{name} is the {ch} (Traveller).', { name: p.name, ch: ch.name }), 'info');
+    this.emit(['st'], 'alert', { text: this.t('{name} chose the {ch}. Set their alignment in the Grimoire.', { name: p.name, ch: ch.name }), kind: 'info' });
+    if (this.settings.houseRules.succorForEvil) this.tellDemons(this.t('Traveller {name} is good.', { name: p.name }), [p.id], []);
     this.changed();
   }
   /** Silently add an info card to every Demon's notes (the Storyteller wakes them as usual). */
@@ -1832,13 +1844,13 @@ export class Game {
     const n = this.nomination;
     if (p.alignment === 'good') this.executedGood++;
     const lev = this.holder('leviathan');
-    if (lev?.alive && p.alignment === 'good' && this.executedGood > 1) this.winNote = 'Leviathan: more than one good player has been executed, so evil wins.';
-    if (p.characterId === 'goblin' && p.reminders.includes('Claimed') && this.sober(p)) this.winNote = 'Goblin: the Goblin claimed when nominated and was executed, so evil wins.';
-    if (p.characterId === 'saint' && this.sober(p)) this.winNote = 'Saint executed: good loses.';
+    if (lev?.alive && p.alignment === 'good' && this.executedGood > 1) this.winNote = this.t('Leviathan: more than one good player has been executed, so evil wins.');
+    if (p.characterId === 'goblin' && p.reminders.includes('Claimed') && this.sober(p)) this.winNote = this.t('Goblin: the Goblin claimed when nominated and was executed, so evil wins.');
+    if (p.characterId === 'saint' && this.sober(p)) this.winNote = this.t('Saint executed: good loses.');
     const fm = n && this.maybePlayer(n.nominatorId);
-    if (fm && fm.characterId === 'fearmonger' && this.sober(fm) && n!.nomineeId === p.id && p.reminders.includes('Fear')) this.winNote = `Fearmonger executed their chosen player: ${p.alignment === 'good' ? 'good' : 'evil'} loses.`;
-    if (p.characterId === 'psychopath' && this.sober(p)) this.winNote = 'Psychopath executed: they only die if they lose at rock-paper-scissors (start it from Group actions).';
-    if (p.characterId === 'boomdandy' && this.sober(p)) this.winNote = 'Boomdandy executed: all but three players die, then the three point (start it from Group actions).';
+    if (fm && fm.characterId === 'fearmonger' && this.sober(fm) && n!.nomineeId === p.id && p.reminders.includes('Fear')) this.winNote = this.t(p.alignment === 'good' ? 'Fearmonger executed their chosen player: good loses.' : 'Fearmonger executed their chosen player: evil loses.');
+    if (p.characterId === 'psychopath' && this.sober(p)) this.winNote = this.t('Psychopath executed: they only die if they lose at rock-paper-scissors (start it from Group actions).');
+    if (p.characterId === 'boomdandy' && this.sober(p)) this.winNote = this.t('Boomdandy executed: all but three players die, then the three point (start it from Group actions).');
   }
   /** Characters in play whose win conditions the Storyteller should keep in mind. */
   specialWinRules(): string[] {
@@ -1857,17 +1869,17 @@ export class Game {
       vortox: 'Vortox: a day with no execution means evil wins.',
       klutz: 'Klutz: when they learn they died, they choose a player; if evil, good loses.',
     };
-    return [...new Set(this.players.map(p => p.characterId ?? ''))].filter(id => R[id]).map(id => R[id]);
+    return [...new Set(this.players.map(p => p.characterId ?? ''))].filter(id => R[id]).map(id => this.t(R[id]));
   }
   winHint(): string | null {
     if (!['night', 'day'].includes(this.phase)) return null;
     if (this.winNote) return this.winNote;
     const lev = this.holder('leviathan');
-    if (lev?.alive && this.day > 5) return 'Leviathan: it is after day 5, so evil wins.';
+    if (lev?.alive && this.day > 5) return this.t('Leviathan: it is after day 5, so evil wins.');
     const demonsAlive = this.players.some(p => p.alive && CHARACTER_BY_ID[p.characterId ?? '']?.type === 'demon');
     const living = this.players.filter(p => p.alive && !p.traveller).length;
-    if (!demonsAlive) return 'No Demon is alive: good wins, unless a new Demon is created (Scarlet Woman, Imp self-kill) or the Mastermind/Zombuul applies.';
-    if (living <= 2) return `Only ${living} non-Traveller players are alive: evil wins.`;
+    if (!demonsAlive) return this.t('No Demon is alive: good wins, unless a new Demon is created (Scarlet Woman, Imp self-kill) or the Mastermind/Zombuul applies.');
+    if (living <= 2) return this.t('Only {living} non-Traveller players are alive: evil wins.', { living });
     return null;
   }
   endGame(winner: Alignment) {
@@ -1878,7 +1890,7 @@ export class Game {
     this.nomination = null; this.ability = null;
     for (const p of this.players) { p.revealed = true; p.awake = false; if (!p.location) this.movePlayer(p, SQUARE); }
     if (!this.storyteller.location) this.moveST(SQUARE);
-    this.announce(`The game is over. ${this.winner === 'good' ? 'Good' : 'Evil'} wins!`, 'phase');
+    this.announce(this.t(this.winner === 'good' ? 'The game is over. Good wins!' : 'The game is over. Evil wins!'), 'phase');
     this.emit('all', 'transition', { to: 'ended' });
     this.changed();
   }

@@ -125,18 +125,18 @@ function talk(g: Game, bot: Player, m: Memory) {
   const firstTime = !m.claims.has(bot.id);
   if (claim) { m.claims.set(bot.id, claim); if (bot.claim !== claim) try { g.setClaim(bot, claim); } catch { /* claims off */ } }
   const parts: string[] = [];
-  if (firstTime && claim) parts.push(pick([`I'm the ${charName(claim)}.`, `Hi all, ${charName(claim)} here.`, `I'll say it openly: I'm the ${charName(claim)}.`])!);
+  if (firstTime && claim) parts.push(g.t(pick(['I\'m the {character}.', 'Hi all, {character} here.', 'I\'ll say it openly: I\'m the {character}.'])!, { character: charName(claim) }));
   if (!believesEvil(bot)) {
     const shared = m.sharedNotes.get(bot.id) ?? 0;
     const fresh = bot.notes.slice(shared).filter(n => n.text);
-    if (fresh.length) parts.push(`My info: ${fresh.map(n => n.text).join(' / ')}`);
+    if (fresh.length) parts.push(g.t('My info: {info}', { info: fresh.map(n => n.text).join(' / ') }));
     m.sharedNotes.set(bot.id, bot.notes.length);
   } else if (g.day > 1 || !firstTime) {
     const t = topSuspect(g, bot, m);
-    if (t) parts.push(pick([`Nothing clear for me last night. ${t.p.name} has been quiet, though.`, `I don't trust ${t.p.name}.`, `My information doesn't add up with what ${t.p.name} says.`])!);
+    if (t) parts.push(g.t(pick(['Nothing clear for me last night. {name} has been quiet, though.', 'I don\'t trust {name}.', 'My information doesn\'t add up with what {name} says.'])!, { name: t.p.name }));
   }
   const t = topSuspect(g, bot, m);
-  if (t && t.s >= 2 && !believesEvil(bot)) parts.push(`I think ${t.p.name} is lying.`);
+  if (t && t.s >= 2 && !believesEvil(bot)) parts.push(g.t('I think {name} is lying.', { name: t.p.name }));
   if (parts.length) say(g, bot, parts.join(' '));
 }
 
@@ -214,7 +214,7 @@ function day(g: Game, m: Memory, now: number) {
       try {
         g.nominate(o.b.id, o.t!.p.id);
         m.nomsToday++;
-        say(g, o.b, pick([`I nominate ${o.t!.p.name}.`, `${o.t!.p.name}, I don't believe you. I nominate you.`])!);
+        say(g, o.b, g.t(pick(['I nominate {name}.', '{name}, I don\'t believe you. I nominate you.'])!, { name: o.t!.p.name }));
       } catch { /* not allowed right now */ }
     }
   }

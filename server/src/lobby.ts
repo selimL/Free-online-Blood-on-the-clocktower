@@ -8,7 +8,7 @@ import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from './tutor
 import type { LobbyChatMsg } from '../../shared/types';
 import { unregisterHomebrew } from '../../shared/characters';
 
-const fail = (m: string): never => { throw new GameError(m); };
+const fail = (m: string, vars?: Record<string, string | number>): never => { throw new GameError(m, vars); };
 
 export const BACKUP_KIND = 'clocktower-nights-backup';
 const UNDO_WINDOW_MS = 10 * 60_000;
@@ -16,30 +16,30 @@ const UNDO_WINDOW_MS = 10 * 60_000;
 function undoLabel(g: Game, type: string, d: any): string | null {
   const who = () => g.nameOf(String(d.playerId ?? ''));
   switch (type) {
-    case 'st:kill': return `Kill ${who()}`;
-    case 'st:revive': return `Revive ${who()}`;
-    case 'st:execute': return `Execute ${who()}`;
-    case 'st:setCharacter': return `Change ${who()}'s character`;
-    case 'st:setShown': return `Change what ${who()} thinks they are`;
-    case 'st:setAlignment': return `Change ${who()}'s alignment`;
-    case 'st:reminders': return `Reminders on ${who()}`;
-    case 'st:ghostVote': return `${who()}'s ghost vote`;
+    case 'st:kill': return g.t('Kill {name}', { name: who() });
+    case 'st:revive': return g.t('Revive {name}', { name: who() });
+    case 'st:execute': return g.t('Execute {name}', { name: who() });
+    case 'st:setCharacter': return g.t('Change {name}\'s character', { name: who() });
+    case 'st:setShown': return g.t('Change what {name} thinks they are', { name: who() });
+    case 'st:setAlignment': return g.t('Change {name}\'s alignment', { name: who() });
+    case 'st:reminders': return g.t('Reminders on {name}', { name: who() });
+    case 'st:ghostVote': return g.t('{name}\'s ghost vote', { name: who() });
     case 'st:kick': return null; // a kicked player's connection is gone: not undoable
-    case 'st:deal': return 'Deal characters';
-    case 'st:reveal': return 'Reveal characters';
-    case 'st:night': return 'Start the night';
-    case 'st:day': return 'Start the day';
-    case 'st:stage': return `Change stage to ${String(d.stage)}`;
-    case 'st:startDefense': return 'Start the defence';
-    case 'st:startVote': return 'Start the vote';
-    case 'st:endDay': return 'End the day';
-    case 'st:skipTimer': return 'End the timer';
-    case 'st:resolveAbility': return 'Resolve the ability';
-    case 'st:end': return 'End the game';
-    case 'st:boomdandy': return 'Boomdandy explosion';
-    case 'st:applyPrompt': return 'Apply the Al-Hadikhia deaths';
-    case 'st:mezephelesSaid': return `${who()} said the Mezepheles' word`;
-    case 'st:bluffs': return 'Change bluffs';
+    case 'st:deal': return g.t('Deal characters');
+    case 'st:reveal': return g.t('Reveal characters');
+    case 'st:night': return g.t('Start the night');
+    case 'st:day': return g.t('Start the day');
+    case 'st:stage': return g.t('Change stage to {name}', { x: String(d.stage) });
+    case 'st:startDefense': return g.t('Start the defence');
+    case 'st:startVote': return g.t('Start the vote');
+    case 'st:endDay': return g.t('End the day');
+    case 'st:skipTimer': return g.t('End the timer');
+    case 'st:resolveAbility': return g.t('Resolve the ability');
+    case 'st:end': return g.t('End the game');
+    case 'st:boomdandy': return g.t('Boomdandy explosion');
+    case 'st:applyPrompt': return g.t('Apply the Al-Hadikhia deaths');
+    case 'st:mezephelesSaid': return g.t('{name} said the Mezepheles\' word', { name: who() });
+    case 'st:bluffs': return g.t('Change bluffs');
     default: return null;
   }
 }
@@ -131,6 +131,11 @@ export class Lobby {
     this.lobbyChat.push({ id: `${now}-${Math.random().toString(36).slice(2, 7)}`, name, text, ts: now });
     if (this.lobbyChat.length > 50) this.lobbyChat.shift();
     return { chat: this.lobbyChat };
+  }
+  /** The language of the game this connection is in (English outside games). */
+  languageOf(socket: Socket) {
+    const b = socket.data.binding as Binding | undefined;
+    return (b && this.games.get(b.gameId)?.settings.language) || 'en';
   }
   publicList() {
     return [...this.games.values()].filter(g => g.visibility === 'public' && g.phase !== 'ended').map(lobbyEntry);
@@ -418,7 +423,7 @@ export class Lobby {
       case 'st:addCo': { const c = g.addCoStoryteller(d.name); return { token: c.token, id: c.id }; }
       case 'st:removeCo': {
         g.removeCoStoryteller(String(d.id ?? ''));
-        for (const s of this.sockets.get(g.id) ?? []) if ((s.data.binding as Binding).id === d.id) { s.emit('kicked', { reason: 'The Storyteller removed you as co-Storyteller.' }); this.leave(s); }
+        for (const s of this.sockets.get(g.id) ?? []) if ((s.data.binding as Binding).id === d.id) { s.emit('kicked', { reason: g.t('The Storyteller removed you as co-Storyteller.') }); this.leave(s); }
         return;
       }
       case 'st:dismissWordHit': return g.dismissWordHit(String(d.id ?? ''));

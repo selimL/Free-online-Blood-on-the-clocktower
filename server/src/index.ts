@@ -7,6 +7,7 @@ import { Server, type Socket } from 'socket.io';
 import { Lobby } from './lobby';
 import { VoiceManager, loadRegions } from './voice';
 import { GameError } from './game';
+import { translate } from '../../shared/i18n';
 import { createStore, createKV } from './persist';
 import { Accounts } from './accounts';
 import { adminRoutes } from './admin';
@@ -57,7 +58,7 @@ io.on('connection', (socket: Socket) => {
       const out = await fn(data ?? {});
       reply({ ok: true, ...(out && typeof out === 'object' ? out : {}) });
     } catch (e) {
-      if (e instanceof GameError) reply({ ok: false, error: e.message });
+      if (e instanceof GameError) reply({ ok: false, error: translate(lobby.languageOf(socket), e.template, e.vars) });
       else { console.error(e); reply({ ok: false, error: 'Server error.' }); }
     }
   };

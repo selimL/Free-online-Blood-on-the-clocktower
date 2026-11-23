@@ -1,4 +1,5 @@
 import type { Alignment, Homebrew } from './characters';
+import type { Lang } from './i18n';
 
 export const MIN_PLAYERS = 6;
 export const MAX_PLAYERS = 10;
@@ -116,6 +117,7 @@ export interface Settings {
   weather: WeatherSetting;   // cosmetic: the 3D town's weather
   customJinxes: { a: string; b: string; text: string }[]; // the Storyteller's own jinx rulings
   homebrew: Homebrew[];      // the Storyteller's own characters
+  language: Lang;            // the language the game is played in (chosen before it starts)
 }
 
 export type Weather = 'clear' | 'rain' | 'fog' | 'snow' | 'storm';
@@ -145,6 +147,7 @@ export const defaultSettings = (): Settings => ({
   weather: 'clear',
   customJinxes: [],
   homebrew: [],
+  language: 'en',
   publicList: { visible: true, hidden: [], showHiddenCount: true },
   timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {
@@ -320,6 +323,8 @@ export interface GameView {
   lookingFor: { count: number; note: string } | null;
   /** The Storyteller's homebrew characters (public, like the script). */
   homebrew: Homebrew[];
+  /** The language the game is played in. */
+  language: Lang;
   /** Group actions the viewer takes part in (or public ones); the Storyteller sees all. */
   prompts: PromptView[];
   /** God of Ug: who wears the Ug hat (public). */

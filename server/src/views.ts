@@ -1,6 +1,7 @@
 // Per-viewer redaction. The full Game object never leaves the server; every
 // client receives ONLY what its seat is allowed to know.
 import { CHARACTER_BY_ID, NIGHT_PSEUDO, nightOrderWith } from '../../shared/characters';
+import { abilityIn } from '../../shared/i18n';
 import type {
   GameView, PublicPlayer, SelfView, StorytellerSelf, EvilTeamView, NominationView, AbilityEventView, LobbyEntry,
 } from '../../shared/types';
@@ -97,19 +98,22 @@ function characterList(g: Game) {
 
 function tableRules(g: Game): string[] {
   const h = g.settings.houseRules;
-  const out = ['You may say anything, at any time, in public or in private.', 'No peeking: never show your character, and never look at the Grimoire.'];
-  if (h.noOaths) out.push('No oaths: do not swear real-world oaths to prove a claim.');
-  if (h.noScreenshots) out.push('No screenshots: never show screenshots or share your screen of your character card or night info.');
-  if (h.holySpirit) out.push('Holy Spirit: a good player who kills a good Saint with an ability causes an execution, so good loses.');
-  if (h.maxWhispersPerDay) out.push(`Each player may visit side rooms at most ${h.maxWhispersPerDay} times per day.`);
-  if (h.privateRoomCapMinutes) out.push(`Each player may spend at most ${h.privateRoomCapMinutes} minutes in side rooms per day.`);
-  if (h.abilityDeclarationLimit) out.push(`At most ${h.abilityDeclarationLimit} public ability declarations per day.`);
-  if (g.transcriptActive()) out.push('Word listening: for players who agreed, speech is checked for the secret words and claims some characters need. Only detections are kept (who, when, where), never what was said, and only the Storyteller sees them. Everyone agreed before the game started; answers are locked.');
-  if (h.travellersCantBeChanged) out.push('Travellers can\'t be changed by character-changing abilities.');
+  const out = [g.t('You may say anything, at any time, in public or in private.'), g.t('No peeking: never show your character, and never look at the Grimoire.')];
+  if (h.noOaths) out.push(g.t('No oaths: do not swear real-world oaths to prove a claim.'));
+  if (h.noScreenshots) out.push(g.t('No screenshots: never show screenshots or share your screen of your character card or night info.'));
+  if (h.holySpirit) out.push(g.t('Holy Spirit: a good player who kills a good Saint with an ability causes an execution, so good loses.'));
+  if (h.maxWhispersPerDay) out.push(g.t('Each player may visit side rooms at most {maxWhispersPerDay} times per day.', { maxWhispersPerDay: h.maxWhispersPerDay }));
+  if (h.privateRoomCapMinutes) out.push(g.t('Each player may spend at most {privateRoomCapMinutes} minutes in side rooms per day.', { privateRoomCapMinutes: h.privateRoomCapMinutes }));
+  if (h.abilityDeclarationLimit) out.push(g.t('At most {abilityDeclarationLimit} public ability declarations per day.', { abilityDeclarationLimit: h.abilityDeclarationLimit }));
+  if (g.transcriptActive()) out.push(g.t('Word listening: for players who agreed, speech is checked for the secret words and claims some characters need. Only detections are kept (who, when, where), never what was said, and only the Storyteller sees them. Everyone agreed before the game started; answers are locked.'));
+  if (h.travellersCantBeChanged) out.push(g.t('Travellers can\'t be changed by character-changing abilities.'));
   // timer lengths, so everyone knows how long each part of the day lasts
   const t = g.settings.timers;
-  const len = (s: number | null) => s === null ? 'no time limit (the Storyteller ends it)' : s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
-  out.push(`Timers: town discussion ${len(t.discussion)} · private conversations ${len(t.privateRooms)} · nominations ${len(t.nominations)} · accusation ${len(t.accusation)} · defence ${len(t.defense)} · questions with the Storyteller ${len(t.question)} · ${t.voteSeconds} s per voter when votes are counted${h.speedRound ? ` · speed round ${t.speedRound} s per player` : ''}.`);
+  const len = (s: number | null) => s === null ? g.t('no time limit (the Storyteller ends it)')
+    : s % 60 === 0 ? g.t('{m} min', { m: s / 60 }) : s > 60 ? g.t('{m} min {s} s', { m: Math.floor(s / 60), s: s % 60 }) : g.t('{s} s', { s });
+  out.push(g.t('Timers: town discussion {discussion} · private conversations {private} · nominations {nominations} · accusation {accusation} · defence {defence} · questions with the Storyteller {question} · {voteSeconds} s per voter when votes are counted.', {
+    discussion: len(t.discussion), private: len(t.privateRooms), nominations: len(t.nominations), accusation: len(t.accusation), defence: len(t.defense), question: len(t.question), voteSeconds: t.voteSeconds,
+  }) + (h.speedRound ? ' · ' + g.t('speed round {s} s per player', { s: t.speedRound }) : ''));
   return out;
 }
 
@@ -154,6 +158,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     scheduledFor: g.scheduledFor ?? null,
     lookingFor: g.lookingFor ?? null,
     homebrew: g.settings.homebrew ?? [],
+    language: g.settings.language ?? 'en',
     coStorytellers: (g.coStorytellers ?? []).map(c => ({ id: c.id, name: c.name, connected: c.connected })),
     dawnRecap: g.phase === 'day' ? g.dawnRecap ?? null : null,
     prompts: (g.prompts ?? []).filter(pr => isST || pr.public || (viewer && pr.playerIds.includes(viewer.id))).map(pr => ({
@@ -220,12 +225,12 @@ export function nightOrder(g: Game) {
   return order.flatMap(id => {
     if (NIGHT_PSEUDO[id]) {
       if ((id === 'minioninfo' || id === 'demoninfo') && (!evilInfo || g.night > 1)) return [];
-      return [{ id, name: NIGHT_PSEUDO[id].name, text: NIGHT_PSEUDO[id].text, players: [] as string[] }];
+      return [{ id, name: g.t(NIGHT_PSEUDO[id].name), text: g.t(NIGHT_PSEUDO[id].text), players: [] as string[] }];
     }
     const ps = holders(id);
     if (!ps.length) return [];
     const ch = CHARACTER_BY_ID[id];
-    return [{ id, name: ch.name, text: ch.ability, players: ps }];
+    return [{ id, name: ch.name, text: ch.edition === 'homebrew' ? ch.ability : abilityIn(g.settings.language, id, ch.ability), players: ps }];
   });
 }
 
