@@ -2,6 +2,7 @@ import { io } from 'socket.io-client';
 import { useSyncExternalStore } from 'react';
 import type { GameView, InfoCard, Announcement } from '../../shared/types';
 import { dawnBell, deathToll } from './sound';
+import { registerHomebrew } from '../../shared/characters';
 
 export const socket = io(import.meta.env.VITE_SERVER_URL ?? '/', { transports: ['websocket', 'polling'] });
 
@@ -84,7 +85,7 @@ socket.on('rebound', ({ id }: { id: string }) => {
   set({ session: s });
   pushAlert(id === 'st' ? 'You are now the Storyteller.' : id.startsWith('co:') ? 'You handed over the role and are now a co-Storyteller.' : 'You handed over the role and now have a seat.', 'info');
 });
-socket.on('state', (view: GameView) => set({ view }));
+socket.on('state', (view: GameView) => { registerHomebrew(view.homebrew); set({ view }); });
 socket.on('alert', (a: { text: string; kind: string }) => pushAlert(a.text, a.kind));
 socket.on('announcement', (_a: Announcement) => { /* already part of state */ });
 socket.on('chat', (m: ChatMsg) => set({ chat: [...store.chat.slice(-100), m] }));

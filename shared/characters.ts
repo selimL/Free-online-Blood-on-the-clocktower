@@ -6,7 +6,7 @@
 // Private, non-commercial use only.
 
 export type CharacterType = 'townsfolk' | 'outsider' | 'minion' | 'demon' | 'traveller' | 'fabled' | 'loric';
-export type Edition = 'tb' | 'bmr' | 'snv' | 'exp' | 'fabled';
+export type Edition = 'tb' | 'bmr' | 'snv' | 'exp' | 'fabled' | 'homebrew';
 export type Alignment = 'good' | 'evil';
 
 export interface Character {
@@ -27,8 +27,8 @@ export const EDITIONS: Record<'tb' | 'bmr' | 'snv', string> = {
   snv: 'Sects & Violets',
 };
 /** Every group of characters, including Experimental (used on custom scripts) and Fabled/Loric. */
-export const EDITION_NAMES: Record<Edition, string> = { ...EDITIONS, exp: 'Experimental', fabled: 'Fabled & Loric' };
-export const EDITION_SHORT: Record<Edition, string> = { tb: 'TB', bmr: 'BMR', snv: 'S&V', exp: 'EXP', fabled: '' };
+export const EDITION_NAMES: Record<Edition, string> = { ...EDITIONS, exp: 'Experimental', fabled: 'Fabled & Loric', homebrew: 'Homebrew' };
+export const EDITION_SHORT: Record<Edition, string> = { tb: 'TB', bmr: 'BMR', snv: 'S&V', exp: 'EXP', fabled: '', homebrew: 'HB' };
 
 const c = (
   edition: Edition, type: CharacterType, id: string, name: string, ability: string,
@@ -322,3 +322,45 @@ export function parseScript(json: string): { ids: string[]; unknown: string[]; n
 }
 
 export const GENERIC_REMINDERS = ['Poisoned', 'Drunk', 'Protected', 'Mad', 'Dead tonight', 'Used ability', 'Red herring', 'Good', 'Evil'];
+
+// ---------------------------------------------------------------- homebrew characters
+/** When a homebrew character wakes: not at all, or early / in the middle / late in the night. */
+export type NightSlot = 'early' | 'middle' | 'late' | null;
+export const NIGHT_SLOTS: { id: NightSlot; label: string }[] = [
+  { id: null, label: 'Does not wake' },
+  { id: 'early', label: 'Early (with the poisoners)' },
+  { id: 'middle', label: 'Middle (first night: before information; other nights: before the Demon)' },
+  { id: 'late', label: 'Late (just before dawn)' },
+];
+/** A Storyteller's own character. Everyone sees it on the script, announced by the Bootlegger. */
+export interface Homebrew {
+  id: string; name: string; type: 'townsfolk' | 'outsider' | 'minion' | 'demon'; ability: string;
+  firstNight: NightSlot; otherNights: NightSlot; reminders: string[];
+}
+export const HOMEBREW_TYPES = ['townsfolk', 'outsider', 'minion', 'demon'] as const;
+/** Make homebrew characters known to every lookup (names, abilities, types). Ids are unique per game. */
+export function registerHomebrew(list: readonly Homebrew[] | undefined) {
+  for (const h of list ?? []) {
+    CHARACTER_BY_ID[h.id] = { id: h.id, name: h.name, edition: 'homebrew', type: h.type, ability: h.ability, reminders: h.reminders.length ? h.reminders : undefined };
+  }
+}
+const SLOT_ANCHOR: Record<'first' | 'other', Record<'early' | 'middle' | 'late', string>> = {
+  first: { early: 'poisoner', middle: 'washerwoman', late: 'dawn' },
+  other: { early: 'poisoner', middle: 'imp', late: 'dawn' },
+};
+/** The night order with homebrew characters slotted in (each goes just before its anchor). */
+export function nightOrderWith(first: boolean, homebrew: readonly Homebrew[] | undefined): string[] {
+  const base = first ? FIRST_NIGHT_ORDER : OTHER_NIGHT_ORDER;
+  if (!homebrew?.length) return base;
+  const out = [...base];
+  for (const h of homebrew) {
+    const slot = first ? h.firstNight : h.otherNights;
+    if (!slot) continue;
+    const at = out.indexOf(SLOT_ANCHOR[first ? 'first' : 'other'][slot]);
+    out.splice(at < 0 ? out.length - 1 : at, 0, h.id);
+  }
+  return out;
+}
+export function unregisterHomebrew(list: readonly Homebrew[] | undefined) {
+  for (const h of list ?? []) if (CHARACTER_BY_ID[h.id]?.edition === 'homebrew') delete CHARACTER_BY_ID[h.id];
+}

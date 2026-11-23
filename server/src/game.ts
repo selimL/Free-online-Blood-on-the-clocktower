@@ -1,7 +1,7 @@
 import { customAlphabet, nanoid } from 'nanoid';
 import {
   CHARACTER_BY_ID, CHARACTERS, DAY_ABILITIES, CLAIMABLE_ABILITIES, ROOM_NAMES, ROOM_ICONS,
-  defaultAlignment, parseScript, type Alignment, type Character,
+  defaultAlignment, parseScript, registerHomebrew, HOMEBREW_TYPES, type Alignment, type Character, type Homebrew, type NightSlot,
 } from '../../shared/characters';
 import {
   MIN_PLAYERS, MAX_PLAYERS, JOIN_DELAY_MS, defaultSettings, AVATAR_LIMITS,
@@ -19,6 +19,32 @@ export function syllables(word: string): number {
 }
 
 export const makeCode = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+const homebrewId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
+
+/**
+ * Check a list of homebrew characters (from the Storyteller, a save or a backup file). Ids are kept
+ * only if they are already this game's; new ones get a fresh id so games never share one.
+ */
+export function sanitizeHomebrew(raw: unknown, ownIds: Set<string>): Homebrew[] {
+  if (!Array.isArray(raw)) return [];
+  const slot = (v: unknown): NightSlot => (v === 'early' || v === 'middle' || v === 'late' ? v : null);
+  const out: Homebrew[] = [];
+  for (const h of raw.slice(0, 20)) {
+    if (!h || typeof h !== 'object') continue;
+    const x = h as Record<string, unknown>;
+    const name = cleanText(x.name, 30);
+    if (!name) continue;
+    const id = typeof x.id === 'string' && /^hb_[a-z0-9]{10}$/.test(x.id) && ownIds.has(x.id) ? x.id : `hb_${homebrewId()}`;
+    out.push({
+      id, name,
+      type: (HOMEBREW_TYPES as readonly string[]).includes(String(x.type)) ? x.type as Homebrew['type'] : 'townsfolk',
+      ability: cleanText(x.ability, 300) || 'Homebrew character: ask the Storyteller.',
+      firstNight: slot(x.firstNight), otherNights: slot(x.otherNights),
+      reminders: Array.isArray(x.reminders) ? x.reminders.map(r => cleanText(r, 20)).filter(Boolean).slice(0, 6) : [],
+    });
+  }
+  return out;
+}
 
 export class GameError extends Error {}
 const fail = (msg: string): never => { throw new GameError(msg); };
@@ -250,6 +276,8 @@ export class Game {
       if (k === 'savedAt' || !safeKey(k)) continue;
       (g as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
+    g.settings.homebrew = sanitizeHomebrew(g.settings?.homebrew, new Set(Array.isArray(g.settings?.homebrew) ? g.settings.homebrew.map((h: Homebrew) => h?.id) : []));
+    registerHomebrew(g.settings.homebrew);
     g.storyteller.connected = !!g.tutorial; // a practice game's Storyteller is the server itself
     for (const c of g.coStorytellers ?? []) c.connected = false;
     for (const p of g.players) p.connected = !!p.bot;
@@ -277,6 +305,8 @@ export class Game {
       || !data.storyteller || typeof data.storyteller !== 'object' || typeof data.id !== 'string' || typeof data.code !== 'string'
       || typeof data.phase !== 'string' || !data.settings || typeof data.settings !== 'object') fail('That backup file is damaged or from an unknown version.');
     if (data.tutorial) fail('Practice games cannot be restored.');
+    // a backup must not redefine homebrew characters that a running game already uses
+    for (const h of Array.isArray(data.settings.homebrew) ? data.settings.homebrew : []) if (h && CHARACTER_BY_ID[String(h.id)]) fail('This backup clashes with a game that is running: close that game first.');
     const g = Game.fromJSON(data);
     g.storyteller.token = nanoid(24);
     g.storyteller.id = 'st';
@@ -301,6 +331,7 @@ export class Game {
       (this as unknown as Record<string, unknown>)[k] = v && typeof v === 'object' && '__set' in v ? new Set((v as { __set: unknown[] }).__set) : v;
     }
     for (const p of this.players) Object.assign(p, keep.connected.get(p.id));
+    registerHomebrew(this.settings.homebrew);
     this.storyteller.connected = keep.st;
     Object.assign(this, { coStorytellers: keep.coStorytellers, wordLog: keep.wordLog, spectators: keep.spectators, whispers: keep.whispers, lastWhisperAt: keep.lastWhisperAt, lastEmoteAt: keep.lastEmoteAt });
     if (!this.paused) {
@@ -929,6 +960,18 @@ export class Game {
     const known = (ids: unknown, filter: (c: Character) => boolean) =>
       Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string' && !!CHARACTER_BY_ID[id] && filter(CHARACTER_BY_ID[id])) : undefined;
     if (patch.edition && ['tb', 'bmr', 'snv', 'custom'].includes(patch.edition)) s.edition = patch.edition;
+    if (patch.homebrew !== undefined) {
+      if (this.started) fail('Homebrew characters can only be changed before the game starts.');
+      const before = new Set((s.homebrew ?? []).map(h => h.id));
+      s.homebrew = sanitizeHomebrew(patch.homebrew, before);
+      registerHomebrew(s.homebrew);
+      const now = new Set(s.homebrew.map(h => h.id));
+      const gone = (id: string) => before.has(id) && !now.has(id);
+      s.characters = s.characters.filter(id => !gone(id));
+      s.script = s.script.filter(id => !gone(id));
+      // the Bootlegger tells everyone the script has homebrew characters
+      if (s.homebrew.length && !s.fabled.includes('bootlegger')) s.fabled = [...s.fabled, 'bootlegger'];
+    }
     if (patch.characters && !this.started) {
       const list = known(patch.characters, ch => !['traveller', 'fabled', 'loric'].includes(ch.type));
       if (list) s.characters = [...new Set(list)];

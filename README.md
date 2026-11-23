@@ -14,11 +14,11 @@ A browser-based, real-time, voice-first table for *Blood on the Clocktower*. It 
 
 ## Features
 
-- **Town:** lobby with public and private games, invite links, spectators; a 3D Town Square (or a 2D view) with eight buildings you can walk into, 3D interiors, customisable 3D figures, gestures, weather, a day/night cycle that follows the timers, death scenes, music and sound.
-- **Voice:** per-room voice (LiveKit), push-to-talk, per-person volume, room text chat, private whispers to the Storyteller.
+- **Town:** lobby with public and private games, invite links, spectators; a 3D Town Square (or a 2D view) with eight buildings you can walk into, 3D interiors, customisable 3D figures, gestures, weather, a day/night cycle that follows the timers, death scenes, music and sound, and a Low/Medium/High 3D quality setting for older devices.
+- **Voice and chat:** per-room voice (LiveKit), push-to-talk, per-person volume, room text chat, private whispers to the Storyteller, and a public lobby chat for finding players (games can advertise "looking for N players").
 - **Game:** server-enforced rules and hidden information, night waking, nominations with a 3D clock hand and raised hands, real and bluffed day abilities, Travellers, Fabled, house rules, MVP vote and an end-of-game story.
-- **Storyteller tools:** Grimoire, night helper with pre-worked-out information, reminder suggestions, kill warnings, undo, script builder (save, export, share), bots to fill seats, saved games that survive restarts, scheduled games with a countdown and calendar file.
-- **Learning:** a guided practice game (skippable), the Almanac with tips for every character, private notes on other players, and a personal game history with stats.
+- **Storyteller tools:** Grimoire, night helper with pre-worked-out information, reminder suggestions, kill warnings, undo, script builder (save, export, share), homebrew characters (announced by the Bootlegger), co-Storytellers and handing the role over, bots that claim, bluff, share info, nominate and vote, game backups you can download and restore, saved games that survive restarts, scheduled games with a countdown and calendar file.
+- **Learning:** a guided practice game (skippable), the Almanac with tips for every character, private notes on other players, and a personal game history with stats, plus a friends' leaderboard for signed-in players.
 
 ## Quick start (local, text chat only)
 

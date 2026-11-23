@@ -11,6 +11,7 @@ import type { GameView, StorytellerSelf, Settings, HouseRules, Timers } from '..
 import { HOUSE_RULE_INFO, MIN_PLAYERS, NUMERIC_HOUSE_RULES } from '../../../shared/types';
 import {
   CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, parseScript, ROOM_NAMES, ROOM_ICONS, type CharacterType,
+  NIGHT_SLOTS, HOMEBREW_TYPES, type Homebrew, type NightSlot,
 } from '../../../shared/characters';
 import { act } from '../net';
 import { Modal, TYPE_LABEL } from './Overlays';
@@ -532,9 +533,13 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
   const [allEditions, setAllEditions] = useState(settings.edition === 'custom');
   const save = (patch: Partial<Settings>) => act('st:settings', { settings: patch });
   const bag = settings.characters;
-  const pool = useMemo(() => CHARACTERS.filter(c => TYPES.includes(c.type) && (
-    settings.script.length && !allEditions ? settings.script.includes(c.id)
-      : allEditions || settings.edition === 'custom' || c.edition === settings.edition)), [allEditions, settings.edition, settings.script]);
+  const pool = useMemo(() => [
+    ...CHARACTERS.filter(c => TYPES.includes(c.type) && (
+      settings.script.length && !allEditions ? settings.script.includes(c.id)
+        : allEditions || settings.edition === 'custom' || c.edition === settings.edition)),
+    // homebrew characters are always available
+    ...(settings.homebrew ?? []).map(h => CHARACTER_BY_ID[h.id]).filter(Boolean),
+  ], [allEditions, settings.edition, settings.script, settings.homebrew]);
   const toggle = (id: string) => save({ characters: bag.includes(id) ? bag.filter(x => x !== id) : [...bag, id] });
   const counts = TYPES.map(t => bag.filter(id => CHARACTER_BY_ID[id]?.type === t).length);
   const modifiers = bag.map(id => CHARACTER_BY_ID[id]).filter(c => c?.setup);
@@ -580,6 +585,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
           );
         })}
       </section>
+      <HomebrewEditor settings={settings} locked={locked} save={save} />
       <section>
         <h3>Buildings (side rooms)</h3>
         <OpenBuildings view={view} settings={settings} />
@@ -668,6 +674,57 @@ function HandOverToPlayer({ view }: { view: GameView }) {
         </select>
         <button className="btn small" disabled={!to} onClick={() => { if (confirm(`Make ${name} the Storyteller? You take their seat.`)) void act('st:handOver', { toId: to }); }}>Hand over</button>
       </div>
+    </section>
+  );
+}
+
+/** The Storyteller's own characters. They join the bag like any other and the Bootlegger announces them. */
+function HomebrewEditor({ settings, locked, save }: { settings: Settings; locked: boolean; save: (p: Partial<Settings>) => unknown }) {
+  const list = settings.homebrew ?? [];
+  const blank: Homebrew = { id: '', name: '', type: 'townsfolk', ability: '', firstNight: null, otherNights: null, reminders: [] };
+  const [edit, setEdit] = useState<Homebrew | null>(null);
+  const [rem, setRem] = useState('');
+  const commit = () => {
+    if (!edit || !edit.name.trim()) return;
+    const next = edit.id ? list.map(h => (h.id === edit.id ? edit : h)) : [...list, edit];
+    void save({ homebrew: next });
+    setEdit(null);
+  };
+  const slotSel = (v: NightSlot, on: (s: NightSlot) => void, label: string) => (
+    <label className="field">{label}
+      <select value={v ?? ''} onChange={e => on((e.target.value || null) as NightSlot)}>
+        {NIGHT_SLOTS.map(s => <option key={s.id ?? 'none'} value={s.id ?? ''}>{s.label}</option>)}
+      </select></label>
+  );
+  return (
+    <section>
+      <h3>🧪 Homebrew characters</h3>
+      <p className="muted small">Make your own characters. They appear in the bag above, on the night order and in everyone's character list; the <b>Bootlegger</b> is added automatically so players know the script has homebrew. You resolve their abilities yourself, like any Storyteller-run character.</p>
+      {list.length > 0 && <ul className="homebrew-list">{list.map(h => (
+        <li key={h.id}><b>{h.name}</b> <span className={`muted small`}>({h.type})</span> <span className="small">{h.ability}</span>
+          {!locked && <> <button className="btn small ghost" onClick={() => setEdit({ ...h })}>Edit</button>
+            <button className="btn small ghost" onClick={() => { if (confirm(`Delete ${h.name}?`)) void save({ homebrew: list.filter(x => x.id !== h.id) }); }}>Delete</button></>}
+        </li>))}</ul>}
+      {!locked && !edit && list.length < 20 && <button className="btn small" onClick={() => setEdit({ ...blank })}>+ New homebrew character</button>}
+      {locked && <p className="muted small">Homebrew characters can be changed only before the game starts.</p>}
+      {edit && <div className="homebrew-form">
+        <div className="row">
+          <label className="field">Name<input value={edit.name} maxLength={30} onChange={e => setEdit({ ...edit, name: e.target.value })} placeholder="e.g. Lamplighter" autoFocus /></label>
+          <label className="field">Type<select value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value as Homebrew['type'] })}>
+            {HOMEBREW_TYPES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}</select></label>
+        </div>
+        <label className="field">Ability (what players read)<textarea value={edit.ability} maxLength={300} rows={3} onChange={e => setEdit({ ...edit, ability: e.target.value })} placeholder="Each night, choose a player: …" /></label>
+        <div className="row">
+          {slotSel(edit.firstNight, s => setEdit({ ...edit, firstNight: s }), 'First night')}
+          {slotSel(edit.otherNights, s => setEdit({ ...edit, otherNights: s }), 'Other nights')}
+        </div>
+        <div className="field">Reminder tokens
+          <div className="chips">{edit.reminders.map(r => <button key={r} className="chip" title="Remove" onClick={() => setEdit({ ...edit, reminders: edit.reminders.filter(x => x !== r) })}>{r} ✕</button>)}</div>
+          {edit.reminders.length < 6 && <form className="row" onSubmit={e => { e.preventDefault(); const t = rem.trim(); if (t && !edit.reminders.includes(t)) setEdit({ ...edit, reminders: [...edit.reminders, t] }); setRem(''); }}>
+            <input value={rem} maxLength={20} onChange={e => setRem(e.target.value)} placeholder="e.g. Lit" aria-label="New reminder" /><button className="btn small">Add</button></form>}
+        </div>
+        <div className="row end"><button className="btn small ghost" onClick={() => setEdit(null)}>Cancel</button><button className="btn small primary" disabled={!edit.name.trim()} onClick={commit}>{edit.id ? 'Save' : 'Add character'}</button></div>
+      </div>}
     </section>
   );
 }

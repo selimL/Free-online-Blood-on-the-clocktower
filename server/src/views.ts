@@ -1,6 +1,6 @@
 // Per-viewer redaction. The full Game object never leaves the server; every
 // client receives ONLY what its seat is allowed to know.
-import { CHARACTER_BY_ID, FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, NIGHT_PSEUDO } from '../../shared/characters';
+import { CHARACTER_BY_ID, NIGHT_PSEUDO, nightOrderWith } from '../../shared/characters';
 import type {
   GameView, PublicPlayer, SelfView, StorytellerSelf, EvilTeamView, NominationView, AbilityEventView, LobbyEntry,
 } from '../../shared/types';
@@ -153,6 +153,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     scheduledFor: g.scheduledFor ?? null,
     lookingFor: g.lookingFor ?? null,
+    homebrew: g.settings.homebrew ?? [],
     coStorytellers: (g.coStorytellers ?? []).map(c => ({ id: c.id, name: c.name, connected: c.connected })),
     dawnRecap: g.phase === 'day' ? g.dawnRecap ?? null : null,
     prompts: (g.prompts ?? []).filter(pr => isST || pr.public || (viewer && pr.playerIds.includes(viewer.id))).map(pr => ({
@@ -213,7 +214,7 @@ export function playerView(g: Game, p: Player): GameView {
 }
 
 export function nightOrder(g: Game) {
-  const order = g.night <= 1 ? FIRST_NIGHT_ORDER : OTHER_NIGHT_ORDER;
+  const order = nightOrderWith(g.night <= 1, g.settings.homebrew);
   const holders = (id: string) => g.players.filter(p => p.characterId === id || p.shownCharacterId === id).map(p => p.id);
   const evilInfo = evilInfoGiven(g);
   return order.flatMap(id => {

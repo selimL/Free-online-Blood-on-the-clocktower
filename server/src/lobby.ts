@@ -6,6 +6,7 @@ import { encode, decode, type GameStore } from './persist';
 import { addBot, botTick } from './bots';
 import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from './tutorial';
 import type { LobbyChatMsg } from '../../shared/types';
+import { unregisterHomebrew } from '../../shared/characters';
 
 const fail = (m: string): never => { throw new GameError(m); };
 
@@ -490,6 +491,7 @@ export class Lobby {
   }
   private removeGame(g: Game) {
     this.games.delete(g.id);
+    unregisterHomebrew(g.settings.homebrew); // its homebrew ids are free again (e.g. to restore a backup)
     this.sockets.delete(g.id);
     this.voice.dropGame(g);
     this.dirty.delete(g.id);
