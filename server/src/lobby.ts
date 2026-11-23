@@ -11,6 +11,7 @@ import { unregisterHomebrew } from '../../shared/characters';
 const fail = (m: string, vars?: Record<string, string | number>): never => { throw new GameError(m, vars); };
 
 export const BACKUP_KIND = 'clocktower-nights-backup';
+const TAKEOVER_MS = 2 * 60_000;
 const UNDO_WINDOW_MS = 10 * 60_000;
 /** Storyteller actions worth undoing, with a short label (null = not undoable). */
 function undoLabel(g: Game, type: string, d: any): string | null {
@@ -52,6 +53,8 @@ export class Lobby {
   private pending = new Set<string>();
 
   private dirty = new Set<string>();
+  /** When each game's lead Storyteller went offline (for the co-Storyteller takeover). */
+  private stOfflineSince = new Map<string, number>();
   /** The lobby chat: in memory only, the last 50 messages. */
   lobbyChat: LobbyChatMsg[] = [];
   private lobbyChatAt = new Map<string, number>(); // socket id → last message time
@@ -63,6 +66,7 @@ export class Lobby {
     setInterval(() => {
       for (const g of this.games.values()) {
         g.tick();
+        this.checkTakeover(g);
         try { if (g.tutorial) tutorialTick(g); else botTick(g); } catch (e) { console.warn('[bots]', (e as Error).message); }
       }
     }, 250);
@@ -253,6 +257,7 @@ export class Lobby {
       if (!g.storyteller.connected && g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
     } else if (id === 'st') {
       g.storyteller.connected = false;
+      if (!g.tutorial) this.stOfflineSince.set(g.id, Date.now());
       // a connected co-Storyteller keeps the game running
       if (!g.coStorytellers.some(c => c.connected) && g.started && g.phase !== 'ended' && !g.paused) { g.pausedBySTDisconnect = true; g.setPaused(true); }
     } else if (id.startsWith('spec:')) {
@@ -324,6 +329,7 @@ export class Lobby {
   private spectatorAction(socket: Socket, g: Game, id: string, type: string, d: any) {
     const sp = g.spectators.find(x => x.id === id) ?? fail('You are not watching this game.');
     if (type === 'takeSeat') {
+      if (g.started && g.settings.houseRules.spectatorGrimoireDelay) fail('Spectators can see the Grimoire in this game, so they cannot take a seat once it has started.');
       const p = g.join(d.name ?? sp!.name, d.avatar ?? sp!.avatar, { listeningConsent: !!d.listeningConsent }); // fails if full, Travellers not allowed, or no consent
       g.removeSpectator(sp!.id);
       this.bind(socket, g, p.id);
@@ -371,6 +377,25 @@ export class Lobby {
     }
   }
 
+  /**
+   * If the lead Storyteller has been offline for 2 minutes and a co-Storyteller is here,
+   * the co-Storyteller takes over (the old lead becomes a co-Storyteller when they return).
+   */
+  private checkTakeover(g: Game, now = Date.now()) {
+    const since = this.stOfflineSince.get(g.id);
+    if (since === undefined) return;
+    if (g.storyteller.connected || g.phase === 'ended') { this.stOfflineSince.delete(g.id); return; }
+    if (now - since < TAKEOVER_MS) return;
+    const co = g.coStorytellers.find(c => c.connected);
+    if (!co) return; // nobody to take over yet: keep waiting
+    this.stOfflineSince.delete(g.id);
+    const oldName = g.storyteller.name;
+    this.handOver(g, co.id);
+    g.addLog(g.t('{old} was offline for 2 minutes, so {name} took over as the lead Storyteller.', { old: oldName, name: g.storyteller.name }));
+    g.emit(['st', ...g.coStorytellers.map(c => c.id)], 'alert', { text: g.t('{old} was offline for 2 minutes, so {name} took over as the lead Storyteller.', { old: oldName, name: g.storyteller.name }), kind: 'info' });
+    if (g.paused && g.pausedBySTDisconnect) { g.pausedBySTDisconnect = false; g.setPaused(false); }
+    g.changed();
+  }
   /** Swap who is the Storyteller, and move the live connections with the people. */
   private handOver(g: Game, toId: string) {
     const newId = g.handOver(toId);

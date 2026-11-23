@@ -7,6 +7,7 @@ import { Server, type Socket } from 'socket.io';
 import { Lobby } from './lobby';
 import { VoiceManager, loadRegions } from './voice';
 import { GameError } from './game';
+import { Gallery } from './gallery';
 import { translate } from '../../shared/i18n';
 import { createStore, createKV } from './persist';
 import { Accounts } from './accounts';
@@ -32,9 +33,12 @@ const io = new Server(http, { cors: { origin: process.env.CORS_ORIGIN?.split(','
 const voice = new VoiceManager(loadRegions(), (gameId, id, event, payload) => lobby.sendTo(gameId, [id], event, payload));
 const lobby = new Lobby(io, voice, createStore(process.env, path.resolve(__dirname, '../../.data')));
 
-const accounts = new Accounts(createKV(process.env, path.resolve(__dirname, '../../.data')));
+const kv = createKV(process.env, path.resolve(__dirname, '../../.data'));
+const accounts = new Accounts(kv);
 accounts.routes(app);
-adminRoutes(app, lobby, accounts);
+const gallery = new Gallery(kv, accounts);
+gallery.routes(app);
+adminRoutes(app, lobby, accounts, process.env, gallery);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, games: lobby.games.size, voice: voice.enabled }));
 // Region list for client-side RTT probing (URLs only, never secrets).

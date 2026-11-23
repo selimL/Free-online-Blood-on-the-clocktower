@@ -1,5 +1,6 @@
 // Build a custom script from any edition's characters, save it, export it, and share it.
 import { useMemo, useState } from 'react';
+import { api, useAccount } from '../account';
 import { CHARACTERS, CHARACTER_BY_ID, EDITION_NAMES, EDITION_SHORT, parseScript } from '../../../shared/characters';
 import { Modal, TYPE_LABEL } from './Overlays';
 import { pushAlert } from '../net';
@@ -11,6 +12,7 @@ const TYPES = ['townsfolk', 'outsider', 'minion', 'demon', 'traveller'] as const
 const TYPICAL: Record<string, string> = { townsfolk: '13', outsider: '4', minion: '4', demon: '4', traveller: 'optional' };
 
 export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<SavedScript>; onClose: () => void; onUse?: (s: SavedScript) => void }) {
+  const { account } = useAccount();
   const [id] = useState(initial?.id ?? newScriptId());
   const [name, setName] = useState(initial?.name ?? '');
   const [author, setAuthor] = useState(initial?.author ?? '');
@@ -39,6 +41,12 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
     const link = shareLink(script);
     try { await navigator.clipboard.writeText(link); pushAlert('Share link copied. Anyone who opens it can save this script.', 'info'); }
     catch { prompt('Copy this link:', link); }
+  };
+  const publish = async () => {
+    if (!account) return pushAlert('Sign in (top right of the lobby) to publish scripts in the gallery.', 'error');
+    if (!confirm(`Publish “${script.name}” to the public script gallery? Everyone can see, save and vote on it. You can remove it later.`)) return;
+    const r = await api('/api/gallery', 'POST', { name: script.name, author: script.author, ids: script.ids });
+    pushAlert(r.ok ? `“${script.name}” is in the gallery.` : r.error ?? 'Could not publish.', r.ok ? 'info' : 'error');
   };
   const importJson = () => {
     try {
@@ -87,6 +95,7 @@ export function ScriptBuilder({ initial, onClose, onUse }: { initial?: Partial<S
         <button className="btn ghost" onClick={() => setIds([])} disabled={!ids.length}>Clear</button>
         <button className="btn ghost" onClick={download} disabled={!ids.length}>⬇ Export JSON</button>
         <button className="btn ghost" onClick={share} disabled={!ids.length}>🔗 Copy share link</button>
+        <button className="btn ghost" onClick={() => void publish()} disabled={problems.length > 0} title={account ? 'Share this script in the public gallery' : 'Sign in to publish'}>🌍 Publish</button>
         <button className="btn" onClick={save} disabled={!ids.length}>💾 Save to My scripts</button>
         {onUse && <button className="btn primary" disabled={problems.length > 0} onClick={() => { saveScript(script); onUse(script); onClose(); }}>Use in this game</button>}
       </div>

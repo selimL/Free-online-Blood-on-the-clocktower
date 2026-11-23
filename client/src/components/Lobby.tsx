@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { rpc, saveSession, set, pushAlert } from '../net';
 import type { LobbyEntry, LobbyChatMsg, Avatar } from '../../../shared/types';
-import { useAccount, fetchLeaderboard, setHideFromFriends, type FriendRow } from '../account';
+import { useAccount, fetchLeaderboard, setHideFromFriends, api, type FriendRow } from '../account';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
@@ -22,6 +22,7 @@ export function Lobby() {
   const [practice, setPractice] = useState(false);
   const [builder, setBuilder] = useState<Partial<SavedScript> | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
   // a shared script link (/?script=…): offer to save it
   useEffect(() => {
     const v = new URLSearchParams(location.search).get('script');
@@ -83,6 +84,7 @@ export function Lobby() {
           <p className="muted">Whoever creates the game is its Storyteller.</p>
           <div className="row"><button className="btn primary" onClick={() => setCreating(true)}>Create game</button>
             <button className="btn ghost" onClick={() => setBuilder({})}>📜 Script builder</button>
+            <button className="btn ghost" onClick={() => setShowGallery(true)}>🌍 Script gallery</button>
             <RestoreButton /></div>
           <hr />
           <h2>New to the game?</h2>
@@ -96,6 +98,7 @@ export function Lobby() {
       {practice && <PracticeDialog onClose={() => setPractice(false)} />}
       {builder && <ScriptBuilder initial={builder} onClose={() => setBuilder(null)} />}
       {showHistory && <HistoryDialog onClose={() => setShowHistory(false)} />}
+      {showGallery && <GalleryDialog onClose={() => setShowGallery(false)} onOpen={s => { setShowGallery(false); setBuilder(s); }} />}
       <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play. <LegalLinks /></footer>
     </div>
     </div>
@@ -211,6 +214,54 @@ function LobbyChat({ chat, onChat }: { chat: LobbyChatMsg[]; onChat: (c: LobbyCh
         <button className="btn small" disabled={!name.trim() || !text.trim()}>Send</button>
       </form>
       <p className="muted small">Public and not saved: it disappears after 50 messages or a server restart. Be kind (<a href="/terms">Terms</a>).</p>
+    </div>
+  );
+}
+
+type GalleryItem = { id: string; name: string; author: string; ids: string[]; createdAt: number; votes: number; voted: boolean; mine: boolean };
+/** Scripts other Storytellers published: browse, save to My scripts, upvote. */
+function GalleryDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (s: SavedScript) => void }) {
+  const { account } = useAccount();
+  const [items, setItems] = useState<GalleryItem[] | null>(null);
+  const [q, setQ] = useState('');
+  const load = () => void api('/api/gallery').then(r => setItems(r.ok ? r.scripts : []));
+  useEffect(load, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toSaved = (g: GalleryItem): SavedScript => ({ id: newScriptId(), name: g.name, author: g.author, ids: g.ids, updated: Date.now() });
+  const vote = async (g: GalleryItem) => {
+    if (!account) return pushAlert('Sign in to vote.', 'error');
+    const r = await api(`/api/gallery/${g.id}/vote`, 'POST', { up: !g.voted });
+    if (r.ok) setItems(list => list && list.map(x => (x.id === g.id ? r.script : x)));
+  };
+  const remove = async (g: GalleryItem) => {
+    if (!confirm(`Remove “${g.name}” from the gallery?`)) return;
+    const r = await api(`/api/gallery/${g.id}`, 'DELETE');
+    if (r.ok) load(); else pushAlert(r.error ?? 'Could not remove it.', 'error');
+  };
+  const typeCount = (g: GalleryItem, t: string) => g.ids.filter(id => CHARACTER_BY_ID[id]?.type === t).length;
+  const shown = (items ?? []).filter(g => !q.trim() || `${g.name} ${g.author} ${g.ids.map(id => CHARACTER_BY_ID[id]?.name).join(' ')}`.toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal parchment wide" role="dialog" aria-label="Script gallery" onClick={e => e.stopPropagation()}>
+        <div className="modal-head"><h2>🌍 Script gallery</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>✕</button></div>
+        <p className="muted small">Scripts shared by other Storytellers. Save one to <b>My scripts</b> to use it when you create a game. To share your own, open the 📜 Script builder and press <b>🌍 Publish</b>{account ? '' : ' (sign in first)'}.</p>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name, author or character" aria-label="Search the gallery" />
+        {!items ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">{items.length ? 'Nothing matches.' : 'No scripts yet. Be the first to publish one!'}</p> :
+          <ul className="gallery-list">{shown.map(g => (
+            <li key={g.id}>
+              <button className={`vote-btn ${g.voted ? 'on' : ''}`} onClick={() => void vote(g)} title={account ? (g.voted ? 'Remove your vote' : 'Upvote') : 'Sign in to vote'} aria-pressed={g.voted}>▲ {g.votes}</button>
+              <div className="gallery-main">
+                <b>{g.name}</b> <span className="muted small">by {g.author} · {new Date(g.createdAt).toLocaleDateString()}</span>
+                <div className="small muted">{g.ids.length} characters · {typeCount(g, 'townsfolk')} Townsfolk, {typeCount(g, 'outsider')} Outsiders, {typeCount(g, 'minion')} Minions, {typeCount(g, 'demon')} Demons</div>
+                <div className="small gallery-chars">{g.ids.map(id => CHARACTER_BY_ID[id]?.name).filter(Boolean).join(', ')}</div>
+              </div>
+              <div className="gallery-actions">
+                <button className="btn small" onClick={() => { saveScript(toSaved(g)); pushAlert(`“${g.name}” was added to My scripts.`, 'info'); }}>💾 Save</button>
+                <button className="btn small ghost" onClick={() => onOpen(toSaved(g))}>Open</button>
+                {(g.mine || account?.isAdmin) && <button className="btn small ghost danger" onClick={() => void remove(g)}>Remove</button>}
+              </div>
+            </li>))}
+          </ul>}
+      </div>
     </div>
   );
 }

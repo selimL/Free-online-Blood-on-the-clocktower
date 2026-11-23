@@ -232,6 +232,7 @@ export function GameScreen({ view }: { view: GameView }) {
       <footer className="bottom-bar">
         <div className="bl">
           {spectating && <SpectatorBar view={view} />}
+          {spectating && <DelayedGrimoire view={view} />}
           {!isST && !spectating && view.phase !== 'lobby' && <>
             <button className="btn" onClick={() => setModal('claim')} disabled={view.phase !== 'day'}>{tr("🎭 Claim Ability")}</button>
             <button className="btn ghost" onClick={() => setModal('label')}>{tr("🏷 Set claimed character")}</button>
@@ -467,7 +468,7 @@ function Replay({ view }: { view: GameView }) {
 
 function SpectatorBar({ view }: { view: GameView }) {
   const seats = view.players.length;
-  const canSit = view.phase === 'lobby' ? seats < 10 : view.phase !== 'ended' && view.houseRules.allowTravellers && seats < 10;
+  const canSit = view.phase === 'lobby' ? seats < 10 : view.phase !== 'ended' && view.houseRules.allowTravellers && !view.houseRules.spectatorGrimoireDelay && seats < 10;
   const takeSeat = async () => {
     let name = '', avatar: unknown;
     try { name = localStorage.getItem('botc:name') ?? ''; avatar = JSON.parse(localStorage.getItem('botc:avatar') ?? 'null'); } catch { /* ignore */ }
@@ -507,6 +508,28 @@ function AlertSettings() {
         <button type="button" className="btn small ghost" onClick={() => narrate(tr('Dawn breaks on day {n}. The town gathers in the square.', { n: 1 }))}>{tr("Test the narrator")}</button>
       </>}
     </fieldset>
+  );
+}
+
+/** Spectators, when the Storyteller allows it: the Grimoire as it was a few minutes ago. */
+export function DelayedGrimoire({ view }: { view: GameView }) {
+  const g = view.delayedGrimoire;
+  const [open, setOpen] = useState(false);
+  if (!g) return null;
+  const mins = g.asOf ? Math.max(0, Math.round((Date.now() - g.asOf) / 60000)) : null;
+  return (
+    <section className="delayed-grim">
+      <button className="btn small ghost" onClick={() => setOpen(o => !o)} aria-expanded={open}>🕰 {tr("Grimoire ({n} min delay)", { n: g.delayMin })}</button>
+      {open && (g.asOf === null
+        ? <p className="muted small">{tr("The Grimoire appears here {n} minutes after the game starts.", { n: g.delayMin })}</p>
+        : <>
+          <p className="muted small">{tr("As it was {n} minutes ago. Please don't tell the players!", { n: mins ?? 0 })}</p>
+          <ul>{g.seats.map(s => <li key={s.id} className={s.alignment}>
+            {s.alive ? '' : '👻 '}<b>{s.name}</b>: {s.characterId ? CHARACTER_BY_ID[s.characterId]?.name ?? s.characterId : '—'} <span className={`align ${s.alignment}`}>({tr(s.alignment)})</span>
+            {s.reminders.length > 0 && <span className="muted small"> · {s.reminders.map(r => tr(r)).join(', ')}</span>}
+          </li>)}</ul>
+        </>)}
+    </section>
   );
 }
 

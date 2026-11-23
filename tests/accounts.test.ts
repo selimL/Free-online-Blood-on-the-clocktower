@@ -93,3 +93,23 @@ describe('admin accounts', () => {
     expect((await call('/api/admin/games', 'GET', undefined, a.token)).status).toBe(401);
   });
 });
+
+import { Gallery } from '../server/src/gallery';
+describe('script gallery', () => {
+  it('publishes valid scripts, counts votes once per account, and lets only the author or an admin remove', async () => {
+    const kv = new FileKV(fs.mkdtempSync(path.join(os.tmpdir(), 'botc-gal-')));
+    const accounts = new Accounts(kv, {});
+    const g = new Gallery(kv, accounts);
+    const ids = ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'poisoner', 'imp', 'nonsense'];
+    await expect(g.publish('a1', 'Ann', { name: 'No demon', ids: ['washerwoman', 'librarian', 'chef', 'empath', 'monk'] })).rejects.toThrow(/Demon/);
+    const s = await g.publish('a1', 'Ann', { name: 'Tiny TB', ids });
+    expect(s.ids).not.toContain('nonsense');
+    await expect(g.publish('a1', 'Ann', { name: 'tiny tb', ids })).rejects.toThrow(/already/);
+    await g.vote(s.id, 'b2', true); await g.vote(s.id, 'b2', true); await g.vote(s.id, 'c3', true);
+    expect((await g.get(s.id))!.votes.length).toBe(2);
+    await g.vote(s.id, 'b2', false);
+    expect((await g.get(s.id))!.votes).toEqual(['c3']);
+    await g.remove(s.id);
+    expect(await g.list()).toEqual([]);
+  });
+});

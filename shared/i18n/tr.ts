@@ -1396,4 +1396,13 @@ export const TR: Record<string, string> = {
   "Jinxes": "Uğursuzluklar",
   "Allow pop-ups to open the cheat sheet.": "Kopya kâğıdını açmak için açılır pencerelere izin verin.",
   "🖨 Cheat sheet": "🖨 Kopya kâğıdı",
+  "Spectators see the Grimoire (minutes late)": "İzleyiciler Grimuar'ı görür (dakika gecikmeyle)",
+  "For streamed or watched games: spectators see every character, alignment and reminder, delayed by this many minutes so they cannot help the players live. Spectators can no longer take a seat once the game has started.": "Yayınlanan ya da izlenen oyunlar için: izleyiciler her karakteri, tarafı ve hatırlatıcıyı bu kadar dakika gecikmeyle görür, böylece oyunculara canlı yardım edemezler. Oyun başladıktan sonra izleyiciler koltuğa oturamaz.",
+  "Spectators see the Grimoire {n} minutes late, and cannot join once the game has started.": "İzleyiciler Grimuar'ı {n} dakika gecikmeyle görür ve oyun başladıktan sonra katılamaz.",
+  "Spectators can see the Grimoire in this game, so they cannot take a seat once it has started.": "Bu oyunda izleyiciler Grimuar'ı görebiliyor, bu yüzden oyun başladıktan sonra koltuğa oturamazlar.",
+  "Grimoire ({n} min delay)": "Grimuar ({n} dk gecikmeli)",
+  "The Grimoire appears here {n} minutes after the game starts.": "Grimuar, oyun başladıktan {n} dakika sonra burada görünür.",
+  "As it was {n} minutes ago. Please don't tell the players!": "{n} dakika önceki hâli. Lütfen oyunculara söylemeyin!",
+  "{old} was offline for 2 minutes, so {name} took over as the lead Storyteller.": "{old} 2 dakikadır çevrimdışıydı, bu yüzden baş Anlatıcı rolünü {name} devraldı.",
+  "If the lead Storyteller is offline for 2 minutes, a connected co-Storyteller automatically takes over.": "Baş Anlatıcı 2 dakika çevrimdışı kalırsa bağlı bir yardımcı Anlatıcı otomatik olarak devralır.",
 };

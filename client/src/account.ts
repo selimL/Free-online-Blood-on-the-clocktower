@@ -15,7 +15,7 @@ const listeners = new Set<() => void>();
 const set = (p: Partial<State>) => { state = { ...state, ...p }; listeners.forEach(l => l()); };
 export const useAccount = () => useSyncExternalStore(cb => { listeners.add(cb); return () => listeners.delete(cb); }, () => state);
 
-async function api(path: string, method = 'GET', body?: unknown) {
+export async function api(path: string, method = 'GET', body?: unknown) {
   const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({ ok: false, error: 'Server error.' }));
   return { status: r.status, ...j } as { status: number; ok: boolean; error?: string; [k: string]: any };

@@ -173,3 +173,45 @@ describe('smarter bots', () => {
     }
   });
 });
+
+import { vi } from 'vitest';
+import { spectatorView } from '../server/src/views';
+import { Lobby } from '../server/src/lobby';
+describe('round 5', () => {
+  it('spectators see the Grimoire only after the delay', () => {
+    const g = game();
+    g.updateSettings({ houseRules: { ...g.settings.houseRules, spectatorGrimoireDelay: 5 } });
+    const sp = g.addSpectator('Watcher', undefined);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'poisoner', 'imp'] });
+    g.deal(); g.reveal();
+    const t0 = Date.now();
+    g.snapGrimoire(t0 - 6 * 60_000); // pretend the first snapshot was taken 6 minutes ago
+    g.snapGrimoire(t0);
+    const v = spectatorView(g, sp);
+    expect(v.delayedGrimoire?.asOf).toBe(t0 - 6 * 60_000);
+    expect(v.delayedGrimoire?.seats.map(s => s.characterId).sort()).toEqual(['chef', 'empath', 'imp', 'monk', 'poisoner', 'washerwoman']);
+    // players never get it
+    expect(playerView(g, g.players[0]).delayedGrimoire).toBeUndefined();
+  });
+  it('a connected co-Storyteller takes over after the lead has been offline for 2 minutes', () => {
+    vi.useFakeTimers();
+    try {
+      const io = { on() {}, to() { return { emit() {} }; } } as never;
+      const voice = { resync() {}, reconcile: async () => {}, enabled: false, regions: [] } as never;
+      const lobby = new Lobby(io, voice);
+      const g = game();
+      lobby.games.set(g.id, g);
+      (lobby as unknown as { wire(g: unknown): void }).wire(g);
+      const co = g.addCoStoryteller('Helper');
+      co.connected = true;
+      g.storyteller.connected = true;
+      const L = lobby as unknown as { markDisconnected(g: unknown, id: string): void; checkTakeover(g: unknown, now: number): void };
+      L.markDisconnected(g, 'st');
+      L.checkTakeover(g, Date.now() + 60_000);
+      expect(g.storyteller.name).toBe('ST');
+      L.checkTakeover(g, Date.now() + 2 * 60_000 + 1);
+      expect(g.storyteller.name).toBe('Helper');
+      expect(g.coStorytellers[0].name).toBe('ST');
+    } finally { vi.useRealTimers(); }
+  });
+});

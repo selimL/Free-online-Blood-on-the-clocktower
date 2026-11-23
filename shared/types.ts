@@ -36,6 +36,8 @@ export interface HouseRules {
   allowCharacterReveal: boolean;
   allowTravellers: boolean;
   privateRoomCapMinutes: number | null;
+  /** Spectators see the Grimoire this many minutes late (null: never). */
+  spectatorGrimoireDelay: number | null;
   timersAutoAdvance: boolean;
   anonymousVotes: boolean;
   autoMuteDuringSpeeches: boolean;
@@ -62,6 +64,7 @@ export interface HouseRules {
 /** House rules that hold a number (null = off) rather than a boolean. */
 export const NUMERIC_HOUSE_RULES: Record<string, { default: number; min: number; max: number; unit: string }> = {
   privateRoomCapMinutes: { default: 5, min: 1, max: 60, unit: 'min' },
+  spectatorGrimoireDelay: { default: 10, min: 2, max: 60, unit: 'min' },
   maxWhispersPerDay: { default: 3, min: 1, max: 30, unit: 'visits' },
   roomCapOverride: { default: 2, min: 1, max: 10, unit: 'players' },
   abilityDeclarationLimit: { default: 3, min: 1, max: 20, unit: 'per day' },
@@ -73,6 +76,7 @@ export const HOUSE_RULE_INFO: Record<keyof HouseRules, { label: string; help: st
   allowCharacterReveal: { label: 'Allow character reveals', help: 'Players may show their (believed) character card to another player. Normally forbidden.', source: 'Official rule forbids; casual variant' },
   allowTravellers: { label: 'Allow Travellers mid-game', help: 'New arrivals after the start join as Travellers (the Storyteller assigns the character).', source: 'Official Travellers rules' },
   privateRoomCapMinutes: { label: 'Private-room time cap per day (minutes)', help: 'Each player may spend at most this long in side rooms each day.', source: 'Community (online pacing)' },
+  spectatorGrimoireDelay: { label: 'Spectators see the Grimoire (minutes late)', help: 'For streamed or watched games: spectators see every character, alignment and reminder, delayed by this many minutes so they cannot help the players live. Spectators can no longer take a seat once the game has started.', source: 'Community (streamed games)' },
   timersAutoAdvance: { label: 'Timers auto-advance', help: 'When a timer runs out, the game moves on automatically. Off = timers are advisory; the Storyteller controls the day.', source: 'Community (online servers)' },
   anonymousVotes: { label: 'Anonymous votes', help: 'Only vote totals are shown, not who raised their hand.', source: 'Variant (cf. Organ Grinder)' },
   autoMuteDuringSpeeches: { label: 'Auto-mute during accusation/defence', help: 'Only the speaker (and the Storyteller) can talk during speeches.', source: 'Community etiquette' },
@@ -152,7 +156,7 @@ export const defaultSettings = (): Settings => ({
   timers: { discussion: 120, privateRooms: 300, nominations: 120, accusation: 60, defense: 60, question: 120, voteSeconds: 3, speedRound: 20 },
   houseRules: {
     ghostsInPrivateRooms: true, privateRoomsDuringNominations: false, allowCharacterReveal: false,
-    allowTravellers: true, privateRoomCapMinutes: null, timersAutoAdvance: true, anonymousVotes: false,
+    allowTravellers: true, privateRoomCapMinutes: null, spectatorGrimoireDelay: null, timersAutoAdvance: true, anonymousVotes: false,
     autoMuteDuringSpeeches: false, evilInfoSmallGames: false, announceCauseOfDeath: false, revealOnDeath: false,
     maxWhispersPerDay: null, roomCapOverride: null, speedRound: false, openVoteRecord: false, grimoireRevealAtEnd: false,
     beginnerMode: false, noOaths: false, noScreenshots: false, travellersCantBeChanged: false, abilityDeclarationLimit: null,
@@ -321,6 +325,8 @@ export interface GameView {
   scheduledFor: number | null;
   /** The lobby advert (Storyteller's "looking for players"), or null. */
   lookingFor: { count: number; note: string } | null;
+  /** Spectators only, with the house rule on: the Grimoire as it was a few minutes ago. */
+  delayedGrimoire?: { asOf: number | null; delayMin: number; seats: { id: string; name: string; characterId: string | null; alignment: 'good' | 'evil'; alive: boolean; reminders: string[] }[] } | null;
   /** The Storyteller's homebrew characters (public, like the script). */
   homebrew: Homebrew[];
   /** The language the game is played in. */

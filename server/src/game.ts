@@ -1186,7 +1186,17 @@ export class Game {
   }
 
   /** Called ~4×/second by the server. */
+  /** Grimoire snapshots for the delayed spectator Grimoire (every 30 s, kept for an hour). */
+  grimoireSnaps: { ts: number; seats: { id: string; name: string; characterId: string | null; alignment: Alignment; alive: boolean; reminders: string[] }[] }[] = [];
+  snapGrimoire(now = Date.now()) {
+    if (!this.settings.houseRules.spectatorGrimoireDelay || !this.started || this.phase === 'ended') return;
+    const last = this.grimoireSnaps.at(-1);
+    if (last && now - last.ts < 30_000) return;
+    this.grimoireSnaps.push({ ts: now, seats: this.players.map(p => ({ id: p.id, name: p.name, characterId: p.characterId, alignment: p.alignment, alive: p.alive, reminders: [...p.reminders] })) });
+    while (this.grimoireSnaps.length && now - this.grimoireSnaps[0].ts > 61 * 60_000) this.grimoireSnaps.shift();
+  }
   tick(now = Date.now()) {
+    this.snapGrimoire(now);
     let dirty = false;
     for (const p of this.players) {
       if (p.joining && now >= p.joinReadyAt) { p.joining = false; dirty = true; }

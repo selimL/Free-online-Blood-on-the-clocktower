@@ -106,6 +106,7 @@ function tableRules(g: Game): string[] {
   if (h.privateRoomCapMinutes) out.push(g.t('Each player may spend at most {privateRoomCapMinutes} minutes in side rooms per day.', { privateRoomCapMinutes: h.privateRoomCapMinutes }));
   if (h.abilityDeclarationLimit) out.push(g.t('At most {abilityDeclarationLimit} public ability declarations per day.', { abilityDeclarationLimit: h.abilityDeclarationLimit }));
   if (g.transcriptActive()) out.push(g.t('Word listening: for players who agreed, speech is checked for the secret words and claims some characters need. Only detections are kept (who, when, where), never what was said, and only the Storyteller sees them. Everyone agreed before the game started; answers are locked.'));
+  if (h.spectatorGrimoireDelay) out.push(g.t('Spectators see the Grimoire {n} minutes late, and cannot join once the game has started.', { n: h.spectatorGrimoireDelay }));
   if (h.travellersCantBeChanged) out.push(g.t('Travellers can\'t be changed by character-changing abilities.'));
   // timer lengths, so everyone knows how long each part of the day lasts
   const t = g.settings.timers;
@@ -182,6 +183,12 @@ export function spectatorView(g: Game, s: Spectator): GameView {
   };
   const view = { ...baseView(g, null, null, false), self } as GameView;
   if (g.phase === 'night') view.announcements = view.announcements.filter(a => a.ts <= g.lastNightStart);
+  const delay = g.settings.houseRules.spectatorGrimoireDelay;
+  if (delay && g.started && g.phase !== 'ended') {
+    const cutoff = Date.now() - delay * 60_000;
+    const snap = [...(g.grimoireSnaps ?? [])].reverse().find(s => s.ts <= cutoff) ?? null;
+    view.delayedGrimoire = { asOf: snap?.ts ?? null, delayMin: delay, seats: snap?.seats ?? [] };
+  }
   return view;
 }
 

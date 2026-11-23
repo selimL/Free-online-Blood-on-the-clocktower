@@ -18,6 +18,7 @@ export function AdminPage() {
   const [accts, setAccts] = useState<Acct[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [chat, setChat] = useState<{ id: string; name: string; text: string; ts: number }[]>([]);
+  const [gallery, setGallery] = useState<{ id: string; name: string; author: string; owner: string; votes: number; count: number; createdAt: number }[]>([]);
   const call = async (path: string, method = 'GET', body?: unknown) => {
     const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
     const j = await r.json().catch(() => ({ ok: false, error: 'Server error' }));
@@ -28,6 +29,7 @@ export function AdminPage() {
     const g = await call('/api/admin/games'); if (g.ok) setGames(g.games);
     const a = await call('/api/admin/accounts'); if (a.ok) setAccts(a.accounts);
     const c = await call('/api/admin/lobby-chat'); if (c.ok) setChat(c.chat);
+    const gl = await call('/api/admin/gallery'); if (gl.ok) setGallery(gl.scripts);
   };
   useEffect(() => { void fetch('/api/admin/enabled').then(r => r.json()).then(j => setEnabled(j.enabled)); }, []);
   useEffect(() => { if (!token) return; void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -65,6 +67,9 @@ export function AdminPage() {
       <h3>Lobby chat ({chat.length}) {chat.length > 0 && <button className="btn small danger ghost" onClick={async () => { if (confirm('Clear the whole lobby chat?')) { await call('/api/admin/lobby-chat/clear', 'POST', {}); void load(); } }}>Clear all</button>}</h3>
       <ul className="small admin-chat">{chat.map(m => <li key={m.id}><span className="muted">{new Date(m.ts).toLocaleTimeString()}</span> <b>{m.name}</b>: {m.text} <button className="btn small ghost" onClick={async () => { await call('/api/admin/lobby-chat/clear', 'POST', { id: m.id }); void load(); }}>Remove</button></li>)}
         {chat.length === 0 && <li className="muted">No messages.</li>}</ul>
+      <h3>Script gallery ({gallery.length})</h3>
+      <ul className="small admin-chat">{gallery.map(s => <li key={s.id}><b>{s.name}</b> by {s.author} <span className="muted">(account: {s.owner} · {s.count} characters · ▲ {s.votes} · {new Date(s.createdAt).toLocaleDateString()})</span> <button className="btn small ghost" onClick={async () => { if (confirm(`Remove “${s.name}” from the gallery?`)) { await call(`/api/admin/gallery/${s.id}`, 'DELETE'); void load(); } }}>Remove</button></li>)}
+        {gallery.length === 0 && <li className="muted">No published scripts.</li>}</ul>
       <h3>Accounts ({accts.length})</h3>
       <table className="games admin-table"><thead><tr><th>Name</th><th>Sign-in</th><th>Created</th><th>Games</th><th /></tr></thead><tbody>
         {accts.map(a => (

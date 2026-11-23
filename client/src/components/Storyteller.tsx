@@ -658,7 +658,7 @@ function CoStorytellers({ view }: { view: GameView }) {
   return (
     <section>
       <h3>{tr("🎩 Co-Storytellers")}</h3>
-      <p className="muted small">{tr("A co-Storyteller sees the whole Grimoire and can do everything you can (wake players, send info, run votes). They are always with you in your current room, and the game keeps running if one of you drops out.")}</p>
+      <p className="muted small">{tr("A co-Storyteller sees the whole Grimoire and can do everything you can (wake players, send info, run votes). They are always with you in your current room, and the game keeps running if one of you drops out.")} {tr("If the lead Storyteller is offline for 2 minutes, a connected co-Storyteller automatically takes over.")}</p>
       {view.coStorytellers.length > 0 && <ul className="small">{view.coStorytellers.map(c => <li key={c.id}>{c.connected ? '🟢' : '⚪'} {c.name} {view.self.id === 'st' && <button className="btn small" onClick={() => { if (confirm(tr("Make {c} the lead Storyteller? You become a co-Storyteller.", { c: c.name }))) void act('st:handOver', { toId: c.id }); }}>{tr("👑 Hand over")}</button>} <button className="btn small ghost" onClick={() => { if (confirm(tr("Remove {c} as co-Storyteller?", { c: c.name }))) void act('st:removeCo', { id: c.id }); }}>{tr("Remove")}</button></li>)}</ul>}
       {view.coStorytellers.length < 2 && <div className="row"><input value={name} onChange={e => setName(e.target.value)} placeholder={tr("Their name")} maxLength={24} />
         <button className="btn small" disabled={!name.trim()} onClick={invite}>{tr("Invite")}</button></div>}

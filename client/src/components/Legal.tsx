@@ -52,6 +52,7 @@ export function PrivacyPage() {
         <li><b>Voice audio.</b> Voice and video are live only and are never recorded.</li>
         <li><b>Room chat.</b> Messages are delivered to the people in the room and not kept; there is no chat history.</li>
         <li><b>Lobby chat history.</b> The public lobby chat keeps only the last 50 messages (name, text, time) in the server's memory; they vanish on a restart and are never saved to the database. Anyone visiting the lobby can read them, and the site owner can remove them.</li>
+        <li><b>The narrator.</b> Spoken dusk and dawn lines are made by your own browser's built-in voice; nothing is sent to the site.</li>
         <li><b>Speech transcripts.</b> With word listening, your browser turns speech into text, the server checks it for the secret words and immediately throws it away.</li>
         <li>Payment details: the site is free and never asks for them.</li>
       </ul>
@@ -81,6 +82,8 @@ export function PrivacyPage() {
       <ul>
         <li><b>Everyone in a game</b> sees names, figures, who is alive, public votes and announcements, and anything said in their own room.</li>
         <li><b>Only the Storyteller</b> (and any co-Storyteller they invite) sees the Grimoire (everyone's character), the whispers sent to them, and the word-listening detections. <b>Other players never see these</b>, until the end-of-game story reveals the characters and the event log to everyone.</li>
+        <li><b>Script gallery</b>: scripts you publish are public: their name, characters, the author name you type and your display name can be seen by anyone, along with how many people upvoted them (not who). You can remove your scripts at any time; the site owner and admins can remove them too.</li>
+        <li><b>Spectators</b>: if the Storyteller turns it on, spectators of a game can see its Grimoire (everyone's character) a few minutes late.</li>
         <li><b>Friends' leaderboard</b>: signed-in players who finished a game with you see your display name and your game totals (games, wins, MVP awards, games as Storyteller), not which characters you played. You can switch this off under 📊 My games → Friends.</li>
         <li><b>The site owner</b>, and any accounts they make admins, (on the admin page) can see the list of running games and accounts (display name, account name or email, number of saved games), close games and reset passwords. They cannot see passwords.</li>
       </ul>

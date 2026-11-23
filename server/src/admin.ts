@@ -4,8 +4,9 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type { Lobby } from './lobby';
 import { Accounts } from './accounts';
+import type { Gallery } from './gallery';
 
-export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env: NodeJS.ProcessEnv = process.env) {
+export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env: NodeJS.ProcessEnv = process.env, gallery?: Gallery) {
   const sessions = new Map<string, number>(); // admin token → expiry
   const fails = new Map<string, { n: number; at: number }>();
   const same = (a: string, b: string) => { const x = createHash('sha256').update(a).digest(), y = createHash('sha256').update(b).digest(); return timingSafeEqual(x, y); };
@@ -65,6 +66,10 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
     const ok = lobby.closeGame(String(req.params.id), String(req.body?.reason ?? '') || 'This game was closed by the site admin.');
     res.json({ ok });
   }));
+  app.get('/api/admin/gallery', guard(async (_req, res) => {
+    res.json({ ok: true, scripts: gallery ? (await gallery.list()).map(s => ({ id: s.id, name: s.name, author: s.author, owner: s.ownerName, votes: s.votes.length, count: s.ids.length, createdAt: s.createdAt })) : [] });
+  }));
+  app.delete('/api/admin/gallery/:id', guard(async (req, res) => { await gallery?.remove(String(req.params.id)); res.json({ ok: true }); }));
   app.get('/api/admin/lobby-chat', guard((_req, res) => res.json({ ok: true, chat: lobby.lobbyChat })));
   app.post('/api/admin/lobby-chat/clear', guard((req, res) => {
     const id = req.body?.id ? String(req.body.id) : null;
