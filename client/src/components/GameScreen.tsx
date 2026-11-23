@@ -38,6 +38,8 @@ const STAGE_LABEL: Record<string, string> = { discussion: 'Town discussion', pri
 
 export function GameScreen({ view }: { view: GameView }) {
   const isST = view.self.isStoryteller;
+  // phones: the Storyteller switches between the Grimoire panel and the town (on wide screens both show)
+  const [stPane, setStPane] = useState<'grim' | 'town'>('grim');
   const me = !view.self.isStoryteller ? view.players.find(p => p.id === view.self.id) ?? null : null;
   const [modal, setModal] = useState<'character' | 'list' | 'claim' | 'label' | 'invite' | 'reveal' | 'rules' | 'customise' | 'story' | 'voice' | 'almanac' | 'alerts' | null>(null);
   const [almanacId, setAlmanacId] = useState<string | null>(null);
@@ -179,8 +181,12 @@ export function GameScreen({ view }: { view: GameView }) {
   const showClickHint = !isST && !night && view.phase === 'day' && view.stage === 'nominations' && me?.alive && !view.nominatorsToday.includes(me.id);
 
   return (
-    <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''}`}>
+    <div className={`game phase-${view.phase} ${asleep ? 'asleep' : ''} ${isST ? `is-st st-pane-${stPane}` : ''}`}>
       <TopBar view={view} openAlerts={() => setModal('alerts')} openAlmanac={() => openAlmanac()} openVoice={() => setModal('voice')} openList={() => setModal('list')} openInvite={() => setModal('invite')} openRules={() => setModal('rules')} openCustomise={() => setModal('customise')} openStory={() => setModal('story')} use3D={use3D && !failed3D} toggle3D={toggle3D} />
+      {isST && <div className="st-pane-switch" role="tablist" aria-label={tr("Storyteller view")}>
+        <button role="tab" aria-selected={stPane === 'grim'} className={stPane === 'grim' ? 'active' : ''} onClick={() => setStPane('grim')}>📖 {tr("Grimoire")}</button>
+        <button role="tab" aria-selected={stPane === 'town'} className={stPane === 'town' ? 'active' : ''} onClick={() => setStPane('town')}>🏰 {tr("Town")}</button>
+      </div>}
       <main className="layout">
         <aside className="left"><TownMap view={view} /></aside>
         <section ref={stageRef} onMouseMove={onStageMove} className={`stage ${art ? 'has-room-art' : ''} ${show3D || showSleep3D ? 'has-3d' : ''} ${showSleep3D ? 'sleep-3d' : ''}`} style={art ? { ['--room-art' as string]: `url(/art/${art}.jpg)` } : undefined}>

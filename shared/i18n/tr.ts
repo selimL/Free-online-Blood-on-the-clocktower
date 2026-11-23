@@ -1405,4 +1405,6 @@ export const TR: Record<string, string> = {
   "As it was {n} minutes ago. Please don't tell the players!": "{n} dakika önceki hâli. Lütfen oyunculara söylemeyin!",
   "{old} was offline for 2 minutes, so {name} took over as the lead Storyteller.": "{old} 2 dakikadır çevrimdışıydı, bu yüzden baş Anlatıcı rolünü {name} devraldı.",
   "If the lead Storyteller is offline for 2 minutes, a connected co-Storyteller automatically takes over.": "Baş Anlatıcı 2 dakika çevrimdışı kalırsa bağlı bir yardımcı Anlatıcı otomatik olarak devralır.",
+  "Storyteller view": "Anlatıcı görünümü",
+  "Town": "Kasaba",
 };

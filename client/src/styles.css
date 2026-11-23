@@ -844,3 +844,22 @@ footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
 .delayed-grim { margin: .4rem 0; }
 .delayed-grim ul { list-style: none; padding: .3rem .5rem; margin: .3rem 0; background: rgba(0,0,0,.3); border-radius: 8px; max-height: 40vh; overflow-y: auto; }
 .delayed-grim li { padding: .1rem 0; }
+/* ---------------- Storyteller on phones: Grimoire / Town switch */
+.st-pane-switch { display: none; }
+@media (max-width: 860px) {
+  .st-pane-switch { display: flex; position: sticky; top: 0; z-index: 25; gap: .3rem; padding: .35rem max(10px, env(safe-area-inset-left)); background: rgba(13, 10, 18, .92); backdrop-filter: blur(6px); border-bottom: 1px solid #3b3343; }
+  .st-pane-switch button { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #3b3343; background: transparent; color: var(--muted); font-family: 'Cinzel', Georgia, serif; font-size: .9rem; }
+  .st-pane-switch button.active { background: #7a1f1f; color: #f4e9d2; border-color: #7a1f1f; }
+  .game.st-pane-grim .layout > .left, .game.st-pane-grim .layout > .stage { display: none; }
+  .game.st-pane-town .layout > .right { display: none; }
+  .game.is-st .layout > .right { order: 0; padding: .5rem max(10px, env(safe-area-inset-left)); }
+  /* the Storyteller's controls wrap onto two rows instead of hiding off the edge */
+  .game.is-st .bottom-bar { flex-wrap: wrap; overflow-x: visible; justify-content: center; }
+  /* tabs scroll sideways in one row */
+  .game.is-st .right .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .game.is-st .right .tabs::-webkit-scrollbar { display: none; }
+  .game.is-st .right .tabs button { flex: none; white-space: nowrap; padding: .5rem .55rem; }
+  /* bigger tap targets in the Grimoire */
+  .game.is-st .grim-head { min-height: 44px; }
+  .game.is-st .grimoire .btn.small, .game.is-st .grim-actions .btn { padding: .45rem .6rem; }
+}
