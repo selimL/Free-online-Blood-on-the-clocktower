@@ -57,12 +57,12 @@ export function Lobby() {
         <section className="panel glass">
           <h2>Open games</h2>
           {games.length === 0 && <p className="muted">No public games right now. Create one!</p>}
-          <table className="games">
+          <table className="games open-games">
             <thead><tr><th>Name</th><th>Players</th><th>Script</th><th>Status</th><th /></tr></thead>
             <tbody>
               {[...games].sort((a, b) => Number(!!b.lookingFor) - Number(!!a.lookingFor)).map(g => (
                 <tr key={g.id}>
-                  <td>{g.name}{g.lookingFor && <div className="looking-for small">🔎 Looking for {g.lookingFor.count} more{g.lookingFor.note ? `: ${g.lookingFor.note}` : ''}</div>}</td><td>{g.players}/{g.max}</td><td>{g.edition}</td>
+                  <td>{g.name}{g.lookingFor && <div className="looking-for small">🔎 Looking for {g.lookingFor.count} more{g.lookingFor.note ? `: ${g.lookingFor.note}` : ''}</div>}</td><td className="og-players">{g.players}/{g.max}</td><td className="og-script">{g.edition}</td>
                   <td><span className={`status ${g.status.replace(' ', '-')}`}>{g.status}</span>{g.scheduledFor && g.status === 'waiting' && <div className="small"><Countdown at={g.scheduledFor} /></div>}</td>
                   <td className="row"><button className="btn small" onClick={() => go(g.code)}>{g.status === 'waiting' ? 'Join' : 'Join / Watch'}</button></td>
                 </tr>

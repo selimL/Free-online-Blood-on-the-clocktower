@@ -809,3 +809,25 @@ footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
 .homebrew-form { border: 1px solid #3b3343; border-radius: 8px; padding: .6rem; margin-top: .4rem; }
 .homebrew-form textarea { width: 100%; }
 .admin-badge { color: var(--gold, #d8b45a); font-size: .8rem; }
+/* phones: each open game becomes a small card (name and Join on top, players · script · status below) */
+@media (max-width: 600px) {
+  table.open-games thead { display: none; }
+  table.open-games, table.open-games tbody { display: block; }
+  table.open-games tr { display: grid; grid-template-columns: auto auto 1fr auto; grid-template-areas: "name name name join" "players script status join"; align-items: center; column-gap: .6rem; row-gap: .15rem; padding: .55rem .2rem; border-bottom: 1px solid rgba(233, 220, 192, .16); }
+  table.open-games td { border: none; padding: 0; min-width: 0; }
+  table.open-games td:nth-child(1) { grid-area: name; font-weight: 600; overflow-wrap: anywhere; }
+  table.open-games td:nth-child(2) { grid-area: players; font-size: .85rem; white-space: nowrap; }
+  table.open-games td:nth-child(2)::before { content: '👥 '; }
+  table.open-games td:nth-child(3) { grid-area: script; font-size: .85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  table.open-games td:nth-child(4) { grid-area: status; font-size: .85rem; justify-self: start; }
+  table.open-games td:nth-child(5) { grid-area: join; }
+  table.open-games .looking-for { font-weight: 400; }
+}
+/* let the lobby columns shrink to the screen instead of growing to fit their content */
+.lobby-grid > * { min-width: 0; }
+@media (max-width: 860px) { .lobby-grid { grid-template-columns: minmax(0, 1fr); } }
+.lobby-chat form { flex-wrap: nowrap; }
+@media (max-width: 600px) {
+  .lobby-grid .panel > .row { flex-wrap: wrap; }
+  .lobby-grid .panel > form.row input { min-width: 0; flex: 1; }
+}
