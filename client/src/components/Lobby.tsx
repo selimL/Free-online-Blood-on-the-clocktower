@@ -5,6 +5,7 @@ import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
 import { LegalLinks } from './Legal';
+import { useInstall, installNow } from '../install';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts, fromShareParam, saveScript, newScriptId, type SavedScript } from '../scripts';
 import { act } from '../net';
@@ -80,6 +81,7 @@ export function Lobby() {
           <hr />
           <h2>New to the game?</h2>
           <p className="muted">Play a short guided practice game with six computer players. The Guide explains each step.</p>
+          <InstallApp />
           <div className="row"><button className="btn" onClick={() => setPractice(true)}>🎓 Learn to play</button>
             <button className="btn ghost" onClick={() => setShowHistory(true)}>📊 My games</button></div>
         </section>
@@ -90,6 +92,21 @@ export function Lobby() {
       {showHistory && <HistoryDialog onClose={() => setShowHistory(false)} />}
       <footer className="legal">Blood on the Clocktower is © The Pandemonium Institute. This is a non-commercial fan project for private play. <LegalLinks /></footer>
     </div>
+    </div>
+  );
+}
+
+/** "Install the app" (Add to Home Screen), with steps for iPhone/iPad where browsers can't prompt. */
+function InstallApp() {
+  const how = useInstall();
+  const [steps, setSteps] = useState(false);
+  if (!how) return null;
+  return (
+    <div className="install-app">
+      <button className="btn small" onClick={() => (how === 'prompt' ? void installNow() : setSteps(s => !s))}>📲 Install the app</button>
+      {steps && (how === 'ios'
+        ? <p className="small">On iPhone or iPad (in Safari): tap the <b>Share</b> button <span aria-hidden>⬆</span> at the bottom, then <b>Add to Home Screen</b>, then <b>Add</b>.</p>
+        : <p className="small">Open your browser's menu (<b>⋮</b> or <b>⋯</b>) and choose <b>Install app</b> or <b>Add to Home screen</b>. In Chrome or Edge on a computer, there is also an install icon at the right end of the address bar.</p>)}
     </div>
   );
 }

@@ -748,3 +748,48 @@ textarea.notes { width: 100%; min-height: 180px; }
 .legal-links a, .legal-note a { color: inherit; text-decoration: underline; }
 footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
 @media (max-width: 600px) { .legal-card { padding: 1.1rem 1rem; } .legal-back { float: none; display: inline-block; margin-bottom: .4rem; } }
+
+/* ---------------- phones: compact bars, menu, safe areas ---------------- */
+.menu-toggle { display: none; }
+.install-app { margin: .2rem 0 .6rem; }
+.install-app p { margin: .35rem 0 0; }
+@media (max-width: 860px) {
+  /* top bar: name, code, phase and timer stay; other buttons open from ☰ */
+  .top-bar { padding-top: calc(.45rem + env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); gap: .35rem; }
+  .top-bar .tl { justify-content: space-between; }
+  .top-bar .tc { justify-content: center; }
+  .menu-toggle { display: inline-grid; font-size: 1.15rem; }
+  .top-bar .tr { justify-content: flex-end; }
+  .top-bar .tr:not(.open) > :not(.keep) { display: none; }
+  .top-bar .tr.open { justify-content: flex-start; padding: .4rem 0 .2rem; border-top: 1px solid #3b3343; }
+  .top-bar .tr.open .menu-toggle { order: -1; }
+  /* bottom bar: one row you can swipe sideways, instead of a tall stack of buttons */
+  .bottom-bar { display: flex; flex-wrap: nowrap; gap: .4rem; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    padding: .4rem max(10px, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+  .bottom-bar::-webkit-scrollbar { display: none; }
+  .bottom-bar > .bl, .bottom-bar > .bc, .bottom-bar > .br, .bottom-bar .st-controls { display: contents; }
+  .bottom-bar .btn, .bottom-bar .spectator-bar { flex: none; white-space: nowrap; font-size: .78rem; padding: .38rem .6rem; }
+  .bottom-bar .st-controls > .muted, .bottom-bar .st-controls > span { flex: none; white-space: nowrap; font-size: .72rem; align-self: center; }
+  .bottom-bar kbd { display: none; }
+  .bottom-bar .btn.ptt { order: -1; font-size: .85rem; }
+  /* lobby: the Sign in button above the title, not on top of it */
+  .account-corner { position: static; display: flex; justify-content: flex-end; margin-bottom: .3rem; }
+  /* dialogs fill the screen width */
+  .modal-backdrop { padding: 10px; align-items: flex-end; }
+  .modal { max-height: 92vh; padding: .9rem 1rem calc(.9rem + env(safe-area-inset-bottom)); }
+  .gesture-pop { position: fixed; left: 10px; right: 10px; bottom: calc(56px + env(safe-area-inset-bottom)); transform: none; grid-template-columns: repeat(2, 1fr); }
+  .dawn-recap { top: auto; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); }
+  .consent-banner { bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .stage > .joystick { bottom: calc(22px + env(safe-area-inset-bottom)); }
+}
+/* installed as an app: no browser bar, so respect the notch everywhere */
+@media (display-mode: standalone) { body { padding-top: env(safe-area-inset-top); } .game .top-bar { padding-top: .45rem; } }
+@media (max-width: 860px) {
+  /* row 1: game name + code … mic, voice status, ☰ · row 2: phase and timer · (menu opens as row 3) */
+  .game .top-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "tl tr" "tc tc"; align-items: center; }
+  .game .top-bar .tl { grid-area: tl; min-width: 0; flex-wrap: nowrap; }
+  .game .top-bar .tl .game-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game .top-bar .tr { grid-area: tr; flex-wrap: nowrap; }
+  .game .top-bar .tc { grid-area: tc; }
+  .game .top-bar .tr.open { grid-area: auto; grid-row: 3; grid-column: 1 / -1; flex-wrap: wrap; }
+}

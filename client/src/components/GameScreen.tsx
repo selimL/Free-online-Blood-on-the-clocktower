@@ -80,6 +80,8 @@ export function GameScreen({ view }: { view: GameView }) {
   };
 
   useEffect(() => { if (!isST) void probeRegions(); }, [isST]);
+  // phones: open the game at the top, not at the join page's scroll position
+  useEffect(() => { window.scrollTo(0, 0); }, [view.id]);
   useEffect(() => { if (!night) setNightSel([]); }, [night]);
   // the story opens by itself when the game ends
   const ended = view.phase === 'ended';
@@ -273,6 +275,7 @@ export function GameScreen({ view }: { view: GameView }) {
 
 function TopBar({ view, openAlerts, openAlmanac, openVoice, openList, openInvite, openRules, openCustomise, openStory, use3D, toggle3D }: { view: GameView; openAlerts: () => void; openAlmanac: () => void; openVoice: () => void; openList: () => void; openInvite: () => void; openRules: () => void; openCustomise: () => void; openStory: () => void; use3D: boolean; toggle3D: () => void }) {
   const voice = useVoice();
+  const [menu, setMenu] = useState(false); // phones: the less-used buttons live behind ☰
   const leave = async () => {
     if (!confirm('Leave this game? Your seat is kept — you can rejoin from this browser.')) return;
     await rpc('game:leave');
@@ -293,11 +296,12 @@ function TopBar({ view, openAlerts, openAlmanac, openVoice, openList, openInvite
         <span className="phase">{PHASE_LABEL[view.phase]}{view.phase === 'day' ? ` ${view.day}` : view.phase === 'night' ? ` ${view.night}` : ''}{view.stage ? ` · ${STAGE_LABEL[view.stage]}` : ''}</span>
         <TimerBadge view={view} />
       </div>
-      <div className="tr">
+      <div className={`tr ${menu ? 'open' : ''}`} onClick={e => { if (menu && (e.target as HTMLElement).closest('button:not(.menu-toggle)')) setMenu(false); }}>
+        <button className="icon-btn menu-toggle keep" aria-expanded={menu} aria-label="Menu" onClick={() => setMenu(m => !m)}>{menu ? '✕' : '☰'}</button>
         {view.voice.enabled ? <>
-          <button className={`icon-btn ${voice.micOn ? 'on' : 'off'} ${voice.pushToTalk && voice.talking ? 'talking' : ''}`} onClick={toggleMic} aria-pressed={voice.micOn} title={voice.pushToTalk ? 'Microphone (push-to-talk: hold V or Space to speak)' : 'Microphone'}>{voice.micOn ? '🎙' : '🔇'}</button>
+          <button className={`icon-btn keep ${voice.micOn ? 'on' : 'off'} ${voice.pushToTalk && voice.talking ? 'talking' : ''}`} onClick={toggleMic} aria-pressed={voice.micOn} title={voice.pushToTalk ? 'Microphone (push-to-talk: hold V or Space to speak)' : 'Microphone'}>{voice.micOn ? '🎙' : '🔇'}</button>
           <button className={`icon-btn ${voice.camOn ? 'on' : 'off'}`} onClick={toggleCam} aria-pressed={voice.camOn} title="Camera (optional)">{voice.camOn ? '📷' : '🚫'}</button>
-          <span className={`voice-status ${voice.connectedRoom ? (voice.canPublish ? 'live' : 'waiting') : 'none'}`} title={voice.error ?? ''}>
+          <span className={`voice-status keep ${voice.connectedRoom ? (voice.canPublish ? 'live' : 'waiting') : 'none'}`} title={voice.error ?? ''}>
             {voice.connectedRoom ? (voice.canPublish ? (voice.pushToTalk ? (voice.talking ? 'talking' : 'push-to-talk') : 'voice live') : 'connecting…') : 'no voice'}
           </span>
           <button className="icon-btn" onClick={openVoice} title="Voice settings: push-to-talk, volumes, microphone" aria-label="Voice settings">⚙</button>

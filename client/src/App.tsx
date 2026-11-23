@@ -11,6 +11,7 @@ import { Countdown, downloadIcs } from './components/Schedule';
 import { AdminPage } from './components/AdminPage';
 import { PrivacyPage, TermsPage, LegalLinks } from './components/Legal';
 import { initAccount } from './account';
+import './install';
 
 void initAccount().then(err => { if (err) pushAlert(err, 'error'); });
 import './styles.css';
