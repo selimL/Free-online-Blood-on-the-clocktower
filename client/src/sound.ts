@@ -1,7 +1,7 @@
 // Atmosphere, synthesised live with the Web Audio API (no audio files, nothing to license):
 // a church bell at dawn, wind and crickets at night, a heartbeat during votes, a toll for deaths.
 import { useSyncExternalStore } from 'react';
-import { tr } from './i18n';
+import { tr, gameLang } from './i18n';
 
 const KEY = 'botc:volume';
 let volume = (() => { try { const v = Number(localStorage.getItem(KEY)); return Number.isFinite(v) && localStorage.getItem(KEY) !== null ? v : 0.6; } catch { return 0.6; } })();
@@ -284,8 +284,8 @@ export function setMusic(mood: MusicMood) {
 // ---------------------------------------------------------------- personal alerts
 export type PingKind = 'nominated' | 'woken' | 'whisper' | 'yourVote' | 'spotlight';
 const PING_KEY = 'botc:alerts';
-export interface AlertPrefs { sound: boolean; vibrate: boolean; notify: boolean }
-let alertPrefs: AlertPrefs = (() => { try { return { sound: true, vibrate: true, notify: false, ...JSON.parse(localStorage.getItem(PING_KEY) ?? '{}') }; } catch { return { sound: true, vibrate: true, notify: false }; } })();
+export interface AlertPrefs { sound: boolean; vibrate: boolean; notify: boolean; narrator: boolean }
+let alertPrefs: AlertPrefs = (() => { try { return { sound: true, vibrate: true, notify: false, narrator: true, ...JSON.parse(localStorage.getItem(PING_KEY) ?? '{}') }; } catch { return { sound: true, vibrate: true, notify: false, narrator: true }; } })();
 const aListeners = new Set<() => void>();
 export const useAlertPrefs = () => useSyncExternalStore(cb => { aListeners.add(cb); return () => aListeners.delete(cb); }, () => alertPrefs);
 export function setAlertPrefs(p: Partial<AlertPrefs>) {
@@ -320,4 +320,24 @@ export function ping(kind: PingKind) {
   if (alertPrefs.notify && typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try { new Notification('Clocktower Nights', { body: tr(p.text), tag: kind }); } catch { /* ignore */ }
   }
+}
+
+// ---------------------------------------------------------------- narrator
+/** Browsers' built-in speech: a short spoken line at dusk and dawn, in the game's language. */
+export const narratorSupported = () => typeof window !== 'undefined' && 'speechSynthesis' in window;
+export function narrate(text: string) {
+  if (!alertPrefs.narrator || !narratorSupported()) return;
+  try {
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const lang = gameLang() === 'tr' ? 'tr-TR' : 'en-GB';
+    u.lang = lang;
+    const voices = synth.getVoices();
+    const v = voices.find(x => x.lang === lang) ?? voices.find(x => x.lang.startsWith(lang.slice(0, 2)));
+    if (v) u.voice = v;
+    else if (lang === 'tr-TR' && voices.length) return; // no Turkish voice: better silent than English-accented Turkish
+    u.rate = 0.9; u.pitch = 0.8; u.volume = Math.max(0.2, Math.min(1, volume + 0.3));
+    synth.speak(u);
+  } catch { /* speech not available */ }
 }

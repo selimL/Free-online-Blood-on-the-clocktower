@@ -832,3 +832,4 @@ footer.legal .legal-links { margin-left: .4rem; white-space: nowrap; }
   .lobby-grid .panel > form.row input { min-width: 0; flex: 1; }
 }
 .lang-tag { color: var(--gold, #d8b45a); white-space: nowrap; }
+.my-record { margin: .2rem 0 .6rem; }

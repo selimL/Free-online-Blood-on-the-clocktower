@@ -14,7 +14,7 @@ const FILES = [
   'server/src/game.ts', 'server/src/lobby.ts', 'server/src/views.ts', 'server/src/bots.ts',
   ...fs.readdirSync(path.join(ROOT, 'client/src/components')).filter(f => !/^(Lobby|Legal|AdminPage|AccountDialog|ScriptBuilder)\.tsx$/.test(f)).map(f => `client/src/components/${f}`),
   ...fs.readdirSync(path.join(ROOT, 'client/src/three')).filter(f => f.endsWith('.tsx')).map(f => `client/src/three/${f}`),
-  'client/src/nightInfo.ts', 'client/src/net.ts', 'client/src/voice.ts', 'client/src/three/occupants.ts',
+  'client/src/nightInfo.ts', 'client/src/net.ts', 'client/src/voice.ts', 'client/src/three/occupants.ts', 'client/src/cheatSheet.ts',
 ];
 const LIT = String.raw`("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')`;
 const unquote = (s: string) => (s[0] === '"' ? JSON.parse(s) : JSON.parse('"' + s.slice(1, -1).replace(/\\'/g, "'").replace(/"/g, '\\"') + '"'));

@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 import { useSyncExternalStore } from 'react';
 import type { GameView, InfoCard, Announcement } from '../../shared/types';
-import { dawnBell, deathToll } from './sound';
+import { dawnBell, deathToll, narrate } from './sound';
 import { registerHomebrew } from '../../shared/characters';
 import { tr, bindLanguage } from './i18n';
 
@@ -95,6 +95,14 @@ socket.on('infoCard', (card: InfoCard) => set({ infoPopup: card }));
 socket.on('transition', ({ to }: { to: 'night' | 'day' | 'ended' }) => {
   if (to === 'day') dawnBell();
   set({ transition: to, chat: to === 'night' ? [] : store.chat });
+  // the narrator speaks once the new state has arrived (day and night numbers)
+  setTimeout(() => {
+    const v = store.view;
+    if (!v) return;
+    if (to === 'night') narrate(tr('Night {n} falls over the town. Close your eyes… the Storyteller will wake you if you are needed.', { n: v.night }));
+    else if (to === 'day') narrate(tr('Dawn breaks on day {n}. The town gathers in the square.', { n: v.day }));
+    else narrate(v.winner === 'evil' ? tr('The game is over. Evil wins.') : v.winner === 'good' ? tr('The game is over. Good wins.') : tr('The game is over.'));
+  }, 1400);
   setTimeout(() => set({ transition: null }), 2600);
 });
 socket.on('death', ({ playerId }: { playerId: string }) => {

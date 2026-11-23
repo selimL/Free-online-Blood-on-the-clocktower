@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useStore, set, act } from '../net';
 import type { GameView, InfoCard } from '../../../shared/types';
 import { CHARACTER_BY_ID, DAY_ABILITIES, type Character } from '../../../shared/characters';
+import { loadHistory } from '../history';
 import { tr, ability } from '../i18n';
 
 export function Alerts() {
@@ -48,6 +49,14 @@ export function CharacterToken({ ch, small, onClick }: { ch: Character; small?: 
   );
 }
 
+/** Your own record with this character, from your game history (this browser / your account). */
+function MyRecord({ characterId, name, gameId }: { characterId: string; name: string; gameId: string }) {
+  const past = loadHistory().filter(h => h.role === 'player' && h.character === characterId && h.gameId !== gameId);
+  if (!past.length) return <p className="my-record muted small">📊 {tr("Your first game as the {character}. Good luck!", { character: name })}</p>;
+  const won = past.filter(h => h.won).length;
+  return <p className="my-record small">📊 {tr(past.length === 1 ? "You have played the {character} once before and won {won}." : "You have played the {character} {n} times before and won {won}.", { character: name, n: past.length, won })}</p>;
+}
+
 export function CharacterModal({ view, onClose }: { view: GameView; onClose: () => void }) {
   if (view.self.isStoryteller) return null;
   const self = view.self;
@@ -61,6 +70,7 @@ export function CharacterModal({ view, onClose }: { view: GameView; onClose: () 
       {ch && <>
         <CharacterToken ch={ch} />
         <p className={`alignment ${self.alignment}`}><b>{self.alignment === 'evil' ? tr("You are Evil.") : tr("You are Good.")}</b></p>
+        <MyRecord characterId={ch.id} name={ch.name} gameId={view.id} />
         {DAY_ABILITIES[ch.id] && <p className="muted">{tr("This character has a daytime ability: use the")}{' '}<b>{tr("Use Ability")}</b> {tr("button.")}</p>}
       </>}
       {self.evilTeam && self.evilTeam.members.length > 1 && (

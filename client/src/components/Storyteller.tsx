@@ -13,10 +13,11 @@ import {
   CHARACTERS, CHARACTER_BY_ID, SETUP_COUNTS, EDITIONS, GENERIC_REMINDERS, parseScript, ROOM_NAMES, ROOM_ICONS, type CharacterType,
   NIGHT_SLOTS, HOMEBREW_TYPES, type Homebrew, type NightSlot,
 } from '../../../shared/characters';
-import { act } from '../net';
+import { act, pushAlert } from '../net';
 import { Modal, TYPE_LABEL } from './Overlays';
 import { Chat, Announcements } from './GameScreen';
 import { tr, ability } from '../i18n';
+import { openCheatSheet } from '../cheatSheet';
 import { LANGUAGES, type Lang } from '../../../shared/i18n';
 
 const st = (v: GameView) => v.self as StorytellerSelf;
@@ -492,6 +493,7 @@ function NightOrder({ view }: { view: GameView }) {
   return (
     <div className="night-order">
       <NightHelper view={view} />
+      <button className="btn small ghost cheat-btn" onClick={() => { if (!openCheatSheet(view.name, self.settings)) pushAlert(tr('Allow pop-ups to open the cheat sheet.'), 'error'); }}>{tr("🖨 Cheat sheet")}</button>
       <p className="muted small">{view.night <= 1 ? tr("First night") : tr("Night {night}", { night: view.night })}{tr(". Click a player to wake / sleep them (or click their avatar). Their choices appear in the Grimoire.")}</p>
       {awake.length > 0 && <div className="awake-list">{tr("Awake:")}{' '}{awake.map(g => (
         <button key={g.id} className={`chip ${self.focusId === g.id ? 'active' : ''}`} onClick={() => act('st:focus', { playerId: g.id })} title={tr("Talk to this player")}>{name(g.id)}{self.focusId === g.id ? ' 🎙' : ''}{g.nightChoice.length ? ` → ${g.nightChoice.map(name).join(', ')}` : ''}</button>
@@ -560,7 +562,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         <p className="muted small">{tr("Everyone plays this game in this language: the game screens, announcements and character abilities. Character names stay in English. It can't be changed once the game starts.")}</p>
       </section>
       <section>
-        <h3>{tr("Script & characters")}</h3>
+        <h3>{tr("Script & characters")} <button className="btn small ghost" onClick={() => { if (!openCheatSheet(view.name, settings)) pushAlert(tr('Allow pop-ups to open the cheat sheet.'), 'error'); }}>{tr("🖨 Cheat sheet")}</button></h3>
         <div className="row wrap">
           <label>{tr("Edition")}{' '}<select disabled={locked} value={settings.edition} onChange={e => save({ edition: e.target.value as Settings['edition'] })}>
             {Object.entries(EDITIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}<option value="custom">{tr("Custom (any edition)")}</option></select></label>

@@ -13,7 +13,7 @@ import { Countdown, downloadIcs, toLocalInput, fromLocalInput } from './Schedule
 import { usePlayerNotes, setPlayerNote, MARKS } from '../playerNotes';
 import { TownCircle, TownMap, seatRadiusPct } from './TownSquare';
 import { SQUASH, initial3D, save3D, webglAvailable, getQuality, setQuality, onQualityChange, type Quality } from '../three/support';
-import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain, ping, useAlertPrefs, setAlertPrefs } from '../sound';
+import { setNightAmbience, setHeartbeat, setVolume, useVolume, setMusic, setMusicVolume, useMusicVolume, setRain, ping, useAlertPrefs, setAlertPrefs, narrate, narratorSupported } from '../sound';
 
 const TownScene = lazy(() => import('../three/TownScene'));
 const RoomScene = lazy(() => import('../three/RoomScene'));
@@ -502,6 +502,10 @@ function AlertSettings() {
       <label><input type="checkbox" checked={a.vibrate} onChange={e => setAlertPrefs({ vibrate: e.target.checked })} /> {tr("Vibrate (phones)")}</label>
       {typeof Notification !== 'undefined' && <label><input type="checkbox" checked={a.notify} onChange={e => void askNotify(e.target.checked)} /> {tr("Show a notification when this tab is in the background")}</label>}
       <button type="button" className="btn small ghost" onClick={() => ping('nominated')}>{tr("Test the alert")}</button>
+      {narratorSupported() && <>
+        <label><input type="checkbox" checked={a.narrator} onChange={e => setAlertPrefs({ narrator: e.target.checked })} /> {tr("🗣 Narrator: read out dusk and dawn")}</label>
+        <button type="button" className="btn small ghost" onClick={() => narrate(tr('Dawn breaks on day {n}. The town gathers in the square.', { n: 1 }))}>{tr("Test the narrator")}</button>
+      </>}
     </fieldset>
   );
 }
