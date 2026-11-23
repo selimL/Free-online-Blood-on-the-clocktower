@@ -331,6 +331,36 @@ export class Game {
     this.changed();
     return c;
   }
+  /**
+   * Hand the Storyteller role over. To a co-Storyteller: at any time, and the old lead becomes a
+   * co-Storyteller. To a player: before the game starts only, and the old Storyteller takes their seat.
+   * Seat codes (tokens) move with the people, so everyone's saved link keeps working.
+   * Returns the id the old Storyteller now has.
+   */
+  handOver(targetId: string): string {
+    const st = this.storyteller;
+    const co = (this.coStorytellers ?? []).find(c => c.id === targetId);
+    if (co) {
+      [st.name, co.name] = [co.name, st.name];
+      [st.token, co.token] = [co.token, st.token];
+      [st.connected, co.connected] = [co.connected, st.connected];
+      this.addLog(`${co.name} handed the Storyteller role to ${st.name}.`);
+      this.changed();
+      return co.id;
+    }
+    const p = this.maybePlayer(targetId) ?? fail('No such player.');
+    if (this.phase !== 'lobby') fail('Once the game has started, hand over to a co-Storyteller instead (invite them first).');
+    if (p.bot) fail('A computer player cannot be the Storyteller.');
+    [st.name, p.name] = [p.name, st.name];
+    [st.token, p.token] = [p.token, st.token];
+    [st.avatar, p.avatar] = [p.avatar, st.avatar];
+    [st.connected, p.connected] = [p.connected, st.connected];
+    p.offlineSince = p.connected ? null : Date.now();
+    p.transcriptConsent = null; // a different person now sits here: ask again
+    this.addLog(`${p.name} handed the Storyteller role to ${st.name} and took a seat.`);
+    this.changed();
+    return p.id;
+  }
   removeCoStoryteller(id: string) {
     this.coStorytellers = this.coStorytellers.filter(c => c.id !== id);
     this.banned.add(id);

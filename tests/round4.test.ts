@@ -49,3 +49,54 @@ describe('looking for players', () => {
     expect(g.lookingFor?.count).toBe(20);
   });
 });
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { FileKV } from '../server/src/persist';
+import { Accounts, type Account } from '../server/src/accounts';
+
+describe('handing over the Storyteller role', () => {
+  it('swaps with a co-Storyteller at any time, tokens moving with the people', () => {
+    const g = game();
+    const co = g.addCoStoryteller('Helper');
+    const [stTok, coTok] = [g.storyteller.token, co.token];
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'poisoner', 'imp'] });
+    g.deal();
+    expect(g.handOver(co.id)).toBe(co.id);
+    expect(g.storyteller.name).toBe('Helper');
+    expect(g.storyteller.token).toBe(coTok);
+    expect(co.name).toBe('ST');
+    expect(co.token).toBe(stTok);
+  });
+  it('swaps seats with a player only before the start', () => {
+    const g = game();
+    const p = g.players[2];
+    const [stTok, pTok] = [g.storyteller.token, p.token];
+    expect(g.handOver(p.id)).toBe(p.id);
+    expect(g.storyteller.name).toBe('P2');
+    expect(p.name).toBe('ST');
+    expect([g.storyteller.token, p.token]).toEqual([pTok, stTok]);
+    g.updateSettings({ characters: ['washerwoman', 'empath', 'chef', 'monk', 'poisoner', 'imp'] });
+    g.deal();
+    expect(() => g.handOver(g.players[0].id)).toThrow();
+  });
+});
+
+describe('friends\' leaderboard', () => {
+  it('lists accounts that shared a game, except those who hide', async () => {
+    const acc = new Accounts(new FileKV(fs.mkdtempSync(path.join(os.tmpdir(), 'botc-lb-'))), {});
+    const mk = async (name: string, history: unknown[], hide = false) => {
+      const a = await (acc as unknown as { create(p: Partial<Account>): Promise<Account> }).create({ displayName: name, history, hideFromFriends: hide });
+      return a;
+    };
+    const h = (gameId: string, won: boolean) => ({ gameId, role: 'player', won, alignment: 'good', mvpMe: false });
+    const me = await mk('Me', [h('g1', true), h('g2', false)]);
+    await mk('Friend', [h('g1', false), h('g9', true)]);
+    await mk('Stranger', [h('g7', true)]);
+    await mk('Shy', [h('g2', true)], true);
+    const rows = await acc.leaderboard(me);
+    expect(rows.map(r => r.name).sort()).toEqual(['Friend', 'Me']);
+    expect(rows.find(r => r.name === 'Friend')).toMatchObject({ together: 1, games: 2, wins: 1 });
+  });
+});

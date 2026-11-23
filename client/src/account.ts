@@ -5,7 +5,8 @@ import { loadHistory, type HistoryEntry } from './history';
 import { loadScripts, type SavedScript } from './scripts';
 import { onLocalChange } from './syncBus';
 
-export interface AccountInfo { id: string; username: string | null; email: string | null; google: boolean; displayName: string; avatar: unknown; history: HistoryEntry[]; scripts: SavedScript[] }
+export interface AccountInfo { id: string; username: string | null; email: string | null; google: boolean; displayName: string; avatar: unknown; history: HistoryEntry[]; scripts: SavedScript[]; hideFromFriends?: boolean }
+export interface FriendRow { id: string; name: string; you: boolean; together: number; games: number; wins: number; evilWins: number; mvps: number; storytold: number }
 interface State { token: string | null; account: AccountInfo | null; config: { google: boolean; email: boolean } }
 
 const TKEY = 'botc:accountToken';
@@ -33,6 +34,15 @@ function writeLocal(acc: AccountInfo) {
     if (acc.displayName && !localStorage.getItem('botc:name')) localStorage.setItem('botc:name', acc.displayName);
     if (acc.avatar) localStorage.setItem('botc:avatar', JSON.stringify(acc.avatar));
   } catch { /* ignore */ }
+}
+/** Me and every account that finished a game with me. */
+export async function fetchLeaderboard(): Promise<{ ok: boolean; rows?: FriendRow[]; error?: string }> {
+  if (!state.token) return { ok: false, error: 'Sign in to see your friends\' leaderboard.' };
+  return api('/api/leaderboard');
+}
+export async function setHideFromFriends(hide: boolean) {
+  const w = await api('/api/account', 'PUT', { hideFromFriends: hide });
+  if (w.ok) set({ account: w.account });
 }
 let syncing = false;
 /** Merge this browser's data with the account and save both ways. */

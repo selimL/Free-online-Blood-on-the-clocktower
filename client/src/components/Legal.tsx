@@ -81,6 +81,7 @@ export function PrivacyPage() {
       <ul>
         <li><b>Everyone in a game</b> sees names, figures, who is alive, public votes and announcements, and anything said in their own room.</li>
         <li><b>Only the Storyteller</b> (and any co-Storyteller they invite) sees the Grimoire (everyone's character), the whispers sent to them, and the word-listening detections. <b>Other players never see these</b>, until the end-of-game story reveals the characters and the event log to everyone.</li>
+        <li><b>Friends' leaderboard</b>: signed-in players who finished a game with you see your display name and your game totals (games, wins, MVP awards, games as Storyteller), not which characters you played. You can switch this off under 📊 My games → Friends.</li>
         <li><b>The site owner</b> (on the admin page) can see the list of running games and accounts (display name, account name or email, number of saved games), close games and reset passwords. They cannot see passwords.</li>
       </ul>
 

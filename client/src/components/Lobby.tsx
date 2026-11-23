@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { rpc, saveSession, set, pushAlert } from '../net';
 import type { LobbyEntry, LobbyChatMsg, Avatar } from '../../../shared/types';
+import { useAccount, fetchLeaderboard, setHideFromFriends, type FriendRow } from '../account';
 import { defaultAvatar } from '../../../shared/types';
 import { AvatarCreator } from './Avatar';
 import { AccountButton } from './AccountDialog';
@@ -114,15 +115,45 @@ function InstallApp() {
   );
 }
 
+/** Friends' leaderboard: accounts that finished games with you. */
+function FriendsBoard() {
+  const { account } = useAccount();
+  const [rows, setRows] = useState<FriendRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (account) void fetchLeaderboard().then(r => r.ok ? setRows(r.rows ?? []) : setErr(r.error ?? 'Could not load.')); }, [account?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!account) return <p className="muted">Sign in (top right of the lobby) to see a leaderboard of the people you have played with. Only signed-in players who finished a game with you appear.</p>;
+  if (err) return <p className="warn">{err}</p>;
+  if (!rows) return <p className="muted">Loading…</p>;
+  const pct = (w: number, g: number) => (g ? `${Math.round((w / g) * 100)}%` : '—');
+  return <>
+    {rows.length <= 1 && <p className="muted">Nobody yet: friends appear here once they sign in and finish a game with you.</p>}
+    <table className="games history">
+      <thead><tr><th>#</th><th>Name</th><th>Wins</th><th>Games</th><th>Win rate</th><th>Evil wins</th><th>MVP</th><th>Storyteller</th><th>With you</th></tr></thead>
+      <tbody>{rows.map((r, i) => (
+        <tr key={r.id} className={r.you ? 'me' : ''}>
+          <td>{i + 1}</td><td>{r.name}{r.you ? ' (you)' : ''}</td><td><b>{r.wins}</b></td><td>{r.games}</td><td>{pct(r.wins, r.games)}</td>
+          <td>{r.evilWins}</td><td>{r.mvps}</td><td>{r.storytold}</td><td>{r.you ? '—' : r.together}</td>
+        </tr>
+      ))}</tbody>
+    </table>
+    <label className="small"><input type="checkbox" checked={!!account.hideFromFriends} onChange={e => void setHideFromFriends(e.target.checked)} /> Hide me from other people's leaderboards</label>
+  </>;
+}
+
 function HistoryDialog({ onClose }: { onClose: () => void }) {
   const [list] = useState(loadHistory);
+  const [tab, setTab] = useState<'mine' | 'friends'>('mine');
   const s = stats(list);
   const pct = (w: number, g: number) => (g ? `${Math.round((w / g) * 100)}%` : '—');
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal parchment wide" role="dialog" aria-label="My games" onClick={e => e.stopPropagation()}>
         <div className="modal-head"><h2>📊 My games</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>✕</button></div>
-        {list.length === 0 ? <p className="muted">No finished games yet. Games you finish in this browser appear here.</p> : <>
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === 'mine'} className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My games</button>
+          <button role="tab" aria-selected={tab === 'friends'} className={tab === 'friends' ? 'active' : ''} onClick={() => setTab('friends')}>🏅 Friends</button>
+        </div>
+        {tab === 'friends' ? <FriendsBoard /> : list.length === 0 ? <p className="muted">No finished games yet. Games you finish in this browser appear here.</p> : <>
           <div className="stat-cards">
             <div><b>{s.games}</b><span>games played</span></div>
             <div><b>{pct(s.wins, s.games)}</b><span>won</span></div>
@@ -145,7 +176,7 @@ function HistoryDialog({ onClose }: { onClose: () => void }) {
             ))}</tbody>
           </table>
         </>}
-        <p className="muted small">Kept in this browser only.</p>
+        {tab === 'mine' && <p className="muted small">Kept in this browser (and in your account, if you are signed in).</p>}
       </div>
     </div>
   );

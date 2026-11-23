@@ -26,10 +26,34 @@ export interface Account {
   history: unknown[];
   scripts: unknown[];
   createdAt: number;
+  /** Leave me off other people's friends' leaderboards. */
+  hideFromFriends?: boolean;
 }
 
 export class Accounts {
   constructor(private kv: KV, private env: NodeJS.ProcessEnv = process.env) {}
+
+  /**
+   * The friends' leaderboard: me plus every account that finished at least one of the same games
+   * (matched by game id, which only people in that game know). Stats come from each account's history.
+   */
+  async leaderboard(me: Account) {
+    const mine = new Set(gameIds(me));
+    const rows = [];
+    for (const a of await this.list()) {
+      const together = a.id === me.id ? mine.size : gameIds(a).filter(id => mine.has(id)).length;
+      if (!together || (a.id !== me.id && a.hideFromFriends)) continue;
+      const played = (a.history as { role?: string; won?: boolean | null; mvpMe?: boolean; alignment?: string }[]).filter(h => h && h.role === 'player');
+      rows.push({
+        id: a.id, name: a.displayName, you: a.id === me.id, together,
+        games: played.length, wins: played.filter(h => h.won === true).length,
+        evilWins: played.filter(h => h.won === true && h.alignment === 'evil').length,
+        mvps: played.filter(h => h.mvpMe).length,
+        storytold: (a.history as { role?: string }[]).filter(h => h && h.role === 'storyteller').length,
+      });
+    }
+    return rows.sort((x, y) => y.wins - x.wins || y.games - x.games).slice(0, 50);
+  }
 
   // ---------------------------------------------------------------- storage
   async get(id: string): Promise<Account | null> {
@@ -97,7 +121,7 @@ export class Accounts {
     };
     const bad = (res: Response, status: number, error: string) => res.status(status).json({ ok: false, error });
     const publicUrl = (req: Request) => (this.env.PUBLIC_URL?.replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`);
-    const me = (a: Account) => ({ id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName, avatar: a.avatar, history: a.history, scripts: a.scripts });
+    const me = (a: Account) => ({ id: a.id, username: a.username, email: a.email, google: !!a.googleSub, displayName: a.displayName, avatar: a.avatar, history: a.history, scripts: a.scripts, hideFromFriends: !!a.hideFromFriends });
 
     app.get('/api/auth/config', (_req, res) => res.json(this.config()));
 
@@ -128,6 +152,12 @@ export class Accounts {
       res.json({ ok: true });
     });
 
+    app.get('/api/leaderboard', async (req, res) => {
+      const a = await this.fromRequest(req);
+      if (!a) return bad(res, 401, 'Sign in to see your friends\' leaderboard.');
+      res.json({ ok: true, rows: await this.leaderboard(a) });
+    });
+
     app.get('/api/account', async (req, res) => {
       const a = await this.fromRequest(req);
       if (!a) return bad(res, 401, 'Not signed in.');
@@ -143,6 +173,7 @@ export class Accounts {
       if (b.avatar && typeof b.avatar === 'object') a.avatar = b.avatar;
       if (Array.isArray(b.history)) a.history = b.history.slice(0, 200);
       if (Array.isArray(b.scripts)) a.scripts = b.scripts.slice(0, 50);
+      if (typeof b.hideFromFriends === 'boolean') a.hideFromFriends = b.hideFromFriends;
       await this.save(a);
       res.json({ ok: true, account: me(a) });
     });
@@ -223,4 +254,8 @@ export class Accounts {
       res.redirect(`/?login=${await this.newSession(id)}`);
     });
   }
+}
+
+function gameIds(a: Account): string[] {
+  return (a.history as { gameId?: unknown }[]).map(h => (h && typeof h.gameId === 'string' ? h.gameId : '')).filter(Boolean);
 }

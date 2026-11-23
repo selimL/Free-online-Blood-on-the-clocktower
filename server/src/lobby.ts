@@ -276,6 +276,10 @@ export class Lobby {
     const type = String(d.type ?? '');
     if (type.startsWith('st:')) {
       if (!g.isStoryteller(id)) fail('Only the Storyteller can do that.');
+      if (type === 'st:handOver') {
+        if (id !== 'st') fail('Only the lead Storyteller can hand the role over.');
+        return this.handOver(g, String(d.toId ?? ''));
+      }
       if (g.paused && !['st:pause', 'st:notes', 'st:end'].includes(type) && g.pausedBySTDisconnect) fail('Game is paused.');
       return this.stAction(g, type, d);
     }
@@ -361,6 +365,19 @@ export class Lobby {
     }
   }
 
+  /** Swap who is the Storyteller, and move the live connections with the people. */
+  private handOver(g: Game, toId: string) {
+    const newId = g.handOver(toId);
+    for (const s of this.sockets.get(g.id) ?? []) {
+      const b = s.data.binding as Binding;
+      if (b.id === 'st') { b.id = newId; s.emit('rebound', { id: newId }); }
+      else if (b.id === toId) { b.id = 'st'; s.emit('rebound', { id: 'st' }); }
+    }
+    this.undo.delete(g.id); // undo snapshots belong to the old arrangement
+    this.voice.resync(g, 'st');
+    this.voice.resync(g, newId);
+    g.changed();
+  }
   private stAction(g: Game, type: string, d: any) {
     if (type === 'st:undo') return this.undoLast(g);
     const label = undoLabel(g, type, d);

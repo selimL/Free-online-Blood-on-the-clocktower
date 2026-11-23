@@ -618,6 +618,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
       <JinxPanel settings={settings} save={save} />
       <CoStorytellers view={view} />
       <BackupPanel view={view} />
+      {view.self.id === 'st' && view.phase === 'lobby' && <HandOverToPlayer view={view} />}
       {self.availableRegions.length > 1 && <section>
         <h3>Voice region</h3>
         <select value={settings.region ?? ''} onChange={e => save({ region: e.target.value || null })}>
@@ -641,11 +642,32 @@ function CoStorytellers({ view }: { view: GameView }) {
     <section>
       <h3>🎩 Co-Storytellers</h3>
       <p className="muted small">A co-Storyteller sees the whole Grimoire and can do everything you can (wake players, send info, run votes). They are always with you in your current room, and the game keeps running if one of you drops out.</p>
-      {view.coStorytellers.length > 0 && <ul className="small">{view.coStorytellers.map(c => <li key={c.id}>{c.connected ? '🟢' : '⚪'} {c.name} <button className="btn small ghost" onClick={() => { if (confirm(`Remove ${c.name} as co-Storyteller?`)) void act('st:removeCo', { id: c.id }); }}>Remove</button></li>)}</ul>}
+      {view.coStorytellers.length > 0 && <ul className="small">{view.coStorytellers.map(c => <li key={c.id}>{c.connected ? '🟢' : '⚪'} {c.name} {view.self.id === 'st' && <button className="btn small" onClick={() => { if (confirm(`Make ${c.name} the lead Storyteller? You become a co-Storyteller.`)) void act('st:handOver', { toId: c.id }); }}>👑 Hand over</button>} <button className="btn small ghost" onClick={() => { if (confirm(`Remove ${c.name} as co-Storyteller?`)) void act('st:removeCo', { id: c.id }); }}>Remove</button></li>)}</ul>}
       {view.coStorytellers.length < 2 && <div className="row"><input value={name} onChange={e => setName(e.target.value)} placeholder="Their name" maxLength={24} />
         <button className="btn small" disabled={!name.trim()} onClick={invite}>Invite</button></div>}
       {link && <p className="small">Send this private link to them (anyone with it becomes a Storyteller): <input readOnly value={link} onFocus={e => e.target.select()} aria-label="Co-Storyteller link" />
         <button className="btn small" onClick={() => navigator.clipboard?.writeText(link)}>Copy</button></p>}
+    </section>
+  );
+}
+
+/** Before the game starts, swap places with a player: they run the game and you take their seat. */
+function HandOverToPlayer({ view }: { view: GameView }) {
+  const [to, setTo] = useState('');
+  const humans = view.players.filter(p => !p.bot);
+  if (!humans.length) return null;
+  const name = humans.find(p => p.id === to)?.name;
+  return (
+    <section>
+      <h3>👑 Hand over the Storyteller role</h3>
+      <p className="muted small">Want to play instead? Swap with a player: they become the Storyteller and you take their seat. Once the game has started you can only hand over to a co-Storyteller.</p>
+      <div className="row">
+        <select value={to} onChange={e => setTo(e.target.value)} aria-label="New Storyteller">
+          <option value="">Choose a player…</option>
+          {humans.map(p => <option key={p.id} value={p.id}>{p.name}{p.connected ? '' : ' (offline)'}</option>)}
+        </select>
+        <button className="btn small" disabled={!to} onClick={() => { if (confirm(`Make ${name} the Storyteller? You take their seat.`)) void act('st:handOver', { toId: to }); }}>Hand over</button>
+      </div>
     </section>
   );
 }

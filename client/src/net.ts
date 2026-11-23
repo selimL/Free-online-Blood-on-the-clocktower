@@ -76,6 +76,14 @@ socket.on('connect', () => {
   if (store.session) void rejoin(store.session); // automatic reconnection into the same seat
 });
 socket.on('disconnect', () => set({ connected: false }));
+// the Storyteller role was handed over: this connection is now someone else in the same game
+socket.on('rebound', ({ id }: { id: string }) => {
+  if (!store.session) return;
+  const s = { ...store.session, id };
+  saveSession(s);
+  set({ session: s });
+  pushAlert(id === 'st' ? 'You are now the Storyteller.' : id.startsWith('co:') ? 'You handed over the role and are now a co-Storyteller.' : 'You handed over the role and now have a seat.', 'info');
+});
 socket.on('state', (view: GameView) => set({ view }));
 socket.on('alert', (a: { text: string; kind: string }) => pushAlert(a.text, a.kind));
 socket.on('announcement', (_a: Announcement) => { /* already part of state */ });
