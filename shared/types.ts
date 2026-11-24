@@ -325,6 +325,8 @@ export interface GameView {
   scheduledFor: number | null;
   /** The lobby advert (Storyteller's "looking for players"), or null. */
   lookingFor: { count: number; note: string } | null;
+  /** After the game: the code of the rematch the Storyteller started, if any. */
+  rematchCode: string | null;
   /** Spectators only, with the house rule on: the Grimoire as it was a few minutes ago. */
   delayedGrimoire?: { asOf: number | null; delayMin: number; seats: { id: string; name: string; characterId: string | null; alignment: 'good' | 'evil'; alive: boolean; reminders: string[] }[] } | null;
   /** The Storyteller's homebrew characters (public, like the script). */

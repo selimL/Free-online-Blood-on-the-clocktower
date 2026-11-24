@@ -1,12 +1,12 @@
 import type { Server, Socket } from 'socket.io';
-import { Game, GameError, cleanText, sanitizeAvatar, makeCode, type Player } from './game';
+import { Game, GameError, cleanText, sanitizeAvatar, makeCode, sanitizeHomebrew, type Player } from './game';
 import { playerView, storytellerView, spectatorView, lobbyEntry } from './views';
 import type { VoiceManager } from './voice';
 import { encode, decode, type GameStore } from './persist';
 import { addBot, botTick } from './bots';
 import { startTutorial, tutorialNext, tutorialTick, tutorialSkip } from './tutorial';
 import type { LobbyChatMsg } from '../../shared/types';
-import { unregisterHomebrew } from '../../shared/characters';
+import { unregisterHomebrew, registerHomebrew } from '../../shared/characters';
 
 const fail = (m: string, vars?: Record<string, string | number>): never => { throw new GameError(m, vars); };
 
@@ -123,6 +123,34 @@ export class Lobby {
     void this.voice.reconcile(g);
   }
 
+  /** Reports of chat messages, for the admin page (memory only, the last 200). */
+  reports: { id: string; ts: number; kind: 'lobby' | 'room'; where: string; author: string; text: string; reason: string; reporter: string; verified: boolean }[] = [];
+  private reportAt = new Map<string, number>();
+  /**
+   * Report a message. Lobby messages are looked up on the server (verified); room chat is not
+   * kept, so the reporter's copy is stored as they saw it.
+   */
+  report(socket: Socket, d: any) {
+    const now = Date.now();
+    if (now - (this.reportAt.get(socket.id) ?? 0) < 10_000) fail('Slow down a little.');
+    const reason = cleanText(d.reason, 200);
+    let entry: Lobby['reports'][number];
+    if (d.kind === 'lobby') {
+      const m = this.lobbyChat.find(x => x.id === String(d.messageId ?? ''));
+      if (!m) fail('That message is gone.');
+      entry = { id: `${now}-${Math.random().toString(36).slice(2, 7)}`, ts: now, kind: 'lobby', where: 'Lobby chat', author: m!.name, text: m!.text, reason, reporter: cleanText(d.reporter, 24) || '?', verified: true };
+    } else {
+      const b = socket.data.binding as Binding | undefined;
+      const g = b && this.games.get(b.gameId);
+      if (!b || !g) fail('You are not in a game.');
+      entry = { id: `${now}-${Math.random().toString(36).slice(2, 7)}`, ts: now, kind: 'room', where: `${g!.name} (${g!.code})`, author: cleanText(d.author, 24), text: cleanText(d.text, 300), reason, reporter: g!.nameOf(b!.id), verified: false };
+    }
+    this.reportAt.set(socket.id, now);
+    if (this.reportAt.size > 5000) this.reportAt.clear();
+    this.reports.unshift(entry);
+    if (this.reports.length > 200) this.reports.pop();
+    return {};
+  }
   /** Post in the lobby chat (one message every 3 seconds per connection). */
   postLobbyChat(socket: Socket, d: any) {
     const now = Date.now();
@@ -287,6 +315,10 @@ export class Lobby {
     const type = String(d.type ?? '');
     if (type.startsWith('st:')) {
       if (!g.isStoryteller(id)) fail('Only the Storyteller can do that.');
+      if (type === 'st:rematch') {
+        if (id !== 'st') fail('Only the lead Storyteller can start a rematch.');
+        return this.rematch(g);
+      }
       if (type === 'st:handOver') {
         if (id !== 'st') fail('Only the lead Storyteller can hand the role over.');
         return this.handOver(g, String(d.toId ?? ''));
@@ -395,6 +427,51 @@ export class Lobby {
     g.emit(['st', ...g.coStorytellers.map(c => c.id)], 'alert', { text: g.t('{old} was offline for 2 minutes, so {name} took over as the lead Storyteller.', { old: oldName, name: g.storyteller.name }), kind: 'info' });
     if (g.paused && g.pausedBySTDisconnect) { g.pausedBySTDisconnect = false; g.setPaused(false); }
     g.changed();
+  }
+  /**
+   * A new game with the same group and settings. Everyone connected is moved across (seat
+   * order kept); people who are offline find a "Join the rematch" button in the old game.
+   */
+  private rematch(g: Game) {
+    if (g.phase !== 'ended') fail('A rematch can only start once the game is over.');
+    if (g.rematch && this.games.has(g.rematch.gameId)) fail('A rematch has already started: code {code}.', { code: g.rematch.code });
+    if (g.tutorial) fail('Practice games cannot be rematched.');
+    const n = new Game({ name: g.name, visibility: g.visibility, stName: g.storyteller.name, stAvatar: g.storyteller.avatar });
+    // settings: a copy, with homebrew characters given fresh ids (ids are unique per game)
+    const settings = JSON.parse(JSON.stringify(g.settings)) as typeof g.settings;
+    const idMap = new Map<string, string>();
+    settings.homebrew = sanitizeHomebrew((g.settings.homebrew ?? []).map(h => ({ ...h, id: undefined })), new Set());
+    (g.settings.homebrew ?? []).forEach((h, i) => idMap.set(h.id, settings.homebrew[i]?.id ?? h.id));
+    const remap = (ids: string[]) => ids.map(id => idMap.get(id) ?? id);
+    settings.characters = remap(settings.characters); settings.script = remap(settings.script);
+    settings.publicList.hidden = remap(settings.publicList.hidden);
+    n.settings = settings;
+    registerHomebrew(n.settings.homebrew);
+    this.games.set(n.id, n);
+    this.wire(n);
+    g.rematch = { code: n.code, gameId: n.id };
+    // people: Storyteller, co-Storytellers, players (in seat order), spectators
+    const sockets = [...(this.sockets.get(g.id) ?? [])];
+    const moveTo = (oldId: string, newId: string, token: string) => {
+      for (const s of sockets.filter(x => (x.data.binding as Binding).id === oldId)) {
+        this.bind(s, n, newId);
+        s.emit('rematch', { gameId: n.id, code: n.code, token, id: newId });
+      }
+    };
+    n.storyteller.connected = g.storyteller.connected;
+    moveTo('st', 'st', n.storyteller.token);
+    for (const c of g.coStorytellers) { const nc = n.addCoStoryteller(c.name); nc.connected = c.connected; moveTo(c.id, nc.id, nc.token); }
+    for (const p of [...g.players].sort((a, b) => a.seat - b.seat)) {
+      const np = n.join(p.name, p.avatar, { bot: p.bot });
+      if (!p.bot && !p.connected) { np.connected = false; np.offlineSince = Date.now(); }
+      moveTo(p.id, np.id, np.token);
+    }
+    if (n.settings.houseRules.allowSpectators) for (const s of g.spectators.filter(x => x.connected)) { const ns = n.addSpectator(s.name, s.avatar); moveTo(s.id, ns.id, ns.token); }
+    g.announce(g.t('The Storyteller started a rematch. Code: {code}', { code: n.code }), 'phase');
+    g.changed();
+    n.addLog(n.t('Rematch of “{name}”.', { name: g.name }));
+    n.changed();
+    return { gameId: n.id, code: n.code };
   }
   /** Swap who is the Storyteller, and move the live connections with the people. */
   private handOver(g: Game, toId: string) {
@@ -510,6 +587,16 @@ export class Lobby {
     }
   }
   /** How many people are connected to a game right now. */
+  /** Public, aggregate numbers for the status page (no names, no codes). */
+  status() {
+    const running = [...this.games.values()].filter(g => !g.tutorial && g.phase !== 'ended');
+    let online = 0;
+    for (const set of this.sockets.values()) online += set.size;
+    return {
+      gamesRunning: running.length, gamesInProgress: running.filter(g => g.started).length,
+      peopleInGames: online, storage: this.store?.kind ?? 'memory only',
+    };
+  }
   onlineCount(gameId: string) { return this.sockets.get(gameId)?.size ?? 0; }
   /** Admin: close a game, telling everyone in it why. */
   closeGame(gameId: string, reason: string) {

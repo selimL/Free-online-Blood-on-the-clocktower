@@ -80,6 +80,13 @@ socket.on('connect', () => {
 });
 socket.on('disconnect', () => set({ connected: false }));
 // the Storyteller role was handed over: this connection is now someone else in the same game
+// the Storyteller started a rematch: this connection now belongs to the new game
+socket.on('rematch', (s: Session) => {
+  saveSession(s);
+  set({ session: s, chat: [] });
+  history.replaceState(null, '', `/g/${s.code}`);
+  pushAlert(tr('Rematch! Same group, same settings: a new game has started.'), 'info');
+});
 socket.on('rebound', ({ id }: { id: string }) => {
   if (!store.session) return;
   const s = { ...store.session, id };

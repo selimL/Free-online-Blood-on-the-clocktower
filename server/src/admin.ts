@@ -70,6 +70,8 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
     res.json({ ok: true, scripts: gallery ? (await gallery.list()).map(s => ({ id: s.id, name: s.name, author: s.author, owner: s.ownerName, votes: s.votes.length, count: s.ids.length, createdAt: s.createdAt })) : [] });
   }));
   app.delete('/api/admin/gallery/:id', guard(async (req, res) => { await gallery?.remove(String(req.params.id)); res.json({ ok: true }); }));
+  app.get('/api/admin/reports', guard((_req, res) => res.json({ ok: true, reports: lobby.reports })));
+  app.post('/api/admin/reports/:id/dismiss', guard((req, res) => { lobby.reports = lobby.reports.filter(r => r.id !== String(req.params.id)); res.json({ ok: true }); }));
   app.get('/api/admin/lobby-chat', guard((_req, res) => res.json({ ok: true, chat: lobby.lobbyChat })));
   app.post('/api/admin/lobby-chat/clear', guard((req, res) => {
     const id = req.body?.id ? String(req.body.id) : null;

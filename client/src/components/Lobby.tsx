@@ -187,6 +187,13 @@ function HistoryDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+async function reportLobby(messageId: string, author: string, reporter: string) {
+  const reason = prompt(`Report this message from ${author} to the site admin? Say briefly why (optional):`, '');
+  if (reason === null) return;
+  const r = await rpc('report', { kind: 'lobby', messageId, reason, reporter });
+  pushAlert(r.ok ? 'Thanks: the site admin will look at it.' : r.error ?? 'Could not send the report.', r.ok ? 'info' : 'error');
+}
+
 /** A small public chat for finding players. Kept in server memory only (the last 50 messages). */
 function LobbyChat({ chat, onChat }: { chat: LobbyChatMsg[]; onChat: (c: LobbyChatMsg[]) => void }) {
   const [text, setText] = useState('');
@@ -206,7 +213,8 @@ function LobbyChat({ chat, onChat }: { chat: LobbyChatMsg[]; onChat: (c: LobbyCh
       <h3>💬 Lobby chat <span className="muted small">(looking for a game? say hi)</span></h3>
       <div className="lobby-chat-log" ref={box} aria-live="polite">
         {chat.length === 0 && <p className="muted small">No messages yet.</p>}
-        {chat.map(m => <p key={m.id} className="small"><span className="muted">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> <b>{m.name}</b>: {m.text}</p>)}
+        {chat.map(m => <p key={m.id} className="small chat-line"><span className="muted">{new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> <b>{m.name}</b>: {m.text}
+          <button className="report-btn" title="Report this message to the site admin" aria-label={`Report message from ${m.name}`} onClick={() => void reportLobby(m.id, m.name, name)}>⚑</button></p>)}
       </div>
       <form className="row" onSubmit={e => { e.preventDefault(); void send(); }}>
         <input aria-label="Your name" placeholder="Name" value={name} maxLength={24} onChange={e => setName(e.target.value)} style={{ maxWidth: '7rem' }} />

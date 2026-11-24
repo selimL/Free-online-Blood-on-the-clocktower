@@ -227,6 +227,8 @@ export class Game {
   tutorial: TutorialState | null = null;
   /** Planned start time (ms) shared with the invite link; null = no schedule. */
   scheduledFor: number | null = null;
+  /** Set when the Storyteller starts a rematch: the new game's code. */
+  rematch: { code: string; gameId: string } | null = null;
   /** "Looking for players": shown in the public lobby until the game starts. */
   lookingFor: { count: number; note: string } | null = null;
   /** Detections from word listening (who said what, when, where, with whom), for the Storyteller only. */

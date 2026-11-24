@@ -18,6 +18,7 @@ export function AdminPage() {
   const [accts, setAccts] = useState<Acct[]>([]);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [chat, setChat] = useState<{ id: string; name: string; text: string; ts: number }[]>([]);
+  const [reports, setReports] = useState<{ id: string; ts: number; kind: string; where: string; author: string; text: string; reason: string; reporter: string; verified: boolean }[]>([]);
   const [gallery, setGallery] = useState<{ id: string; name: string; author: string; owner: string; votes: number; count: number; createdAt: number }[]>([]);
   const call = async (path: string, method = 'GET', body?: unknown) => {
     const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
@@ -30,6 +31,7 @@ export function AdminPage() {
     const a = await call('/api/admin/accounts'); if (a.ok) setAccts(a.accounts);
     const c = await call('/api/admin/lobby-chat'); if (c.ok) setChat(c.chat);
     const gl = await call('/api/admin/gallery'); if (gl.ok) setGallery(gl.scripts);
+    const rp = await call('/api/admin/reports'); if (rp.ok) setReports(rp.reports);
   };
   useEffect(() => { void fetch('/api/admin/enabled').then(r => r.json()).then(j => setEnabled(j.enabled)); }, []);
   useEffect(() => { if (!token) return; void load(); const t = setInterval(() => void load(), 5000); return () => clearInterval(t); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -50,6 +52,11 @@ export function AdminPage() {
     <div className="admin parchment">
       <div className="row"><h2>🛠 Admin</h2><a className="btn small ghost" href="/">Back to the lobby</a>{ownerToken ? <button className="btn small ghost" onClick={() => { sessionStorage.removeItem('botc:admin'); setToken(null); }}>Sign out</button>
         : <span className="muted small">Signed in as admin account {acct.account?.displayName}</span>}</div>
+      <h3>⚑ Reports ({reports.length})</h3>
+      <ul className="small admin-chat">{reports.map(r => <li key={r.id}>
+        <span className="muted">{new Date(r.ts).toLocaleString()} · {r.where}</span> — <b>{r.author}</b>: “{r.text}” <span className="muted">(reported by {r.reporter}{r.reason ? `: ${r.reason}` : ''}{r.verified ? '' : ' · room chat is not stored, so this is the reporter\'s copy'})</span>
+        {' '}<button className="btn small ghost" onClick={async () => { await call(`/api/admin/reports/${r.id}/dismiss`, 'POST', {}); void load(); }}>Dismiss</button>
+      </li>)}{reports.length === 0 && <li className="muted">No reports.</li>}</ul>
       <h3>Games ({games.length})</h3>
       <table className="games admin-table"><thead><tr><th>Game</th><th>Status</th><th>People</th><th>Storyteller</th><th>Activity</th><th /></tr></thead><tbody>
         {games.sort((a, b) => b.lastActivity - a.lastActivity).map(g => (

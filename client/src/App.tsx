@@ -12,6 +12,7 @@ import { AdminPage } from './components/AdminPage';
 import { PrivacyPage, TermsPage, LegalLinks } from './components/Legal';
 import { initAccount } from './account';
 import './install';
+import { StatusPage } from './components/StatusPage';
 
 void initAccount().then(err => { if (err) pushAlert(err, 'error'); });
 import './styles.css';
@@ -104,6 +105,7 @@ function App() {
   if (location.pathname === '/admin') body = <AdminPage />;
   else if (location.pathname === '/privacy') body = <PrivacyPage />;
   else if (location.pathname === '/terms') body = <TermsPage />;
+  else if (location.pathname === '/status') body = <StatusPage />;
   else if (previewRoom) body = <RoomPreview art={previewRoom} />;
   else if (kicked) body = <div className="center-card parchment"><h2>Removed</h2><p>{kicked}</p><a className="btn" href="/">Back to the lobby</a></div>;
   else if (session && view) body = <GameScreen view={view} />;

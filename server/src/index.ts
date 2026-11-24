@@ -41,6 +41,12 @@ gallery.routes(app);
 adminRoutes(app, lobby, accounts, process.env, gallery);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, games: lobby.games.size, voice: voice.enabled }));
+const startedAt = Date.now();
+// the public status page (/status): only aggregate numbers
+app.get('/api/status', (_req, res) => res.json({
+  ok: true, uptimeMinutes: Math.round((Date.now() - startedAt) / 60000), ...lobby.status(),
+  voice: voice.enabled, accountStorage: kv.kind, version: (process.env.RENDER_GIT_COMMIT ?? '').slice(0, 7) || null, time: Date.now(),
+}));
 // Region list for client-side RTT probing (URLs only, never secrets).
 app.get('/api/regions', (_req, res) => res.json(voice.regions.map(r => ({ name: r.name, url: r.url }))));
 
@@ -69,6 +75,7 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('lobby:list', guard(() => ({ games: lobby.publicList(), chat: lobby.lobbyChat })));
   socket.on('lobby:chat', guard(d => lobby.postLobbyChat(socket, d)));
+  socket.on('report', guard(d => lobby.report(socket, d)));
   socket.on('game:create', guard(d => lobby.create(socket, d)));
   socket.on('game:lookup', guard(d => lobby.lookup(String(d.code ?? ''))));
   socket.on('game:join', guard(d => lobby.join(socket, d)));

@@ -158,6 +158,7 @@ function baseView(g: Game, viewer: Player | null, evil: EvilTeamView | null, asS
     whispers: isST ? g.whispers : viewer ? g.whispers.filter(w => w.playerId === viewer.id) : [],
     scheduledFor: g.scheduledFor ?? null,
     lookingFor: g.lookingFor ?? null,
+    rematchCode: g.rematch?.code ?? null,
     homebrew: g.settings.homebrew ?? [],
     language: g.settings.language ?? 'en',
     coStorytellers: (g.coStorytellers ?? []).map(c => ({ id: c.id, name: c.name, connected: c.connected })),

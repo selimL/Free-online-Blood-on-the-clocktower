@@ -228,7 +228,10 @@ export function GameScreen({ view }: { view: GameView }) {
           <AbilityBanner view={view} />
           <VoteBar view={view} />
           {view.phase === 'questions' && <QuestionsBanner view={view} />}
-          {view.phase === 'ended' && <div className={`winner-banner ${view.winner}`}>{view.winner === 'good' ? tr("Good") : tr("Evil")} {tr("wins! All characters are revealed.")}</div>}
+          {view.phase === 'ended' && <div className={`winner-banner ${view.winner}`}>{view.winner === 'good' ? tr("Good") : tr("Evil")} {tr("wins! All characters are revealed.")}
+            {isST && !view.rematchCode && view.self.id === 'st' && <> <button className="btn small primary" onClick={() => void act('st:rematch')}>{tr("🔁 Rematch")}</button></>}
+            {view.rematchCode && <> <a className="btn small primary" href={`/g/${view.rematchCode}`}>{tr("🔁 Join the rematch")}</a></>}
+          </div>}
         </section>
         <aside className="right">
           {!view.self.isStoryteller && view.self.tutorial && <TutorialTip tip={view.self.tutorial} />}
@@ -921,6 +924,13 @@ function PersonalNotes({ view }: { view: GameView }) {
   );
 }
 
+async function reportRoom(author: string, text: string) {
+  const reason = prompt(tr('Report this message from {name} to the site admin? Say briefly why (optional):', { name: author }), '');
+  if (reason === null) return;
+  const r = await rpc('report', { kind: 'room', author, text, reason });
+  pushAlert(r.ok ? tr('Thanks: the site admin will look at it.') : r.error ?? tr('Could not send the report.'), r.ok ? 'info' : 'error');
+}
+
 export function Chat({ view }: { view: GameView }) {
   const spectator = !view.self.isStoryteller && !!view.self.spectator;
   const chat = useStore(s => s.chat);
@@ -937,7 +947,8 @@ export function Chat({ view }: { view: GameView }) {
     <div className="chat">
       <div className="chat-log">
         {chat.length === 0 && <p className="muted small">{tr("Messages are only delivered to people in your current room — like voice. There is no history.")}</p>}
-        {chat.map(m => <div key={m.id} className={`msg ${m.fromId === 'st' ? 'st' : ''}`}><b>{m.name}:</b> {m.text}</div>)}
+        {chat.map(m => <div key={m.id} className={`msg chat-line ${m.fromId === 'st' ? 'st' : ''}`}><b>{m.name}:</b> {m.text}
+          {m.fromId !== view.self.id && <button className="report-btn" title={tr("Report this message to the site admin")} aria-label={tr("Report this message to the site admin")} onClick={() => void reportRoom(m.name, m.text)}>⚑</button>}</div>)}
         <div ref={endRef} />
       </div>
       <form className="row" onSubmit={e => { e.preventDefault(); void send(); }}>

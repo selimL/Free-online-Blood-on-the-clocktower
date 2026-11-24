@@ -82,6 +82,7 @@ export function PrivacyPage() {
       <ul>
         <li><b>Everyone in a game</b> sees names, figures, who is alive, public votes and announcements, and anything said in their own room.</li>
         <li><b>Only the Storyteller</b> (and any co-Storyteller they invite) sees the Grimoire (everyone's character), the whispers sent to them, and the word-listening detections. <b>Other players never see these</b>, until the end-of-game story reveals the characters and the event log to everyone.</li>
+        <li><b>Reports</b>: if you report a chat message (⚑), the site owner sees the message, who wrote it, where, your name and your reason. Reports are kept in the server's memory only, until they are dismissed or the server restarts.</li>
         <li><b>Script gallery</b>: scripts you publish are public: their name, characters, the author name you type and your display name can be seen by anyone, along with how many people upvoted them (not who). You can remove your scripts at any time; the site owner and admins can remove them too.</li>
         <li><b>Spectators</b>: if the Storyteller turns it on, spectators of a game can see its Grimoire (everyone's character) a few minutes late.</li>
         <li><b>Friends' leaderboard</b>: signed-in players who finished a game with you see your display name and your game totals (games, wins, MVP awards, games as Storyteller), not which characters you played. You can switch this off under 📊 My games → Friends.</li>
@@ -116,5 +117,5 @@ export function TermsPage() {
 
 /** Small "Privacy · Terms" links for footers and dialogs. */
 export function LegalLinks({ className = '' }: { className?: string }) {
-  return <span className={`legal-links ${className}`}><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></span>;
+  return <span className={`legal-links ${className}`}><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/status">Status</a></span>;
 }
