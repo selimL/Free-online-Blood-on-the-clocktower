@@ -244,7 +244,7 @@ export function nightOrder(g: Game) {
 
 export function storytellerView(g: Game): GameView {
   const self: StorytellerSelf = {
-    id: 'st', isStoryteller: true, settings: g.settings,
+    id: 'st', isStoryteller: true, settings: g.settings, allVotes: g.voteHistory,
     grimoire: g.players.map(p => ({
       id: p.id, characterId: p.characterId, shownCharacterId: p.shownCharacterId, alignment: p.alignment,
       shownAlignment: p.shownAlignment, reminders: p.reminders, fakeEvilTeam: p.fakeEvilTeam, notes: p.notes,

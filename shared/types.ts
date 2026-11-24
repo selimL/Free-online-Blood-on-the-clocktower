@@ -380,6 +380,8 @@ export interface PendingAbility {
 export interface StorytellerSelf {
   id: 'st';
   isStoryteller: true;
+  /** Every nomination and its votes (Storyteller only, for the night helper). */
+  allVotes: VoteRecord[];
   settings: Settings;
   grimoire: GrimoireSeat[];
   demonBluffs: string[];

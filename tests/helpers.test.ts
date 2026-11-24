@@ -115,3 +115,35 @@ describe('dawn recap', () => {
     expect(g.dawnRecap).toEqual({ day: 2, died: [], executed: g.players[4].id, exiled: [] });
   });
 });
+
+describe('more night information', () => {
+  it('Oracle, Seamstress, Village Idiot, Noble, Knight and Shugenja', () => {
+    const g = setup();
+    g.beginNight();
+    const me = g.players[0];
+    g.players[4].alive = false; // the poisoner (evil) is dead
+    expect(suggestInfo('oracle', me.id, storytellerView(g))!.value).toBe(1);
+    me.nightChoice = [g.players[2].id, g.players[3].id]; // chef & washerwoman: both good
+    expect(suggestInfo('seamstress', me.id, storytellerView(g))!.value).toBe('yes');
+    me.nightChoice = [g.players[1].id, g.players[3].id]; // imp & washerwoman
+    expect(suggestInfo('seamstress', me.id, storytellerView(g))!.value).toBe('no');
+    me.nightChoice = [g.players[1].id];
+    expect(suggestInfo('villageidiot', me.id, storytellerView(g))!.card!.text).toMatch(/evil/);
+    for (let i = 0; i < 10; i++) {
+      const noble = suggestInfo('noble', me.id, storytellerView(g))!.card!.playerIds!;
+      expect(noble.filter(id => g.player(id).alignment === 'evil').length).toBe(1);
+      const knight = suggestInfo('knight', me.id, storytellerView(g))!.card!.playerIds!;
+      expect(knight.some(id => g.player(id).characterId === 'imp')).toBe(false);
+    }
+    // seat 0's nearest evil player: the imp in seat 1 (one step)
+    expect(suggestInfo('shugenja', me.id, storytellerView(g))!.card!.text).toBeTruthy();
+  });
+  it('Flower Girl and Town Crier read today\'s votes and nominations', () => {
+    const g = setup();
+    g.beginNight(); g.beginDay();
+    g.voteHistory.push({ day: g.day, nominatorId: g.players[4].id, nomineeId: g.players[2].id, exile: false, yes: [g.players[1].id], votes: 1, needed: 4, result: '' });
+    const v = storytellerView(g);
+    expect(suggestInfo('flowergirl', g.players[0].id, v)!.value).toBe('yes'); // the imp voted
+    expect(suggestInfo('towncrier', g.players[0].id, v)!.value).toBe('yes');  // the poisoner nominated
+  });
+});

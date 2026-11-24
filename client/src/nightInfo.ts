@@ -94,6 +94,104 @@ export function suggestInfo(step: string, recipient: string, view: GameView): Su
       for (const d of demons) for (const m of minions) best = Math.min(best, Math.abs(d - m), n - Math.abs(d - m));
       return { card: { text: tr("You learn: {best}", { best }) }, value: best, why: tr(best === 1 ? "The Demon is 1 step from the nearest Minion." : "The Demon is {best} steps from the nearest Minion.", { best }) };
     }
+    // ---- Bad Moon Rising, Sects & Violets, Experimental
+    case 'oracle': {
+      const dead = seats.filter(g => !pub(g.id)?.alive && g.alignment === 'evil').length;
+      return { card: { text: tr('You learn: {n}', { n: dead }) }, value: dead, why: tr('{n} dead players are evil.', { n: dead }) };
+    }
+    case 'flowergirl': {
+      const demons = seats.filter(g => typeOf(g) === 'demon').map(g => g.id);
+      const voted = (self.allVotes ?? []).some(v => v.day === view.day && v.yes.some(id => demons.includes(id)));
+      return { card: { text: tr(voted ? 'Yes' : 'No') }, value: voted ? 'yes' : 'no', why: tr(voted ? 'The Demon voted today.' : 'The Demon did not vote today (secret votes are not counted here).') };
+    }
+    case 'towncrier': {
+      const minions = seats.filter(g => typeOf(g) === 'minion').map(g => g.id);
+      const nominated = (self.allVotes ?? []).some(v => v.day === view.day && !v.exile && minions.includes(v.nominatorId));
+      return { card: { text: tr(nominated ? 'Yes' : 'No') }, value: nominated ? 'yes' : 'no', why: tr(nominated ? 'A Minion nominated today.' : 'No Minion nominated today.') };
+    }
+    case 'seamstress': {
+      const chosen = grim[recipient]?.nightChoice ?? [];
+      if (chosen.length < 2) return { card: null, why: tr('Waiting for the Seamstress to choose two players (or not to use the ability tonight).') };
+      const same = grim[chosen[0]]?.alignment === grim[chosen[1]]?.alignment;
+      return { card: { text: tr(same ? 'Yes' : 'No') }, value: same ? 'yes' : 'no', why: tr(same ? '{a} and {b} are on the same team.' : '{a} and {b} are on different teams.', { a: name(chosen[0]), b: name(chosen[1]) }) };
+    }
+    case 'chambermaid': {
+      const chosen = (grim[recipient]?.nightChoice ?? []).slice(0, 2);
+      if (chosen.length < 2) return { card: null, why: tr('Waiting for the Chambermaid to choose two players.') };
+      const tonight = new Set(self.nightOrder.map(s => s.id));
+      const woke = chosen.filter(id => tonight.has(grim[id]?.characterId ?? '')).length;
+      return { card: { text: tr('You learn: {n}', { n: woke }) }, value: woke, why: tr('{n} of them have a character on tonight\'s night order (check whether they really woke).', { n: woke }) };
+    }
+    case 'dreamer': {
+      const t = grim[recipient]?.nightChoice?.[0];
+      if (!t) return { card: null, why: tr('Waiting for the Dreamer to choose a player.') };
+      const own = grim[t]?.characterId;
+      if (!own) return null;
+      const good = grim[t].alignment === 'good';
+      const inPlay = new Set(seats.map(g => g.characterId));
+      const pool = (self.settings.script.length ? self.settings.script : Object.keys(CHARACTER_BY_ID))
+        .filter(id => !inPlay.has(id) && (good ? ['minion', 'demon'] : ['townsfolk', 'outsider']).includes(CHARACTER_BY_ID[id]?.type ?? ''));
+      const other = pick(pool);
+      if (!other) return null;
+      const [x, y] = shuffle2(own, other);
+      return { card: { text: tr('This player is one of these characters:'), playerIds: [t], characterIds: [x, y] }, why: tr('{name} is the {a}; the {b} is a random character from the other team.', { name: name(t), a: ch(own), b: ch(other) }) };
+    }
+    case 'sage': {
+      const demon = seats.find(g => typeOf(g) === 'demon' && pub(g.id)?.alive);
+      if (!demon) return null;
+      const y = pick(others.filter(id => id !== demon.id));
+      if (!y) return null;
+      const [a, b] = shuffle2(demon.id, y);
+      return { card: { text: tr('One of these two players is the Demon:'), playerIds: [a, b] }, why: tr('{name} is the Demon; {other} is a random other player.', { name: name(demon.id), other: name(y) }) };
+    }
+    case 'noble': {
+      const evils = others.filter(evil), goods = others.filter(id => !evil(id));
+      if (!evils.length || goods.length < 2) return null;
+      const e = pick(evils), g1 = pick(goods), g2 = pick(goods.filter(id => id !== g1));
+      const three = [e, g1, g2].sort(() => Math.random() - 0.5);
+      return { card: { text: tr('Exactly one of these three players is evil:'), playerIds: three }, why: tr('{name} is the evil one.', { name: name(e) }) };
+    }
+    case 'knight': {
+      const notDemon = others.filter(id => typeOf(grim[id]) !== 'demon');
+      const a = pick(notDemon), b = pick(notDemon.filter(id => id !== a));
+      if (!a || !b) return null;
+      return { card: { text: tr('Neither of these players is the Demon:'), playerIds: [a, b] }, why: tr('Two random players who are not the Demon.') };
+    }
+    case 'steward': {
+      const goods = others.filter(id => !evil(id));
+      const a = pick(goods);
+      if (!a) return null;
+      return { card: { text: tr('This player is good:'), playerIds: [a] }, why: tr('{name} is good.', { name: name(a) }) };
+    }
+    case 'bountyhunter': {
+      const evils = others.filter(evil);
+      const a = pick(evils);
+      if (!a) return null;
+      return { card: { text: tr('This player is evil:'), playerIds: [a] }, why: tr('{name} is evil.', { name: name(a) }) };
+    }
+    case 'villageidiot': {
+      const t = grim[recipient]?.nightChoice?.[0];
+      if (!t) return { card: null, why: tr('Waiting for the Village Idiot to choose a player.') };
+      const e = evil(t);
+      return { card: { text: tr(e ? 'This player is evil:' : 'This player is good:'), playerIds: [t] }, why: tr(e ? '{name} is evil.' : '{name} is good.', { name: name(t) }) };
+    }
+    case 'king': {
+      const alive = view.players.filter(p => p.alive && !p.traveller), dead = view.players.filter(p => !p.alive && !p.traveller);
+      if (dead.length < alive.length) return { card: null, why: tr('Fewer dead than living: the King learns nothing tonight.') };
+      const a = pick(alive.filter(p => p.id !== recipient));
+      if (!a) return null;
+      const c = grim[a.id]?.characterId;
+      return { card: { text: tr('One living character is:'), characterIds: c ? [c] : [] }, why: tr('{name} is the {character}.', { name: a.name, character: ch(c) }) };
+    }
+    case 'shugenja': {
+      const i = idx(recipient);
+      let cw = 0, ccw = 0;
+      for (let k = 1; k < n && !cw; k++) if (evil(view.players[(i + k) % n].id)) cw = k;
+      for (let k = 1; k < n && !ccw; k++) if (evil(view.players[(i - k + n) % n].id)) ccw = k;
+      if (!cw && !ccw) return null;
+      const dir = cw && (!ccw || cw < ccw) ? 'clockwise' : ccw && (!cw || ccw < cw) ? 'anticlockwise' : pick(['clockwise', 'anticlockwise']);
+      return { card: { text: tr(dir === 'clockwise' ? 'Your closest evil player is clockwise from you.' : 'Your closest evil player is anticlockwise from you.') }, why: tr(cw === ccw ? 'Equally close both ways: you may pick either.' : 'Closest evil player: {n} seats {dir}.', { n: Math.min(cw || 99, ccw || 99), dir: tr(dir) }) };
+    }
     default: return null;
   }
 }

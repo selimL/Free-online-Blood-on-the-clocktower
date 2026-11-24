@@ -18,6 +18,7 @@ import { Modal, TYPE_LABEL } from './Overlays';
 import { Chat, Announcements } from './GameScreen';
 import { tr, ability } from '../i18n';
 import { openCheatSheet } from '../cheatSheet';
+import { setupWarnings } from '../../../shared/setupCheck';
 import { LANGUAGES, type Lang } from '../../../shared/i18n';
 
 const st = (v: GameView) => v.self as StorytellerSelf;
@@ -312,7 +313,7 @@ const TEMPLATE: Record<string, Template> = {
   chef: 'number', empath: 'number', clockmaker: 'number', oracle: 'number', mathematician: 'number', chambermaid: 'number', juggler: 'number',
   fortuneteller: 'yesno', flowergirl: 'yesno', towncrier: 'yesno', seamstress: 'yesno',
   washerwoman: 'pair', librarian: 'pair', investigator: 'pair',
-  undertaker: 'character', ravenkeeper: 'character', grandmother: 'character', dreamer: 'character',
+  undertaker: 'character', ravenkeeper: 'character', grandmother: 'character',
   minioninfo: 'minions', demoninfo: 'demon',
 };
 const PAIR_TYPE: Record<string, CharacterType> = { washerwoman: 'townsfolk', librarian: 'outsider', investigator: 'minion' };
@@ -547,6 +548,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
   const toggle = (id: string) => save({ characters: bag.includes(id) ? bag.filter(x => x !== id) : [...bag, id] });
   const counts = TYPES.map(t => bag.filter(id => CHARACTER_BY_ID[id]?.type === t).length);
   const modifiers = bag.map(id => CHARACTER_BY_ID[id]).filter(c => c?.setup);
+  const warnings = setupWarnings(bag, residents);
   const randomFill = () => {
     // Experimental characters only go into a random bag when they are on the script
     const pick = (t: CharacterType, n: number) => pool.filter(c => c.type === t && (c.edition !== 'exp' || settings.script.includes(c.id))).sort(() => Math.random() - 0.5).slice(0, n).map(c => c.id);
@@ -573,6 +575,7 @@ function Setup({ view, settings }: { view: GameView; settings: Settings }) {
         {residents < 7 && bag.some(id => CHARACTER_BY_ID[id]?.edition !== 'tb') && <p className="warn small">{tr("Bad Moon Rising and Sects & Violets are recommended for 7 or more players (Trouble Brewing works from 5).")}</p>}
         {residents <= 6 && <p className="muted small">{tr("Teensyville rules apply at")}{' '}{residents} {tr("players: no Minion or Demon info on the first night (unless the house rule says otherwise).")}</p>}
         {!locked && <ScriptImport settings={settings} />}
+        {warnings.length > 0 && <ul className="setup-warnings">{warnings.map((w, i) => <li key={i}>⚖ {tr(w.text, w.vars)}</li>)}</ul>}
         {modifiers.length > 0 && <p className="warn small">{tr("Setup modifiers:")}{' '}{modifiers.map(c => `${c!.name} (${c!.setup})`).join('; ')}</p>}
         {TYPES.map((t, ti) => {
           const chars = pool.filter(c => c.type === t);

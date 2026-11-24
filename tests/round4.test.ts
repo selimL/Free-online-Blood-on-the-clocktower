@@ -215,3 +215,14 @@ describe('round 5', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+import { setupWarnings } from '../shared/setupCheck';
+describe('setup warnings', () => {
+  it('spot a missing Demon, Baron Outsiders and too few info roles', () => {
+    expect(setupWarnings(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 7)).toEqual([]);
+    expect(setupWarnings(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'poisoner'], 7).map(w => w.text)).toContain('There is no Demon in the bag.');
+    const baron = setupWarnings(['washerwoman', 'chef', 'empath', 'monk', 'soldier', 'baron', 'imp'], 7);
+    expect(baron.find(w => w.text.startsWith('With'))?.vars).toMatchObject({ chars: 'Baron', range: '2', have: 0 });
+    expect(setupWarnings(['monk', 'soldier', 'mayor', 'virgin', 'slayer', 'poisoner', 'imp'], 7).some(w => w.text.startsWith('Only'))).toBe(true);
+  });
+});
