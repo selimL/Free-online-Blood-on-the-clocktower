@@ -147,3 +147,27 @@ describe('more night information', () => {
     expect(suggestInfo('towncrier', g.players[0].id, v)!.value).toBe('yes');  // the poisoner nominated
   });
 });
+
+import { FIRST_NIGHT_ORDER, OTHER_NIGHT_ORDER, NIGHT_PSEUDO } from '../shared/characters';
+describe('night helper coverage', () => {
+  it('has information or instructions for every character that wakes at night', () => {
+    const g = setup();
+    const v1 = storytellerView(g);
+    g.beginNight(); g.beginDay(); g.beginNight();
+    const v2 = storytellerView(g);
+    const me = g.players[0].id;
+    const ids = [...new Set([...FIRST_NIGHT_ORDER, ...OTHER_NIGHT_ORDER])].filter(id => !NIGHT_PSEUDO[id]);
+    const missing = ids.filter(id => !suggestInfo(id, me, v1) && !suggestInfo(id, me, v2));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('night order', () => {
+  it('protections and poison come before the Demon on other nights', () => {
+    const at = (id: string) => OTHER_NIGHT_ORDER.indexOf(id);
+    for (const before of ['poisoner', 'monk', 'innkeeper', 'devilsadvocate', 'exorcist', 'sailor', 'gambler'])
+      expect(at(before), before).toBeLessThan(at('imp'));
+    expect(at('ravenkeeper')).toBeGreaterThan(at('imp'));
+    expect(new Set(OTHER_NIGHT_ORDER).size).toBe(OTHER_NIGHT_ORDER.length);
+  });
+});

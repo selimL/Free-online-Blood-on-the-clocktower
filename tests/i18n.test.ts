@@ -8,6 +8,8 @@ import { _dicts, translate, LANGUAGES } from '../shared/i18n';
 import { CHARACTERS, NIGHT_SLOTS, NIGHT_PSEUDO, GENERIC_REMINDERS, DAY_ABILITIES } from '../shared/characters';
 import { HOUSE_RULE_INFO, EMOTES, WEATHERS } from '../shared/types';
 import { ALMANAC, TYPE_TIPS } from '../shared/almanac';
+import { GUIDE } from '../client/src/nightInfo';
+import { setupWarnings } from '../shared/setupCheck';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const FILES = [
@@ -38,6 +40,7 @@ function dataKeys(): Set<string> {
   GENERIC_REMINDERS.forEach(r => keys.add(r));
   CHARACTERS.forEach(c => (c.reminders ?? []).forEach(r => keys.add(r)));
   Object.values(DAY_ABILITIES).forEach(d => keys.add(d.prompt));
+  Object.values(GUIDE).forEach(g => keys.add(g));
   return keys;
 }
 

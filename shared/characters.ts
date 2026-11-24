@@ -253,14 +253,14 @@ export const FIRST_NIGHT_ORDER = [
   'mathematician', 'bureaucrat', 'thief', 'barista', 'apprentice', 'dawn',
 ];
 export const OTHER_NIGHT_ORDER = [
-  'dusk', 'wraith', 'philosopher', 'poppygrower', 'barista', 'bonecollector', 'harlot', 'sailor', 'engineer', 'preacher', 'xaan',
-  'poisoner', 'courtier', 'innkeeper', 'snakecharmer', 'witch', 'cerenovus', 'pithag', 'fearmonger', 'harpy', 'mezepheles',
+  'dusk', 'wraith', 'philosopher', 'poppygrower', 'barista', 'bureaucrat', 'thief', 'bonecollector', 'harlot', 'sailor', 'engineer', 'preacher', 'xaan',
+  'poisoner', 'courtier', 'innkeeper', 'gambler', 'snakecharmer', 'monk', 'organgrinder', 'devilsadvocate', 'witch', 'cerenovus', 'pithag', 'fearmonger', 'harpy', 'mezepheles',
   'scarletwoman', 'summoner', 'lunatic', 'exorcist', 'lycanthrope', 'legion', 'imp', 'zombuul', 'pukka', 'shabaloth', 'po', 'fanggu',
   'nodashii', 'vortox', 'lordoftyphon', 'vigormortis', 'ojo', 'alhadikhia', 'lleech', 'lilmonsta', 'yaggababble', 'kazali', 'assassin',
   'godfather', 'gossip', 'acrobat', 'hatter', 'barber', 'sweetheart', 'sage', 'banshee', 'professor', 'choirboy', 'huntsman', 'damsel',
   'amnesiac', 'farmer', 'tinker', 'moonchild', 'grandmother', 'ravenkeeper', 'empath', 'fortuneteller', 'undertaker', 'dreamer',
   'flowergirl', 'towncrier', 'oracle', 'seamstress', 'juggler', 'balloonist', 'villageidiot', 'king', 'bountyhunter', 'nightwatchman',
-  'cultleader', 'butler', 'spy', 'highpriestess', 'general', 'chambermaid', 'mathematician', 'monk', 'gambler', 'bureaucrat', 'thief', 'dawn',
+  'cultleader', 'butler', 'spy', 'highpriestess', 'general', 'chambermaid', 'mathematician', 'dawn',
 ];
 export const NIGHT_PSEUDO: Record<string, { name: string; text: string }> = {
   dusk: { name: 'Dusk', text: 'Check all players are asleep.' },

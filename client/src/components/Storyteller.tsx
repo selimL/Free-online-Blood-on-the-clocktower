@@ -2,7 +2,7 @@ import { jinxesFor } from '../../../shared/jinxes';
 import { TranscriptReader } from './Transcript';
 import { SpecialRules } from './GroupActions';
 import { WEATHERS } from '../../../shared/types';
-import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
+import { suggestInfo, impairment, killWarnings, CHOICE_REMINDER, KILLERS, NIGHTLY_REMINDERS, type Suggestion } from '../nightInfo';
 import { ScriptBuilder } from './ScriptBuilder';
 import { loadScripts } from '../scripts';
 import { WhisperInbox, useUnread } from './Whispers';
@@ -380,7 +380,7 @@ function NightHelper({ view }: { view: GameView }) {
               {sug && <div className={`nh-suggest ${why ? 'impaired' : ''}`}>
                 <b>{tr("💡 Suggested:")}</b> {sug.why}
                 {why && <div className="warn small">⚠ {name(recipient)} {why}{tr(": you may give false information instead.")}</div>}
-                {sug.card && !sug.pair && sug.value === undefined && <div><button className="btn small primary" onClick={() => send(sug.card!)}>{tr("Send this")}</button></div>}
+                {sug.card && !sug.pair && sug.value === undefined && <div><button className="btn small primary" onClick={() => send(sug.card!, sug.to ?? recipient)}>{sug.to ? tr("Send this to {name}", { name: name(sug.to) }) : tr("Send this")}</button></div>}
               </div>}
               <HelperCard key={`${step.id}:${recipient}:${sug?.pair ? `${sug.pair.a}${sug.pair.b}` : ''}`} step={step.id} view={view} send={send} suggestion={sug} />
             </>;
@@ -399,7 +399,8 @@ function StepActions({ step, actor, view }: { step: string; actor: string; view:
   if (!target) return null;
   const tName = view.players.find(p => p.id === target)?.name ?? '?';
   const reminder = CHOICE_REMINDER[step];
-  const isDemon = CHARACTER_BY_ID[step]?.type === 'demon';
+  const isDemon = CHARACTER_BY_ID[step]?.type === 'demon' || KILLERS.has(step);
+  const victims = isDemon ? (step === 'shabaloth' || step === 'po' ? seat!.nightChoice.slice(0, 3) : [target]) : [];
   const mark = () => {
     // move the token: it leaves whoever had it, and goes to the new target
     for (const g of self.grimoire) if (g.id !== target && g.reminders.includes(reminder)) void act('st:reminders', { playerId: g.id, reminders: g.reminders.filter(r => r !== reminder) });
@@ -413,9 +414,12 @@ function StepActions({ step, actor, view }: { step: string; actor: string; view:
       {reminder && <button className="btn small" disabled={already} onClick={mark}>{already ? tr("✓ {tName} is marked {reminder}", { tName, reminder }) : tr("🏷 Mark {tName} as {reminder}", { tName, reminder })}</button>}
       {isDemon && <>
         {warnings.length > 0 && <div className="warn small">⚠ {tName} {warnings.join('; ')}.</div>}
-        {self.pendingDawnDeaths.includes(target)
-          ? <span className="small">✓ {tName} {tr("will be found dead at dawn.")}</span>
-          : <button className="btn small danger" onClick={() => confirmKill(view, target)}>{tr("☠ Kill")}{' '}{tName} {tr("(at dawn)")}</button>}
+        {victims.map(v => {
+          const vName = view.players.find(p => p.id === v)?.name ?? '?';
+          return self.pendingDawnDeaths.includes(v)
+            ? <span key={v} className="small">✓ {vName} {tr("will be found dead at dawn.")}</span>
+            : <button key={v} className="btn small danger" onClick={() => confirmKill(view, v)}>{tr("☠ Kill")}{' '}{vName} {tr("(at dawn)")}</button>;
+        })}
       </>}
     </div>
   );
