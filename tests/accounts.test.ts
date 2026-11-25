@@ -84,7 +84,10 @@ describe('admin accounts', () => {
     expect((await call('/api/admin/me', 'GET', undefined, a.token))).toMatchObject({ kind: 'account', id: a.account.id });
     // the admin account can promote someone else, but not demote itself
     expect((await call(`/api/admin/accounts/${b.account.id}/admin`, 'POST', { admin: true }, a.token)).ok).toBe(true);
-    expect((await call(`/api/admin/accounts/${a.account.id}/admin`, 'POST', { admin: false }, a.token)).error).toMatch(/own/);
+    // …but an admin account may step down itself
+    expect((await call(`/api/admin/accounts/${b.account.id}/admin`, 'POST', { admin: false }, b.token)).ok).toBe(true);
+    expect((await call('/api/admin/games', 'GET', undefined, b.token)).status).toBe(401);
+    await call(`/api/admin/accounts/${b.account.id}/admin`, 'POST', { admin: true }, owner);
     // …and can't reset another admin's password or delete them
     expect((await call(`/api/admin/accounts/${b.account.id}/password`, 'POST', { password: 'stolen password' }, a.token)).error).toMatch(/site owner/);
     expect((await call(`/api/admin/accounts/${b.account.id}`, 'DELETE', undefined, a.token)).error).toMatch(/site owner/);

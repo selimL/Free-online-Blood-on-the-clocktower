@@ -52,6 +52,18 @@ export function AdminPage() {
     <div className="admin parchment">
       <div className="row"><h2>🛠 Admin</h2><a className="btn small ghost" href="/">Back to the lobby</a>{ownerToken ? <button className="btn small ghost" onClick={() => { sessionStorage.removeItem('botc:admin'); setToken(null); }}>Sign out</button>
         : <span className="muted small">Signed in as admin account {acct.account?.displayName}</span>}</div>
+      <h3>👑 Admins ({accts.filter(a => a.isAdmin).length})</h3>
+      <p className="muted small">{ownerToken ? 'Accounts that can open this page from the lobby. Make someone an admin from the Accounts table below.' : 'Only the site owner (admin password) can remove other admins. You can step down yourself.'}</p>
+      <ul className="small admin-chat">{accts.filter(a => a.isAdmin).map(a => <li key={a.id}>👑 <b>{a.displayName}</b> <span className="muted">{a.username ? `(${a.username})` : a.email ? `(${a.email})` : a.google ? '(Google)' : ''}</span>
+        {(ownerToken || a.id === meId) && <> <button className="btn small danger" onClick={async () => {
+          const self = a.id === meId;
+          if (!confirm(self ? 'Step down as admin? You will no longer be able to open this page.' : `Un-admin ${a.displayName}? They will no longer be able to open this page.`)) return;
+          const r = await call(`/api/admin/accounts/${a.id}/admin`, 'POST', { admin: false });
+          if (!r.ok) return alert(r.error);
+          if (self) { location.href = '/'; return; }
+          void load();
+        }}>{a.id === meId ? 'Step down' : 'Un-admin'}</button></>}
+      </li>)}{accts.every(a => !a.isAdmin) && <li className="muted">No admin accounts. Only the admin password opens this page.</li>}</ul>
       <h3>⚑ Reports ({reports.length})</h3>
       <ul className="small admin-chat">{reports.map(r => <li key={r.id}>
         <span className="muted">{new Date(r.ts).toLocaleString()} · {r.where}</span> — <b>{r.author}</b>: “{r.text}” <span className="muted">(reported by {r.reporter}{r.reason ? `: ${r.reason}` : ''}{r.verified ? '' : ' · room chat is not stored, so this is the reporter\'s copy'})</span>
@@ -86,7 +98,7 @@ export function AdminPage() {
             <td className="small">{new Date(a.createdAt).toLocaleDateString()}</td>
             <td>{a.games}</td>
             <td className="row">
-              {a.id !== meId && <button className="btn small ghost" onClick={async () => {
+              {a.id !== meId && !(a.isAdmin && !ownerToken) && <button className="btn small ghost" onClick={async () => {
                 if (!confirm(a.isAdmin ? `Remove admin rights from ${a.displayName}?` : `Make ${a.displayName} an admin? They can then open this page from the lobby: close games, moderate the lobby chat, and manage accounts (but not other admins).`)) return;
                 const r = await call(`/api/admin/accounts/${a.id}/admin`, 'POST', { admin: !a.isAdmin }); if (!r.ok) alert(r.error); void load();
               }}>{a.isAdmin ? 'Remove admin' : '👑 Make admin'}</button>}

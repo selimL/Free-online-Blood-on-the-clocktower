@@ -35,8 +35,9 @@ export function adminRoutes(app: Express, lobby: Lobby, accounts: Accounts, env:
   app.get('/api/admin/me', guard((_req, res, w) => res.json({ ok: true, kind: w.kind, id: w.kind === 'account' ? w.id : null })));
   app.post('/api/admin/accounts/:id/admin', guard(async (req, res, w) => {
     const id = String(req.params.id);
-    if (w.kind === 'account' && w.id === id) throw new Error('You cannot change your own admin status.');
-    await protectAdmins(w, id);
+    // an admin account may step down itself, but cannot change other admins (only the owner can)
+    if (w.kind === 'account' && w.id === id) { if (req.body?.admin) throw new Error('You are already an admin.'); }
+    else await protectAdmins(w, id);
     await accounts.setAdmin(id, !!req.body?.admin);
     res.json({ ok: true });
   }));
