@@ -82,7 +82,7 @@ export function Lobby() {
           <hr />
           <h2>Host a game</h2>
           <p className="muted">Whoever creates the game is its Storyteller.</p>
-          <div className="row"><button className="btn primary" onClick={() => setCreating(true)}>Create game</button>
+          <div className="row host-actions"><button className="btn primary" onClick={() => setCreating(true)}>Create game</button>
             <button className="btn ghost" onClick={() => setBuilder({})}>📜 Script builder</button>
             <button className="btn ghost" onClick={() => setShowGallery(true)}>🌍 Script gallery</button>
             <RestoreButton /></div>
@@ -90,7 +90,7 @@ export function Lobby() {
           <h2>New to the game?</h2>
           <p className="muted">Play a short guided practice game with six computer players. The Guide explains each step.</p>
           <InstallApp />
-          <div className="row"><button className="btn" onClick={() => setPractice(true)}>🎓 Learn to play</button>
+          <div className="row host-actions"><button className="btn" onClick={() => setPractice(true)}>🎓 Learn to play</button>
             <button className="btn ghost" onClick={() => setShowHistory(true)}>📊 My games</button></div>
         </section>
       </div>
